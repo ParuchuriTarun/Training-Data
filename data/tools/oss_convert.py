@@ -312,6 +312,75 @@ QUESTIONS = {
         "Teach me about {t}: what it is, when to use it and how fast it is.",
         "What is {t}? Explain it for a programmer.",
     ],
+    "fastapi": [
+        "Explain {t} in FastAPI.",
+        "How do I do this in FastAPI: {t}?",
+        "FastAPI: {t}. Show me with code.",
+        "Teach me {t} in FastAPI.",
+    ],
+    "typer": [
+        "Explain {t} in Typer, the Python command-line library.",
+        "How do I do this in a Typer CLI app: {t}?",
+        "Typer: {t}. Show me with code.",
+    ],
+    "pydantic": [
+        "Explain {t} in Pydantic.",
+        "How do I use {t} in Pydantic v2?",
+        "Pydantic question: {t}. Show examples.",
+    ],
+    "uv_docs": [
+        "How do I use uv for {t}?",
+        "Explain {t} in uv, the Python package manager.",
+        "uv: {t}. What should I know?",
+    ],
+    "vite_docs": [
+        "Explain {t} in Vite.",
+        "How does Vite handle {t}?",
+        "Vite question: {t}. Show me how to set it up.",
+    ],
+    "svelte_docs": [
+        "Explain {t} in Svelte.",
+        "How do I use {t} in Svelte 5?",
+        "Svelte: {t}. Show me with code.",
+    ],
+    "nextjs_docs": [
+        "Explain {t} in Next.js.",
+        "How do I do this in Next.js: {t}?",
+        "Next.js: {t}. Show me with code.",
+    ],
+    "docker_docs": [
+        "Explain {t} in Docker.",
+        "How do I do this with Docker: {t}?",
+        "Docker question: {t}. What should I know?",
+    ],
+    "playwright_docs": [
+        "How do I use {t} in Playwright?",
+        "Explain {t} in Playwright testing.",
+        "Playwright: {t}. Show me with code.",
+    ],
+    "clippy_book": [
+        "What does Clippy say about {t}?",
+        "Explain {t} for Rust and Clippy.",
+    ],
+    "clap_docs": [
+        "How do I do this with clap in Rust: {t}?",
+        "Explain {t} in clap, the Rust command-line parser.",
+        "clap: {t}. Show me with code.",
+    ],
+    "axum_docs": [
+        "How do I do this in axum (Rust web framework): {t}?",
+        "Explain {t} in axum.",
+        "axum: {t}. Show me a working example.",
+    ],
+    "rocket_guide": [
+        "Explain {t} in Rocket, the Rust web framework.",
+        "How do I do this in Rocket: {t}?",
+        "Rocket: {t}. Show me with code.",
+    ],
+    "diesel_guide": [
+        "Explain {t} in Diesel, the Rust database library.",
+        "How do I do this with Diesel: {t}?",
+    ],
     "rust_cookbook": [
         "Show me a Rust recipe: {t}.",
         "How do I do this in Rust: {t}?",
@@ -334,6 +403,20 @@ SOURCES = {
     "tokio_docs": ("tokio-rs__website/content/tokio", {"SUMMARY.md", "README.md"}),
     "node_docs": ("nodejs__node/doc/api", {"deprecations.md", "documentation.md", "addons.md", "n-api.md", "inspector.md", "report.md", "wasi.md", "v8.md", "intl.md", "tracing.md", "index.md", "README.md", "SUMMARY.md"}),
     "js_algorithms": ("trekhleb__javascript-algorithms/src", {"SUMMARY.md"}),
+    "fastapi": ("fastapi__fastapi/docs/en/docs", {"release-notes.md", "fastapi-people.md", "contributing.md", "help-fastapi.md", "management-tasks.md", "external-links.md", "newsletter.md", "management.md", "translation-banner.md", "fastapi-cli.md", "learn/", "about/", "_llm-test.md"}),
+    "typer": ("fastapi__typer/docs", {"release-notes.md", "contributing.md", "help-typer.md", "typer-people.md", "management-tasks.md", "management.md", "external-links.md", "newsletter.md", "_llm-test.md"}),
+    "pydantic": ("pydantic__pydantic/docs", {"changelog.md", "contributing.md", "version-policy.md", "help_with_pydantic.md", "pydantic_people.md", "citation.md", "integrations/", "sponsor/"}),
+    "uv_docs": ("astral-sh__uv/docs", {"index.md", "reference/", "404.md"}),
+    "vite_docs": ("vitejs__vite/docs", {"team.md", "index.md", "blog/", "releases.md", "acknowledgements.md"}),
+    "svelte_docs": ("sveltejs__svelte/documentation", {"index.md"}),
+    "nextjs_docs": ("vercel__next.js/docs", {"index.mdx", "index.md"}),
+    "docker_docs": ("docker__docs/content", {"admin/", "subscription/", "billing/", "accounts/", "docker-hub/", "scout/", "offload/", "release-notes/", "enterprise/", "security/", "ai/", "extensions/", "desktop/", "trusted-content/", "retired/", "contribute/"}),
+    "playwright_docs": ("microsoft__playwright/docs", {"release-notes.md", "api/", "test-api/", "test-reporter-api/", "README.md"}),
+    "clippy_book": ("rust-lang__rust-clippy/book/src", {"SUMMARY.md", "README.md"}),
+    "clap_docs": ("clap-rs__clap/src", {"README.md"}),
+    "axum_docs": ("tokio-rs__axum", {"README.md", "CHANGELOG.md", "CONTRIBUTING.md", "ECOSYSTEM.md"}),
+    "rocket_guide": ("rwf2__Rocket/docs/guide", {"README.md"}),
+    "diesel_guide": ("diesel-rs__diesel", {"README.md", "CHANGELOG.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"}),
     "rust_cookbook": ("rust-lang-nursery__rust-cookbook/src", {"SUMMARY.md", "README.md", "about.md", "index.md"}),
 }
 
@@ -350,21 +433,62 @@ def write_examples(path, examples):
             f.write(f"@@@ USER\n{safe(q)}\n@@@ ASSISTANT\n{safe(a)}\n@@@ END\n\n")
 
 
+EXTRA_KEYS = {"fastapi", "typer", "pydantic", "uv_docs", "vite_docs", "svelte_docs", "nextjs_docs", "docker_docs",
+              "playwright_docs", "clippy_book", "clap_docs", "axum_docs", "rocket_guide", "diesel_guide"}
+LANG_BY_EXT = {"py": "python", "js": "javascript", "ts": "typescript", "sh": "bash", "toml": "toml", "json": "json", "html": "html",
+               "txt": "text", "rs": "rust", "yaml": "yaml", "yml": "yaml"}
+
+
+def extra_clean(text, base, key):
+    """Extra cleaning for MkDocs / Hugo / MDX documentation (only for the newer sources)."""
+    if key not in EXTRA_KEYS:
+        return text
+
+    def inc(m):                                     # FastAPI / Typer: {* ../../docs_src/x.py hl[1,3] *}
+        mm = re.search(r"docs_src/(\S+?\.\w+)", m.group(1))
+        root = next((a for a in [base] + list(base.parents) if (a / "docs_src").is_dir()), None)
+        if not mm or root is None:
+            return ""
+        f = root / "docs_src" / mm.group(1)
+        try:
+            code = f.read_text(encoding="utf-8").replace("\r\n", "\n").strip("\n")
+        except Exception:
+            return ""
+        return "```" + LANG_BY_EXT.get(f.suffix.lstrip("."), "") + "\n" + code + "\n```"
+
+    text = re.sub(r"\{\*\s*(.*?)\s*\*\}", inc, text)
+    if key in ("fastapi", "typer"):
+        text = re.sub(r"^[ \t]*///\s*(\w+)(?:\s*\|\s*(.*))?$", lambda m: (m.group(1).capitalize() + ": " + (m.group(2) or "")).rstrip(), text, flags=re.M)
+    if key in ("fastapi", "typer"):
+        text = re.sub(r"^[ \t]*///\s*$", "", text, flags=re.M)
+    text = re.sub(r"^[ \t]*!!!\s*(\w+)(?:\s+\"([^\"]*)\")?\s*$", lambda m: m.group(1).capitalize() + ":" + (" " + m.group(2) if m.group(2) else ""), text, flags=re.M)
+    text = re.sub(r"[ \t]*#\s*\(\d+\)!?[ \t]*$", "", text, flags=re.M)           # code annotation markers
+    text = re.sub(r"^\s*</?[A-Z][A-Za-z0-9.]*\b[^>\n]*/?>\s*$", "", text, flags=re.M)   # MDX components on their own line
+    text = re.sub(r"\A(\s*(?:import|export) [^\n]*\n)+", "", text)                    # MDX imports at the top
+    text = re.sub(r"</?(?:div|p|details|summary|center|kbd|sup|sub|br)\b[^>\n]*>", "", text)
+    text = re.sub(r"^(#{1,6} .*?)\s*\{\s*#[\w\-.:]+\s*\}\s*$", r"\1", text, flags=re.M)   # heading anchors
+    if key in ("fastapi", "typer"):                 # //// tab | Linux ... ////  (tabbed blocks)
+        text = re.sub(r"^[ \t]*/{4,}\s*tab\s*\|\s*(.*)$", r"\1:", text, flags=re.M)
+        text = re.sub(r"^[ \t]*/{4,}\s*$", "", text, flags=re.M)
+    return text
+
+
 def convert_md(key):
     rel, skip = SOURCES[key]
     base = SRC / rel
     templates = QUESTIONS[key]
     examples, seen = [], set()
-    for p in sorted(base.rglob("*.md")):
+    for p in sorted(list(base.rglob("*.md")) + list(base.rglob("*.mdx"))):
         if re.search(r"\.[a-z]{2}(-[A-Za-z]{2,4})?\.md$", p.name):
             continue                       # translations (README.ru-RU.md ...)
-        if p.name in skip:
+        if p.name in skip or any(s.endswith("/") and f"/{s}" in p.as_posix() for s in skip):
             continue
         text = p.read_text(encoding="utf-8").replace("\r\n", "\n")
         text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.S)       # front matter
         if re.search(r"\{\{#include [^}]*\.md", text):
             continue                       # an overview page that only repeats other pages
         text = expand_includes(text, p.parent)
+        text = extra_clean(text, base, key)
         text = process(text)
         if len(text) < MINIMUM:
             continue

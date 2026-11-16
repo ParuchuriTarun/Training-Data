@@ -35,6 +35,19 @@ and `data/oss_clean_webdev.py`.
 | oss_tokio_docs.txt | https://github.com/tokio-rs/website (content/tokio) | 71cdb3858fbb | MIT | Carl Lerche and Tokio website contributors |
 | oss_node_docs.txt | https://github.com/nodejs/node (doc/api only) | 90493f098a53 | MIT | Node.js contributors |
 | oss_js_algorithms.txt | https://github.com/trekhleb/javascript-algorithms (English README files only) | 85293e3e2b88 | MIT | Oleksii Trekhleb |
+| oss_fastapi.txt | https://github.com/fastapi/fastapi (docs/en/docs and docs_src) | d85d47a41607 | MIT | Sebastián Ramírez |
+| oss_typer.txt | https://github.com/fastapi/typer (docs and docs_src) | 695d84504ab5 | MIT | Sebastián Ramírez |
+| oss_pydantic.txt | https://github.com/pydantic/pydantic (docs) | fa156283c7b3 | MIT | Pydantic Services Inc. and individual contributors |
+| oss_uv_docs.txt | https://github.com/astral-sh/uv (docs) | cf9bace0e30e | MIT OR Apache-2.0 | Astral Software Inc. |
+| oss_vite_docs.txt | https://github.com/vitejs/vite (docs) | 9a8d1a98922c | MIT | VoidZero Inc. and Vite contributors |
+| oss_svelte_docs.txt | https://github.com/sveltejs/svelte (documentation) | 99c07450d2e0 | MIT | Svelte Contributors |
+| oss_nextjs_docs.txt | https://github.com/vercel/next.js (docs) | 67c021252d40 | MIT | Vercel, Inc. |
+| oss_docker_docs.txt | https://github.com/docker/docs (content, without the product-admin sections) | f081e781d06d | Apache-2.0 | Docker, Inc. |
+| oss_playwright_docs.txt | https://github.com/microsoft/playwright (docs) | b4d016aadc5c | Apache-2.0 | Microsoft Corporation |
+| oss_clippy_book.txt | https://github.com/rust-lang/rust-clippy (book) | c96aca17f5db | MIT OR Apache-2.0 | The Rust Project Developers (see LICENSE-MIT) |
+| oss_axum_docs.txt | https://github.com/tokio-rs/axum (examples and docs) | 2449f1600c66 | MIT | axum Contributors |
+| oss_rocket_guide.txt | https://github.com/rwf2/Rocket (docs/guide) | 3a54d079aef0 | MIT OR Apache-2.0 | Rocket contributors (see LICENSE-MIT) |
+| oss_diesel_guide.txt | https://github.com/diesel-rs/diesel (guide drafts) | 62ea31380676 | MIT OR Apache-2.0 | Diesel contributors (see LICENSE-MIT) |
 
 The Rust Book, Rust By Example and the API Guidelines are dual-licensed; this project takes
 them under the MIT option.
@@ -47,6 +60,8 @@ them under the MIT option.
 | leonardomso/33-js-concepts | MIT | The content is mostly links to other people's articles |
 | emilk/egui | MIT OR Apache-2.0 | Not converted yet |
 | google/comprehensive-rust | Apache-2.0 (code) and CC BY 4.0 (all .md text) | The course text is CC BY 4.0, outside the MIT / Apache / CC0 rule |
+| clap-rs/clap | MIT OR Apache-2.0 | Its guides are rustdoc comments, nothing to convert |
+| ratatui/ratatui-website | MIT | Too little text |
 
 Anything under CC BY-SA, CC BY-NC, GPL or an unknown licence was left out on purpose.
 

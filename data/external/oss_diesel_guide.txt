@@ -1,0 +1,1320 @@
+@@@ USER
+How do I do this with Diesel: Contributor Code of Conduct?
+@@@ ASSISTANT
+## Our Pledge
+
+In the interest of fostering an open and welcoming environment, we as
+contributors and maintainers pledge to making participation in our project and
+our community a harassment-free experience for everyone, regardless of age, body
+size, disability, ethnicity, gender identity and expression, level of experience,
+nationality, personal appearance, race, religion, or sexual identity and
+orientation.
+
+## Our Standards
+
+Examples of behavior that contributes to creating a positive environment
+include:
+
+* Using welcoming and inclusive language
+* Being respectful of differing viewpoints and experiences
+* Gracefully accepting constructive criticism
+* Focusing on what is best for the community
+* Showing empathy towards other community members
+
+Examples of unacceptable behavior by participants include:
+
+* The use of sexualized language or imagery and unwelcome sexual attention or
+advances
+* Trolling, insulting/derogatory comments, and personal or political attacks
+* Public or private harassment
+* Publishing others' private information, such as a physical or electronic
+  address, without explicit permission
+* Other conduct which could reasonably be considered inappropriate in a
+  professional setting
+
+## Our Responsibilities
+
+Project maintainers are responsible for clarifying the standards of acceptable
+behavior and are expected to take appropriate and fair corrective action in
+response to any instances of unacceptable behavior.
+
+Project maintainers have the right and responsibility to remove, edit, or
+reject comments, commits, code, wiki edits, issues, and other contributions
+that are not aligned to this Code of Conduct, or to ban temporarily or
+permanently any contributor for other behaviors that they deem inappropriate,
+threatening, offensive, or harmful.
+
+## Scope
+
+This Code of Conduct applies both within project spaces and in public spaces
+when an individual is representing the project or its community. Examples of
+representing a project or community include using an official project e-mail
+address, posting via an official social media account, or acting as an appointed
+representative at an online or offline event. Representation of a project may be
+further defined and clarified by project maintainers.
+
+## Enforcement
+
+Instances of abusive, harassing, or otherwise unacceptable behavior may be
+reported by contacting a project maintainer at:
+
+* Sean Griffin <sean@seantheprogrammer.com>
+* Pascal Hertleif <killercup@gmail.com>
+* Bastien Orivel <Eijebong@bananium.fr>
+
+All complaints will be reviewed and investigated and will result in a response
+that is deemed necessary and appropriate to the circumstances. The project team
+is obligated to maintain confidentiality with regard to the reporter of an
+incident. Further details of specific enforcement policies may be posted
+separately.
+
+Project maintainers who do not follow or enforce the Code of Conduct in good
+faith may face temporary or permanent repercussions as determined by other
+members of the project's leadership.
+
+## Attribution
+
+This Code of Conduct is adapted from the Contributor Covenant, version 1.4,
+available at https://contributor-covenant.org/version/1/4
+@@@ END
+
+@@@ USER
+How do I do this with Diesel: Installing Backend Client Libraries?
+@@@ ASSISTANT
+Diesel supports SQLite, PostgreSQL, and MySQL as database backends.
+By default, `diesel_cli`
+requires the client library of all three backends to be installed.
+If one is missing, then `cargo install diesel_cli` will throw an error like:
+
+```
+note: ld: library not found for -lmysqlclient
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+```
+
+To install `diesel_cli` without all backends,
+specify `--no-default-features`.
+Use cargo's `--features` option to specify `postgres`, `sqlite`, and/or `mysql`.
+For example, to install with sqlite only, run:
+
+```
+cargo install diesel_cli --no-default-features --features sqlite
+```
+
+For projects that depend on diesel,
+you can specify which backends are required in the `Cargo.toml`.
+For example:
+
+```
+[dependencies]
+diesel = { version = "X.X.X", features = ["sqlite"] }
+```
+
+Below are commands to run
+to install appropriate database clients
+with various package managers.
+
+## Debian/Ubuntu
+
+### SQLite
+
+`sudo apt-get install libsqlite3-dev`
+
+### PostgreSQL
+
+`sudo apt-get install libpq-dev`
+
+### MySQL
+
+1. Install the following to add the MySQL APT repository.
+
+    ```
+    wget https://dev.mysql.com/get/mysql-apt-config_0.8.15-1_all.deb
+    sudo dpkg -i mysql-apt-config_0.8.15-1_all.deb
+    ```
+
+    Select `<Ok>`.
+
+2. Retrieve new lists of packages
+
+    ```
+    sudo apt-get update
+    ```
+
+3. Install the client library
+
+    ```
+    sudo apt-get install libmysqlclient-dev
+    ```
+
+See MySQL docs for more details.
+
+## CentOS/Fedora
+### SQLite
+
+`sudo yum install sqlite-devel`
+
+### PostgreSQL
+
+`sudo yum install postgresql-devel`
+
+### MySQL
+
+`sudo yum install mysql-devel`
+
+## Arch
+### SQLite
+
+`sudo pacman -Su sqlite`
+
+### PostgreSQL
+
+`sudo pacman -Su postgresql`
+
+### MySQL
+
+`sudo pacman -Su mysql`
+
+## Mac OSX 
+### SQLite
+Already installed by default.
+### PostgreSQL
+
+`brew install postgresql`
+
+### MySQL
+
+`brew install mysql`
+
+## Windows
+
+### PostgreSQL
+
+The simplest way to install PostgreSQL on Windows is to use the graphical installer of EnterpriseDB: https://www.postgresql.org/download/windows/, but you can also install it just with binaries: https://www.enterprisedb.com/download-postgresql-binaries.
+
+And finally, you can run `pg_env.bat` in `PostgreSQL\10` where PostgreSQL is installed in your system, which does all the setup needed for you. If you use the graphical installer of EnterpriseDB, it should be in `C:\Program Files\`.
+
+Or you can add the `bin/` directory of PostgreSQL to your PATH environment variable.
+@@@ END
+
+@@@ USER
+Explain Custom types in Diesel in Diesel, the Rust database library.
+@@@ ASSISTANT
+Recently, in a personal project, I decided to use diesel, an ORM for Rust language that supports some popular relational databases. My hands-on experience with ORM was quite limited at that time, and I first made an SQL schema without even analysing for supported features. Unfortunately, my beliefs in seamless type integration between an app and schema were broken quite soon. Consider the following SQL schema:
+
+```sql
+CREATE TYPE Language AS ENUM (
+    'en', 'de', 'ru'
+);
+
+CREATE TABLE translations (
+    word_id        INTEGER NOT NULL,
+    translation_id INTEGER NOT NULL,
+    language       Language NOT NULL,
+
+    PRIMARY KEY (word_id, translation_id)
+)
+```
+
+And after `diesel migration run` the following _schema.rs_ will be generated:
+
+```rust
+// src/schema.rs
+
+table! {
+    translations (word_id, translation_id) {
+        word_id -> Int4,
+        translation_id -> Int4,
+        language -> Language,
+    }
+}
+```
+
+Great, I thought back then. There I can simply define an enum and ORM will do all of the deriving magic. As you may guess the actual answer is no and that is completely fair because database handles types differently (and sqlite does not even support them). So let's do all the manual work to be able to use it.
+
+The first thing is to define the type in rust that can be used in the schema. That is quite straightforward:
+
+```rust
+// src/model.rs
+
+pub enum Language {
+    En,
+    De,
+    Ru,
+}
+
+pub mod exports {
+    // we will use that a bit later
+    pub use super::Language;
+}
+```
+
+Thereafter we need to include this type to the schema. If you directly add `use crate::model::Language` to the source there will be 2 issues. Firstly it would be overridden on the next migration run. The second is newly appeared errors regarding diesel types, like this:
+
+```
+error[E0412]: cannot find type `Int4` in this scope
+   --> src/schema.rs:5:20
+    |
+5   |           word_id -> Int4,
+    |                      ^^^^ help: a trait with a similar name exists: `Into`
+```
+
+The last issue appears due to `table!` macro implementation. `use diesel::sql_types::*` is implicitly included if no other includes found. That might be handy if diesel exported with a different name or you want to change the behaviour of default types. So in our case types module usage should be explicitly included as well. The first issue can be handled via _diesel.toml_ configuration for diesel_cli tool like this:
+
+```toml
+[print_schema]
+file = "src/schema.rs"
+import_types = ["diesel::sql_types::*", "crate::model::exports::*"]
+```
+
+`import_types` here is simply the list of `use`-s that are going to be included at the beginning of each generated `table!` in the schema. If you follow the step-by-step, ensure that your schema file is regenerated with `diesel migration redo`. At this point you should still have compiler error with a message like this:
+
+```
+the trait `diesel::sql_types::NotNull` is not implemented for `model::Language`
+```
+
+And here comes the magic of diesel typing. As doc states `NotNull` is a marker trait that marks an SQL type in diesel terms. Instead of manual implementation `#[derive(SqlType)]` can be used, which also implements some other internal traits. At this point, the dummy project should compile without any problems. That is quite a nice feature of diesel to allow working with tables without implementing necessary conversions if the custom type is unused.
+
+So let's write some conversions, so we can work with insertions and queries.
+First of all, diesel differentiates an SQL type and the particular kind of used structure. In that architecture, a single SQL type `INTEGER` might be used for different "high-level" user types, like `bool`, `u16`, `i32`, etc.
+Thus, we need to create a separate type `LanguageType` and use it in a generated schema, besides there should be a relation between our "high-level" type and SQL type.
+
+```rust
+#[derive(SqlType)]
+#[diesel(postgres_type(name = "Language"))]
+pub struct LanguageType;
+
+#[derive(Debug, FromSqlRow, AsExpression)]
+#[diesel(sql_type = LanguageType)]
+pub enum Language {
+    En,
+    Ru,
+    De,
+}
+
+pub mod exports {
+    pub use super::LanguageType as Language;
+}
+```
+
+`#[diesel(postgres_type(name = ".."))]` provides a name of the type as declared in our SQL, similarly `#[diesel(mysql_type(name = ".."))]` can be used for MySql and `#[diesel(sqlite_type(name = ".."))]` for sqlite. `FromSqlRow` derives internal types that are necessary for querying and `AsExpression` for querying. `#[diesel(sql_type = LanguageType)]` creates a relation between a type marker and a "high-level" type for insertions as well.
+
+We are ready to implement real conversions. The first one is `ToSql`, that performs conversion to the bytes. Since it can convert our type to SQL, it allows to only make queries.
+
+```rust
+use std::io::Write;
+
+use diesel::backend::Backend;
+use diesel::serialize::{self, IsNull, Output, ToSql};
+
+impl<Db: Backend> ToSql<LanguageType, Db> for Language {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Db>) -> serialize::Result {
+        match *self {
+            Language::En => out.write_all(b"en")?,
+            Language::Ru => out.write_all(b"ru")?,
+            Language::De => out.write_all(b"de")?,
+        }
+        Ok(IsNull::No)
+    }
+}
+```
+
+That's a little bit verbose, though pretty straightforward. We just write down bytes to trait provided output, that's it. Here may be anything that the underlying database can support. So if you want to write some complicated type instead of an enum, the one should consider using a concrete backend (e.g. `diesel::pg::Pg`). And here's the implementation of `FromSql`.
+
+```rust
+use diesel::deserialize::{self, FromSql};
+use diesel::pg::Pg;
+
+impl FromSql<LanguageType, Pg> for Language {
+    fn from_sql(bytes: Option<&<Pg as Backend>::RawValue>) -> deserialize::Result<Self> {
+        match not_none!(bytes) {
+            b"en" => Ok(Language::En),
+            b"ru" => Ok(Language::Ru),
+            b"de" => Ok(Language::De),
+            _ => Err("Unrecognized enum variant".into()),
+        }
+    }
+}
+```
+
+Notice here the usage of specific backend type. It is mandatory since you need somehow to handle a generic `Backend::RawValue` (that has no trait bounds), for `Pg` in particular, it is `&[u8]` (at the diesel 1.4.4, in current master that is changed to `diesel::pg::PgValue` wrapper). Code here should be also self-explanatory though still a bit verbose.
+
+That's it! Or at least almost. That would be quite unfair to ignore a crate that generates all that stuff (though only for enums) that we dig into at this post — diesel-derive-enum. So all of the described conversions can be generated simply with:
+
+```rust
+use diesel_derive_enum::DbEnum;
+
+#[derive(Debug, PartialEq, DbEnum)]
+pub enum Language {
+    En,
+    Ru,
+    De,
+}
+```
+
+You can find complete sources used in this post here and leave a comment on reddit.
+@@@ END
+
+@@@ USER
+How do I do this with Diesel: Diesel 2.0 Migration guide?
+@@@ ASSISTANT
+Diesel 2.0 introduces substantial changes to Diesel's inner workings. 
+In some cases this impacts code written using Diesel 1.4.x. 
+This document outlines notable changes and presents potential update strategies. 
+We recommend to start the upgrade by removing the usage of all items that 
+are marked as deprecated in Diesel 1.4.x.
+
+Any code base using migrating to Diesel 2.0 is expected to be affected at least by 
+the following changes:
+
+* Diesel now requires a mutable reference to the connection
+* Changed derive attributes
+
+Users of `diesel_migration` are additionally affected by the following change:
+
+* `diesel_migration` rewrite
+
+Users of `BoxableExpression` might be affected by the following change:
+
+* Changed nullability of operators
+
+Users of tables containing a column of the type `Array<T>` are affected by the following change:
+
+* Changed nullability of array elements
+
+Users that implement support for their SQL types or type mappings are affected 
+by the following changes:
+
+* Changed required traits for custom SQL types
+* Changed `ToSql` implementations
+* Changed `FromSql` implementations
+
+`no_arg_sql_function!` macro is now pending deprecation.
+Users of the macro are advised to consider `define_sql_function!` macro.
+
+* Deprecated usage of `no_arg_sql_function!` macro
+
+Users that update generic Diesel code will also be affected by the following changes:
+
+* Removing `NonAggregate` in favor of `ValidGrouping`
+* Changed generic bounds
+
+Additionally this release contains many changes for users that implemented a custom backend/connection.
+We do not provide explicit migration steps but we encourage users to reach out with questions pertaining to these changes. 
+
+## Mutable Connections required
+
+Diesel now requires mutable access to the `Connection` to perform any database interaction. The following changes
+are required for all usages of any `Connection` type:
+
+```diff
+- let connection = PgConnection::establish_connection("…")?;
+- let result = some_query.load(&connection)?;
++ let mut connection = PgConnection::establish_connection("…")?;
++ let result = some_query.load(&mut connection)?;
+```
+
+We expect this to be a straightforward change as the connection already can execute only one query at a time.
+
+## Derive attributes
+
+We have updated all of our Diesel derive attributes to follow the patterns that are used
+widely in the Rust's ecosystem. This means that all of them need to be wrapped by `#[diesel()]` now.  You can now specify multiple attributes on the same line using `,` separator.
+
+This is backward compatible and thus all of your old attributes will still work, but with
+warnings. The attributes can be upgraded by either looking at the warnings or by reading
+diesel derive documentation reference.
+
+## `diesel_migration` rewrite
+
+We have completely rewritten the `diesel_migration` crate. As a part of this rewrite all 
+free standing functions are removed from `diesel_migration`. Equivalent functionality 
+is now provided by the `MigrationHarness` trait, which is implemented for any `Connection` 
+type and for `HarnessWithOutput`. Refer to their documentations for details.
+
+Additionally, this rewrite changed the way we provide migrations. Instead of having our own implementation
+for file based and embedded migration we now provide a unified `MigrationSource` trait to abstract 
+over the differences. `diesel_migration` provides two implementations:
+
+* `FileBasedMigrations`, which mirrors the existing behaviour to load raw sql migrations at run time
+form a specific directory
+* `EmbeddedMigrations`, which mirrors the existing `embed_migrations!` macro. 
+
+Finally the `embed_migrations!()` macro itself changed. Instead of generating a magical embedded module 
+it now generates an instance of `EmbeddedMigrations`, that could be stored in a constant for example.
+
+That means code using `embed_migrations!()` needs to be changed from
+```rust
+embed_migrations!()
+
+fn run_migration(conn: &PgConnection) {
+    embedded_migrations::run(conn).unwrap()
+}
+```
+to 
+```rust
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+
+fn run_migration(conn: &PgConnection) {
+    conn.run_pending_migrations(MIGRATIONS).unwrap();
+}
+```
+
+## Changed nullability of operators
+
+We changed the way how we handle the propagation of null values through binary operators. Diesel 1.x always assumed 
+that the result of a binary operation `value_a > value_b` is not nullable, which does not match the behaviour of the 
+underlying databases. `value_a > null` may return a `NULL` value there. With Diesel 2.0 we changed this to match more
+closely the behaviour of the underlying databases. We expect this change to have the biggest impact on existing usages
+of `BoxableExpression` as it may change the resulting sql type there. As a possible workaround for divering sql types 
+there we recommend to use one of the following functions:
+
+* `NullableExpressionMethods::nullable()`
+* `NullableExpressionMethods::assume_not_null()`
+
+## Changed nullability of array elements
+
+We changed the inferred SQL type for columns with array types for the PostgreSQL backend. Instead of using `Array<ST>` 
+we now infer `Array<Nullable<ST>>` to support arrays containing `NULL` values. This change implies a change mapping
+of columns of the corresponding types. It is possible to handle this change using one of the following strategies:
+
+* Use `Vec<Option<T>>` as rust side type instead of `Vec<T>`
+* Manually set the corresponding column to `Array<ST>` in your schema, to signal that this array does not contain null values. You may want to use the `patch_file` key for diesel CLI for this.
+* Use `#[diesel(deserialize_as = "…")]` to explicitly overwrite the  deserialization implementation used for this specific struct field. Checkout the documentation of `#[derive(Queryable)]` for details.
+
+## Custom SQL type implementations
+
+We changed how we mark sql types as nullable at type level. For this we replaced the `NonNull` trait with a 
+more generic `SqlType` trait, which allows to mark a sql type as (non-) nullable. This may affect custom
+sql type implementations.
+
+Users that already use the existing `#[derive(SqlType)]` do not need to change any code. The derive internally
+generates the correct code after the update. Users that use a manual implementation of `NonNull` need to replace
+it with a corresponding `SqlType` implementation:
+
+```diff
+- impl NonNull for MyCustomSqlType {}
++ impl SqlType for MyCustomSqlType {
++     type IsNull = diesel::sql_types::is_nullable::NotNull;
++ }
+```
+
+Additionally, the diesel CLI tool was changed so that it automatically generates the Rust side definition of custom SQL types 
+as long as they appear on any table. This feature currently only supports the PostgreSQL backend, as all other supported backends
+do not support real custom types at SQL level at all.
+@@@ END
+
+@@@ USER
+How do I do this with Diesel: Diesel 2.0 Migration guide: Changed `ToSql` implementations?
+@@@ ASSISTANT
+We restructured the way Diesel serializes Rust values to their backend specific representation.
+This enables us to skip copying the value at all if the specific backend supports writing to a 
+shared buffer. Unfortunately, this feature requires changes to the `ToSql` trait. This change introduces
+a lifetime that ensures that a value implementing `ToSql` outlives the underlying serialisation buffer.
+Additionally we separated the output buffer type for Sqlite from the type used for PostgreSQL and Mysql.
+
+This has the implication that for generic implementations using a inner existing `ToSql` implementation you cannot
+create temporary values anymore and forward them to the inner implementation.
+
+For backend concrete implementations, the following functions allow You to work around this limitation:
+
+* `Output::reborrow()` for the `Pg` and `Mysql` backend
+* `Output::set_value()` for the `Sqlite` backend (Refer to the documentation of `SqliteBindValue` for accepted values)
+
+## Changed `FromSql` implementations
+
+We changed the raw value representation for both PostgreSQL and MySQL
+backends, from a `& [u8]` to an opaque type. This allows us to include additional information like the database side
+type there. This change enables users to write `FromSql` implementations that decide dynamically what kind of value
+was received. The new value types for both backends expose a `as_bytes()` method to access the underlying byte buffer.
+
+Any affected backend needs to perform the following changes:
+
+```diff
+impl<DB: Backend> FromSql<YourSqlType, DB> for YourType {
+-    fn from_sql(bytes: &[u8]) -> deserialize::Result<Self> {
++    fn from_sql(value: backend::RawValue<'_, DB>) -> deserialize::Result<Self> {
++        let bytes = value.as_bytes();
+         // …
+     }
+}
+```
+
+## `no_arg_sql_function`
+
+The `no_arg_sql_function` was deprecated without direct replacement. However the
+`define_sql_function!` macro gained support for sql functions without argument. This support generates slightly 
+different code. Instead of representing the sql function as zero sized struct, `define_sql_function!` will generate an ordinary function call without arguments. This requires changing any usage of the generated dsl. This change 
+affects all of the usages of the `no_arg_sql_function!` in third party crates.
+
+```diff
+- no_arg_sql_function!(now, sql_types::Timestamp, "Represents the SQL NOW() function");
+- 
+- diesel::select(now)
+ 
++ define_sql_function!{
++     /// Represents the SQL NOW() function
++     fn now() -> sql_types::Timestamp;
++ }
++
++ diesel::select(now())
+```
+
+### Replacement of `NonAggregate` with `ValidGrouping`
+
+Diesel now fully enforces the aggregation rules, which required us to change the way we represent the aggregation 
+at the type system level. This is used to provide `group_by` support. Diesel's aggregation rules 
+match the semantics of PostgreSQL or MySQL with the `ONLY_FULL_GROUP_BY` option enabled.
+
+As part of this change we removed the `NonAggregate` trait in favor of a new, more expressive `ValidGrouping`
+trait. Existing implementations of `NonAggregate` must be replaced with an equivalent `ValidGrouping` implementation.
+
+The following change shows how to replace an existing implementation with a strictly equivalent implementation.
+```diff
+- impl NonAggregate for MyQueryNode {}
++ impl ValidGrouping<()> for MyQueryNode {
++    type IsAggregate = is_aggregate::No;
++ }
+```
+Additional changes may be required to adapt custom query ast implementations to fully support `group_by` clauses. 
+Refer to the documentation of `ValidGrouping` for details.
+
+In addition, any occurrence of `NonAggregate` in trait bounds needs to be replaced. Again, the following
+change shows the strictly equivalent version:
+
+```diff
+ where
+-     T: NonAggregate,
++     T: ValidGrouping<()>,
++     T::IsAggregate: MixedGrouping<is_aggregate::No, Output = is_aggregate::No>,
++     is_aggregate::No: MixedGrouping<T::IsAggregate, Output = is_aggregate::No>,
+```
+
+## Other changes to generics<a name="2-0-0-generic-changes">
+
+In addition to the changes listed above, we changed numerous internal details of Diesel. This will have impact on
+most codebases that include non-trivial generic code abstracting over Diesel. This section tries to list as much of those
+changes as possible
+
+### Removed most of the non-public reachable API
+
+With Diesel 2.0 we removed most of the API which was marked with `#[doc(hidden)]`. Technically these parts of the API 
+have always been private to Diesel. This change enforces this distinction in stricter way. In addition, some
+parts of these formerly hidden API are now documented and exposed behind the
+`i-implement-a-third-party-backend-and-opt-into-breaking-changes` crate feature. As the name already implies 
+we reserve the right to change these APIs between different Diesel 2.x minor releases, so you should always pin
+a concrete minor release version if you use these APIs.
+If you depended on such an API and you cannot find a suitable replacement we invite you to work with us on exposing the corresponding 
+feature as part of the stable API.
+
+### Changed structure of the deserialization traits
+
+We changed the internal structure of the `FromSqlRow`, `Queryable` and `QueryableByName` trait family used for deserialization. This change allows us to unify our deserialization code.
+We hopefully put sufficient wild card implementations in place so that old trait bounds imply 
+the right trait anyway. For cases where this does not hold true, the following changes may be required:
+
+`Queryable<ST, DB>` is now equivalent to `FromSqlRow<ST, DB>`. The latter is used as an actual trait bound 
+on the corresponding `RunQueryDsl` methods.
+`QueryableByName<DB>` is now equivalent to `FromSqlRow<Untyped, DB>`. The latter is used as an actual trait 
+on the corresponding `RunQueryDsl` methods.
+
+### Changed the scope of `QueryFragment` implementations
+
+With Diesel 2.0, we introduced a way to specialise `QueryFragment` implementations for specific backend, while 
+providing a generic implementation for other backends. To be able to use this feature in the future we marked
+existing wild card `QueryFragment` implementations with an additional `DieselReserveSpecialization`. 
+Rustc suggests just adding an additional trait bound on this trait. It's not possible to add a bound on 
+this trait without opting into breaking changes and it's almost never required to actually do that. Any
+occurrence of an error mentioning this trait can simply be fixed by adding a trait bound like follows:
+```rust
+where
+    QueryAstNodeMentionedInTheErrorMessage: QueryFragment<BackendType>
+```
+
+This rule has one notable exception: Third party backend implementations. We expect those backends to opt into the 
+`i-implement-a-third-party-backend-and-opt-into-breaking-changes` feature anyway, as it's otherwise not possible to 
+implement a third party backend.
+@@@ END
+
+@@@ USER
+Explain Queryable in Diesel, the Rust database library.
+@@@ ASSISTANT
+Deriving Traits in Depth
+===============
+
+Part of what makes Diesel's query builder so powerful is
+its ability to assist writing safe SQL queries in Rust.
+It enables this level of safety through implementing
+a series of traits on your structs.
+Writing these implementations by hand can be very laborious,
+so Diesel offers custom derives.
+
+In this guide,
+we will cover each trait in detail in terms of its use cases
+and usage considerations.
+To be able to use these derives,
+make sure you have `#[macro_use] extern crate diesel;` at the root of your project.
+
+Throughout this guide,
+we will be looking at examples for each trait individually and how they interact with each other.
+Some of the example code will be implementing basic [CRUD] database operations.
+We'll be covering creating, reading, and updating data.
+The details of those operations will be not be covered beyond their relevance to the demonstrated trait.
+
+In general, it may be more helpful to think of Diesel as a SQL query builder.
+While Diesel does offer some standard [ORM] (Object Relation Mapper) features,
+Diesel's code generation derives are for safely building SQL queries.
+
+- Queryable
+- QueryableByName
+- Insertable
+- Identifiable
+- AsChangeset
+- Associations
+
+## Queryable
+A `Queryable` struct is one that represents the
+data returned from a database query.
+In many cases this may map exactly to the column structure of a single table,
+however there may be cases where you need to make a query that spans several tables and/or only uses
+a subset of columns.
+For this reason, it may be helpful to view `Queryable` structs as the *result* of your query.
+It is acceptable and often desirable to have multiple `Queryable` structs for the same database table.
+
+Annotating your struct with [`#[derive(Queryable)]`][queryable_doc] enables you to use Diesel's
+[`RunQueryDsl`] to assist in retrieving data.
+A few of the methods you may use are `load()`, `get_result()`, `get_results()`, and `first()`.
+Should you make a query that doesn't return the same columns and values (in the order specified) on your `Queryable` struct,
+you will get a compile-time error.
+The only thing `Queryable` cares about is that the data returned from the query
+maps exactly to your data structure.
+
+The following example shows making two different queries into the `users` table.
+We get back a [`QueryResult`],
+which is basically a wrapper around Rust's `Result` type.
+That means we'll be able to use `expect()` to handle our error conditions.
+
+### Example
+
+```rust
+// File: src/models.rs
+
+use schema::users; // Brings the users table into scope
+
+#[derive(Queryable)]
+pub struct User {
+    pub id: i32,
+    pub first_name: String,
+    pub last_name: String,
+    pub email: String,
+}
+
+#[derive(Queryable)]
+pub struct EmailUser {
+    pub id: i32,
+    pub email: String,
+}
+```
+
+```rust
+// File: src/main.rs
+#[macro_use] extern crate diesel;
+
+use diesel::prelude::*;
+
+fn main() {
+    // The following will return all users as a `QueryResult<Vec<User>>`
+    let users_result: QueryResult<Vec<User>> = users.load(&db_connection);
+
+    // Here we are getting the value (or error) out of the `QueryResult`
+    // A successful value will be of type `Vec<User>`
+    let users = users_result.expect("Error loading users");
+
+    // Here, a successful value will be type `Vec<EmailUser>`
+    let email_users = users.select((users::id, users::email))
+        .load::<EmailUser>(&db_connection)
+        .expect("Error loading the email only query");
+}
+```
+
+If we were to comment out all three `String` fields on our `User` struct, we would see the following error.
+
+```rust
+error[E0277]: the trait bound `(i32,): diesel::Queryable<(diesel::sql_types::Integer, diesel::sql_types::Text, diesel::sql_types::Text, diesel::sql_types::Text), _>` is not satisfied
+  --> src/bin/main.rs:34:10
+   |
+34 |         .load::<User>(&db_conn)
+   |          ^^^^ the trait `diesel::Queryable<(diesel::sql_types::Integer, diesel::sql_types::Text, diesel::sql_types::Text, diesel::sql_types::Text), _>` is not implemented for `(i32,)`
+   |
+   = help: the following implementations were found:
+             <(A,) as diesel::Queryable<(SA,), DB>>
+   = note: required because of the requirements on the impl of `diesel::Queryable<(diesel::sql_types::Integer, diesel::sql_types::Text, diesel::sql_types::Text, diesel::sql_types::Text), _>` for `diesel_demo::models::User`
+   = note: required because of the requirements on the impl of `diesel::LoadQuery<_, diesel_demo::models::User>` for `diesel_demo::schema::users::table`
+```
+
+Notice the compiler is indicating a trait is not implemented for calling the `.load()` method.
+When reading, take note of the values in the tuple(s).
+(See Rust's [data type docs] if you're unfamiliar with tuples or their syntax.)
+
+> `diesel::Queryable<(diesel::sql_types::Integer, diesel::sql_types::Text, diesel::sql_types::Text, diesel::sql_types::Text), _>`
+
+`Queryable` is trying to convert those four types into the types on our `User` struct.
+Our struct has the three String fields commented out,
+so it doesn't know what those `Text` columns are supposed to be converted to.
+Remember, `Queryable` structs represent the exact columns, value,
+and ordering of your query's returned result,
+which we are violating here.
+`Queryable` is expecting a tuple that looks like `(i32, String, String, String)`,
+but we currently only have a tuple consisting of `(i32,)`.
+We need to add those `String` columns back for our code to compile again.
+@@@ END
+
+@@@ USER
+How do I do this with Diesel: Queryable: QueryableByName?
+@@@ ASSISTANT
+`Queryable` is the trait you normally use with Diesel's query builder.
+If you're using the [`sql_query`] function,
+you will instead need to implement the `QueryableByName` trait.
+
+Diesel provides some escape hatches to execute raw SQL queries.
+The problem with this is that Diesel can't ensure type safety
+and it's accessing fields by name instead of by index.
+This means that you can't deserialize the raw query result into a tuple or a regular struct.
+Adding [`#[derive(QueryableByName)]`][queryable_by_name_doc] to your struct means
+that it will be able to be built from the result of a raw SQL query using the [`sql_query`] function.
+
+The implementation of `QueryableByName` assumes that each field on your struct
+has a certain SQL type.
+It makes these assumptions based on the annotations you add to your struct.
+If your `QueryableByName` struct references a single table,
+you may annotate that struct with `#[diesel(table_name = my_table)]`.
+`QueryableByName` will bind the struct fields to the SQL types it finds in your table's schema.
+
+You may also individually annotate each field on your struct
+with `#[diesel(sql_type = ColumnTypeHere)]`.
+If you're not using the `table_name` annotation,
+every field in your struct needs to have this annotation.
+When combining both `table_name` and `sql_type` annotations,
+Diesel will override any fields using `sql_type` and pick the rest from the table.
+
+`QueryableByName` also supports nested structs.
+If you have any fields whose type is a struct that also implements `QueryableByName`,
+you may add the `#[diesel(embed)]` annotation.
+
+### Example
+
+```rust
+// File: src/models.rs
+
+// We're defining the posts and users tables here
+// to illustrate the schema in the following example
+table! {
+    posts (id) {
+        id -> Int4,
+        user_id -> Int4,
+        title -> Varchar,
+        body -> Text,
+    }
+}
+
+table! {
+    users (id) {
+        id -> Int4,
+        first_name -> Varchar,
+        last_name -> Varchar,
+        email -> Varchar,
+    }
+}
+
+#[derive(Debug, Queryable)]
+pub struct User {
+    pub id: i32,
+    pub first_name: String,
+    pub last_name: String,
+    pub email: String,
+}
+
+// Here we bring the Diesel types into scope
+use diesel::sql_types::{Integer, Text};
+
+// When not using the `table_name` annotation,
+// we must tell `QueryableByName` the type of
+// every field.
+
+#[derive(Debug, QueryableByName)]
+pub struct UserEmail {
+    #[diesel(sql_type = Integer)]
+    pub id: i32,
+    #[diesel(sql_type = Text)]
+    pub email: String,
+}
+
+// `full_name` is not a column on our users table,
+// but we're planning on returning a column that
+// concatenates the first and last name together.
+// `QueryableByName` will use the users table for
+// all other column types.
+#[derive(Debug, QueryableByName)]
+#[diesel(table_name = users)]
+pub struct UserName {
+    pub first_name: String,
+    pub last_name: String,
+    #[diesel(sql_type = Text)]
+    pub full_name: String,
+}
+
+// The user_name field maps to another
+// `QueryableByName` struct and all other fields
+// reference the posts table.
+#[derive(Debug, QueryableByName)]
+#[diesel(table_name = posts)]
+pub struct PostsWithUserName {
+    #[diesel(embed)]
+    pub user_name: UserName,
+    pub title: String,
+    pub body: String,
+}
+
+```
+
+```rust
+// File: src/main.rs
+#[macro_use] extern crate diesel;
+
+use diesel::prelude::*;
+use diesel::sql_query;
+
+fn main() {
+    diesel::insert_into(users::table)
+        .values(
+          (
+            users::first_name.eq("Gordon"),
+            users::last_name.eq("Freeman"),
+            users::email.eq("gordon.freeman@blackmesa.co"),
+          )
+        )
+        .execute(&db_connection)
+        .expect("Error inserting row into database");
+
+    let first_user = users
+        .first::<User>(&db_connection)
+        .expect("Error querying first user");
+
+    diesel::insert_into(posts::table)
+        .values(
+          (
+            posts::user_id.eq(first_user.id),
+            posts::title.eq("Thoughts on Tomorrow's Experiment"),
+            posts::body.eq("What could possibly go wrong?"),
+          )
+        )
+        .execute(&db_connection)
+        .expect("Error inserting row into database");
+
+    let users_emails = sql_query("SELECT users.id, users.email FROM users ORDER BY id")
+      .load::<UserEmail>(&connection);
+
+    println!("{:?}", users_emails);
+    //=> User { id: 1, email: "gordon.freeman@blackmesa.co" }
+
+    let joined = sql_query("
+      SELECT users.first_name,
+             users.last_name,
+             CONCAT(users.first_name, users.last_name) as full_name,
+             posts.body,
+             posts.title
+      FROM users
+      INNER JOIN posts ON users.id = posts.user_id
+    ")
+      .load::<PostsWithUserName>(&connection);
+    println!("{:?}", joined);
+    /* Output =>
+        [
+            PostsWithUserName {
+                user_name: UserName { first_name: "Gordon", last_name: "Freeman", full_name: "GordonFreeman" },
+                title: "Thoughts on Tomorrow's Experiment",
+                body: "What could possibly go wrong?
+            }
+        ]
+    */
+}
+```
+
+If we were to forget one of `QueryableByName`'s required struct annotations,
+we would see the following error.
+
+```rust
+error: Your struct must either be annotated with `#[diesel(table_name = foo)]` or have all of its fields annotated with `#[diesel(sql_type = Integer)]`
+ --> src/models.rs:4:17
+  |
+4 | #[derive(Debug, QueryableByName)]
+  |                 ^^^^^^^^^^^^^^^
+```
+
+If we were to comment out the `sql_type` annotation for `UserName`'s `full_name` field,
+we would see the following error.
+
+```rust
+error[E0412]: cannot find type `full_name` in module `users`
+  --> src/models.rs:12:17
+   |
+12 | #[derive(Debug, QueryableByName)]
+   |                 ^^^^^^^^^^^^^^^ not found in `users`
+```
+@@@ END
+
+@@@ USER
+Explain Queryable: Insertable in Diesel, the Rust database library.
+@@@ ASSISTANT
+The simplest way to insert data in Diesel is by working with tuples.
+However, this can become tedious when inserting a lot of data,
+for example if it were a large web form deserialized by a library like Serde.
+The `Insertable` trait is meant to be implemented on structs
+whose data you want to easily insert into your database.
+To implement `Insertable` on your struct,
+add the [`#[derive(Insertable)]`][insertable_doc] annotation.
+
+As with usual Diesel inserts,
+you will still be using the [`.insert_into()`]
+method to generate a SQL `INSERT` statement for that table.
+You may chain [`.values()`] or [`.default_values()`]
+to add the values for that `INSERT` statement.
+In addition to tuples,
+[`.values()`] also accepts a reference to an `Insertable` struct for inserting a single record.
+When your struct uses `#[diesel(serialize_as = ...)]`, Diesel needs to consume the field value,
+so only the owned form implements `Insertable` and you must call `.values(new_user)` instead of
+`.values(&new_user)`.
+
+You may also pass [`.values()`] a `&Vec<T>` or a `&[T]` to insert multiple records at once.
+On backends that support the `DEFAULT` keyword,
+the data will be inserted in a single query.
+On SQLite, one query will be performed per row.
+
+For `Insertable` structs, Diesel needs to know the corresponding table name.
+You must add the `#[diesel(table_name = some_table_name)]` attribute to your `Insertable` struct.
+If your struct has different field names than the columns they reference,
+they may be annotated with `#[diesel(column_name = some_column_name)]`.
+
+Typically, you will not use `Queryable` and `Insertable` together.
+Thinking of web forms again, a new record wouldn't have such fields as
+`id`, `created_at`, or `updated_at`.
+
+### Example
+
+```rust
+// File: src/models.rs
+
+// Add serde, serde_derive, and serde_json to simulate
+// deserializing a web form.
+extern crate serde;
+extern crate serde_derive;
+extern crate serde_json;
+
+use schema::users;
+
+#[derive(Queryable)]
+pub struct User {
+    pub id: i32,
+    pub first_name: String,
+    pub last_name: String,
+    pub email: String,
+}
+
+#[derive(Deserialize, Insertable)]
+#[diesel(table_name = users)]
+pub struct NewUser<'a> {
+    pub first_name: &'a str,
+    pub last_name: &'a str,
+    #[diesel(column_name = email)]
+    pub electronic_mail: &'a str,
+ }
+```
+
+```rust
+// File: src/main.rs
+#[macro_use] extern crate diesel;
+
+use diesel::prelude::*;
+
+fn main() {
+    // Here we simulate a webform by deserializing a json string
+    // into a NewUser struct.
+    let new_user: NewUser = serde_json::from_str(
+        r#"{
+            "first_name": "Gordon",
+            "last_name": "Freeman",
+            "electronic_mail": "gordon.freeman@blackmesa.co"
+        }"#).unwrap();
+
+    diesel::insert_into(users::table)
+        .values(&new_user)
+        .execute(&db_connection)
+        .expect("Error inserting row into database");
+
+    let all_users = users.load::<User>(&db_connection)
+        .expect("Error loading users");
+
+    println!("User count: {}", all_users.len());
+    //=> User count: 1
+}
+```
+
+If we try to insert records without deriving `Insertable`, we would get the following error.
+
+```rust
+error[E0277]: the trait bound `&diesel_demo::models::NewUser<'_>: diesel::Insertable<diesel_demo::schema::users::table>` is not satisfied
+  --> src/bin/main.rs:29:10
+   |
+29 |         .values(&new_user)
+   |          ^^^^^^ the trait `diesel::Insertable<diesel_demo::schema::users::table>` is not implemented for `&diesel_demo::models::NewUser<'_>`
+```
+
+The compiler reports that `Insertable` isn't implemented for our `NewUser` struct.
+
+## Identifiable
+
+Certain database operations,
+such as table associations and updates,
+require that rows be uniquely identifiable.
+Implementing the `Identifiable` trait on your struct will define which columns (primary keys)
+make your struct uniquely identifiable.
+To implement `Identifiable`,
+annotate your struct with [`#[derive(Identifiable)]`][identifiable_doc].
+
+By default, `Identifiable` will assume the primary key is a column named `id`.
+If your table's primary key is named differently,
+you can annotate the table with the attribute `#[primary_key(some_field_name)` or `#[primary_key(some_field_name, another_field_name)`.
+The `Identifiable` trait will assume that the annotated struct will be named in the singular form of the table it corresponds to.
+If the table name differs you may use the `#[diesel(table_name = some_table_name)]` attribute annotation.
+The `Identifiable` trait gives us the `id()` method on our models,
+which returns the value of our record's primary key.
+
+In the following example,
+First, we'll look at some of the behavior `Identifiable` gives us.
+After that, let's add the annotation to our `User` struct.
+Finally, we will then attempt to get the value of the first record's primary key by calling `id()` and also update the first and last name of our user.
+@@@ END
+
+@@@ USER
+Explain Queryable: Example in Diesel, the Rust database library.
+@@@ ASSISTANT
+```rust
+// File: src/models.rs
+
+use schema::users;
+
+#[derive(Identifiable, Queryable)]
+pub struct User {
+    pub id: i32,
+    pub first_name: String,
+    pub last_name: String,
+    pub email: String,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = users)]
+pub struct NewUser<'a> {
+    pub first_name: &'a str,
+    pub last_name: &'a str,
+    pub email: &'a str,
+ }
+```
+
+```rust
+// File: src/main.rs
+#[macro_use] extern crate diesel;
+
+use diesel::prelude::*;
+
+fn main() {
+    let new_user = NewUser {
+        first_name: "Gordon",
+        last_name: "Freeman",
+        electronic_mail: "gordon.freeman@blackmesa.co",
+    };
+
+    diesel::insert_into(users::table)
+        .values(&new_user)
+        .execute(&db_connection)
+        .expect("Error inserting row into database");
+
+    let all_users = users.load::<User>(&db_connection)
+        .expect("Error loading users");
+
+    println!("User count: {}", all_users.len());
+    //=> User count: 1
+
+    let hero = users.first::<Users>(&db_connection)
+        .expect("Error loading first user");
+
+    println!("Our Hero's ID: {}", hero.id());
+    //=> Our Hero's ID: 1
+
+    diesel::update(&hero).set((
+        first_name.eq("Alyx"),
+        last_name.eq("Vance"),
+    )).execute(&db_connection);
+
+    let updated_hero = users.first::<Users>(&db_connection)
+        .expect("Error loading first user");
+
+    println!("Our Hero's updated name: {} {}", updated_hero.first_name, updated_hero.last_name);
+    //=> Our Hero's updated name: Alyx Vance
+}
+```
+
+If we were to try and call `id()` and also update our record without implementing `Identifiable`, we would get the following errors.
+
+```rust
+error[E0599]: no method named `id` found for type `diesel_demo::models::User` in the current scope
+  --> src/bin/main.rs:35:40
+   |
+35 |     println!("Our Hero's Id: {}", hero.id());
+   |                                        ^^ field, not a method
+   |
+   = help: did you mean to write `hero.id` instead of `hero.id(...)`?
+
+error[E0277]: the trait bound `&diesel_demo::models::User: diesel::Identifiable` is not satisfied
+  --> src/bin/main.rs:37:5
+   |
+37 |     diesel::update(&hero).set(
+   |     ^^^^^^^^^^^^^^ the trait `diesel::Identifiable` is not implemented for `&diesel_demo::models::User`
+   |
+   = note: required because of the requirements on the impl of `diesel::query_builder::IntoUpdateTarget` for `&diesel_demo::models::User`
+   = note: required by `diesel::update`
+
+error[E0277]: the trait bound `diesel_demo::models::User: diesel::associations::HasTable` is not satisfied
+  --> src/bin/main.rs:37:5
+   |
+37 |     diesel::update(&hero).set(
+   |     ^^^^^^^^^^^^^^^^^^^^^ the trait `diesel::associations::HasTable` is not implemented for `diesel_demo::models::User`
+   |
+   = note: required because of the requirements on the impl of `diesel::associations::HasTable` for `&diesel_demo::models::User`
+
+continued stack trace...
+```
+
+The first error shows that the compiler is expecting to find a field `id` on the struct
+even though we wanted the method.
+The second error explicitly states the `Identifiable` trait is not implemented for our `User` struct.
+
+The compiler is also giving us some more hints about trait bounds in each one of those *note* sections.
+The error messages regarding `IntoUpdateTarget` and `HasTable` are due to the trait bounds
+on the `update()` method that we called after `id()`.
+
+## AsChangeset
+
+As we've seen with inserting data, updating data with tuples can also become tedious.
+`AsChangeset` serves a similar purpose to `Insertable` in that
+it gives us a way to easily update a large amount of deserialized data.
+To derive the `AsChangeset` trait, add
+[`#[derive(AsChangeset)]`][aschangeset_doc] to your struct.
+
+In this section we will change our schema to make our `email` field nullable.
+`AsChangeset` allows us to deal with updating nullable fields a few different ways,
+which are changing the value, nulling the value, or ignoring the field.
+
+The nullable fields on our structs will now be of type `Option<T>`.
+Usually you do not want to change the primary key of the row or rows that you're updating.
+For this reason, we don't want to have `AsChangeset` and `Queryable` annotated on the same struct,
+which means we'll need another struct for updating our records.
+
+Before we dive into some examples,
+let us take a look at our new schema.
+
+```rust
+// Output of "diesel print-schema"
+
+table! {
+    users (id) {
+        id -> Int4,
+        first_name -> Varchar,
+        last_name -> Varchar,
+        email -> Nullable<Varchar>,
+    }
+}
+```
+
+`AsChangeset` will automatically assume you don't want to change your record's primary key,
+so it will ignore that column.
+If your primary key field name is different than `id`,
+you must annotate your struct with the `#[diesel(primary_key(your_key))]` attribute.
+
+By default, `AsChangeset` will assume that anytime a field has the value `None`,
+we do not want to assign any values to it (ignore).
+If we truly want to assign a `NULL` value,
+we can use the annotation `#[diesel(treat_none_as_null = true)]`.
+Be careful, as when you are setting your `Option<T>` fields to `None`,
+they will be `NULL` in the database instead of ignored.
+
+However, there is a way to have both `AsChangeset` behaviors on a single struct.
+Instead of using the field type `Option<T>`,
+you may use `Option<Option<T>>`.
+When updating, a value of `None` will be ignored and a value of `Some(None)` will `NULL` that column.
+All three options are shown in the following example code.
+Notice some of the code uses `unwrap_or()`:
+The values being returned are `None`,
+but we want to see output on the screen.
+Passing in a `String` will let us print out something to the screen
+like "this is a nulled field!".
+@@@ END
+
+@@@ USER
+How do I do this with Diesel: Security Policy for Diesel?
+@@@ ASSISTANT
+## Supported Versions
+
+The Diesel team provides only support for the latest released version at Diesel at any point in time. Users are strongly encouraged to upgrade to the latest version for the best security posture.
+
+## Reporting a Vulnerability
+
+We take the security of Diesel very seriously. If you believe you've found a security vulnerability, we encourage you to inform us responsibly through coordinated disclosure.
+
+### How to Report
+
+**Do not report security vulnerabilities through public GitHub issues, discussions, or social media.**
+
+Instead, please use one of these secure channels:
+
+1. **GitHub Security Advisories** (preferred): Use the "Report a vulnerability" button in the Security tab
+2. **Email** (backup): Send details to `github@weiznich.de`
+
+### What to Include
+
+To help us understand and address the issue quickly, please include:
+
+**Required Information:**
+- Brief description of the vulnerability type (6 or less sentences)
+- Affected version(s) and components
+- Proof-of-concept code to reproduce the issue
+
+**Helpful Additional Details:**
+- Full paths of affected source files
+- Suggested mitigation or fix (if you have ideas)
+- A path resolving the reported problem
+
+Your initial report should be rather brief. For the case that additional details might be required for confirming the reported problem or to asses the severity of the reported issue the Diesel team will provide detailed followup questions.
+
+### Our Response Process
+
+**What We'll Do:**
+1. Acknowledge your report and assign a tracking ID
+2. Assess the vulnerability and determine severity
+3. Develop and test a fix
+4. Coordinate disclosure timeline with you
+5. Release security update and publish advisory
+6. Credit you in our security advisory (if desired)
+
+## Scope
+
+This security policy applies to:
+
+**In Scope:**
+- The Diesel Query builder 
+- Any Diesel procedural macro
+- The Diesel command line tool
+
+**Out of Scope:**
+- Any general Rust/Cargo security issue
+- Any issue occurring in a third party crate that cannot be triggered through Diesel code
+@@@ END
+

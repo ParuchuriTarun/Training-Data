@@ -13,6 +13,7 @@ This repository is the home of the data. New batches are added here.
 | `data/seed/` | The first hand-written examples. |
 | `data/external/` | The main training files (`.txt`). One file per topic or batch, for example `claude_rust_apps_01.txt`, `claude_node_server_23.txt`, `oss_rust_book.txt`. |
 | `data/generators/` | Small Python scripts (`gen_*.py`) that produce extra examples when the data is loaded. |
+| `data/build_scripts/` | The scripts that wrote and verified the Claude-written examples (each one runs the code and pastes the real output into the answer). Paths inside them point to the original laptop. |
 | `data/tools/` | Checkers and converters: compile-check Rust blocks, run Python/JS/SQL blocks, duplicate checks, the open-source converters. |
 | `data/licenses/` | The licence text of every open-source project that was used. |
 | `training_data/` | Examples collected from other AI assistants, sorted by category (`appdev`, `english`, `fundamentals`, `longhorizon`, `seed`, `webdev`). |
@@ -42,9 +43,9 @@ The training loader drops any example whose user and assistant text together are
 - Open-source material is used only if it is MIT, Apache-2.0 or CC0, and its licence and
   copyright holder are recorded in `OPEN_SOURCE_LICENSES.md`.
 
-## Size (2026-11-16)
+## Size
 
-About 2,700 examples and about 1.86 million training tokens. A 2B model needs far more than that,
+About 4,400 examples and about 3.8 million training tokens (2026-11-16). A 2B model needs far more than that,
 so collecting more data is the current work.
 
 ## Licence and provenance

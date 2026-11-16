@@ -261,6 +261,57 @@ QUESTIONS = {
         "How does {t} work in async Rust?",
         "Teach me about {t} in async Rust, with code.",
     ],
+    "rust_nomicon": [
+        "Explain {t} in Rust (the unsafe Rust and low-level side).",
+        "What does the Rustonomicon say about {t}?",
+        "I am writing unsafe Rust. Help me understand {t}.",
+    ],
+    "rust_reference": [
+        "What are the exact Rust language rules for {t}?",
+        "Explain {t} according to the Rust Reference.",
+        "Rust language reference: {t}. What is the rule and what are the edge cases?",
+    ],
+    "rust_edition_guide": [
+        "What changed in Rust about {t}, and how do I update my code?",
+        "Explain {t} in the Rust edition guide.",
+        "I am moving my Rust project to a new edition. What do I need to know about {t}?",
+    ],
+    "rust_cargo_book": [
+        "How does Cargo handle {t}?",
+        "Explain {t} in Cargo.",
+        "Cargo question: {t}. What should I know and how do I set it up?",
+        "Teach me about {t} in Cargo and Cargo.toml.",
+    ],
+    "rust_cargo_contrib": [
+        "How is {t} organized in Cargo's own source code and development process?",
+        "I want to contribute to Cargo. Explain {t}.",
+    ],
+    "rustc_dev_guide": [
+        "How does the Rust compiler handle {t}?",
+        "Explain {t} in rustc, the Rust compiler.",
+        "I am reading the Rust compiler source. What is {t}?",
+    ],
+    "rust_cli_book": [
+        "How do I build a command-line application in Rust: {t}?",
+        "Rust command-line apps: explain {t}.",
+        "Teach me {t} for a Rust CLI tool.",
+    ],
+    "tokio_docs": [
+        "Explain {t} in Tokio.",
+        "How do I use {t} with Tokio in Rust?",
+        "Tokio question: {t}. Show me how it works.",
+    ],
+    "node_docs": [
+        "How do I use {t} in Node.js?",
+        "Explain {t} in the Node.js API.",
+        "Node.js: {t}. What does it do and how do I call it?",
+        "Show me how {t} works in Node.js.",
+    ],
+    "js_algorithms": [
+        "Explain {t} and how it works.",
+        "Teach me about {t}: what it is, when to use it and how fast it is.",
+        "What is {t}? Explain it for a programmer.",
+    ],
     "rust_cookbook": [
         "Show me a Rust recipe: {t}.",
         "How do I do this in Rust: {t}?",
@@ -273,6 +324,16 @@ SOURCES = {
     "rust_by_example": ("rust-lang__rust-by-example/src", {"SUMMARY.md", "README.md"}),
     "rust_api_guidelines": ("rust-lang__api-guidelines/src", {"SUMMARY.md", "README.md"}),
     "rust_async_book": ("rust-lang__async-book/src", {"SUMMARY.md", "README.md"}),
+    "rust_nomicon": ("rust-lang__nomicon/src", {"SUMMARY.md", "README.md", "meet-safe-and-unsafe.md"}),
+    "rust_reference": ("rust-lang__reference/src", {"SUMMARY.md", "README.md", "introduction.md", "notation.md"}),
+    "rust_edition_guide": ("rust-lang__edition-guide/src", {"SUMMARY.md", "README.md"}),
+    "rust_cargo_book": ("rust-lang__cargo/doc/book/src", {"SUMMARY.md", "README.md"}),
+    "rust_cargo_contrib": ("rust-lang__cargo/doc/contrib/src", {"SUMMARY.md", "README.md"}),
+    "rustc_dev_guide": ("rust-lang__rustc-dev-guide/src", {"SUMMARY.md", "README.md"}),
+    "rust_cli_book": ("rust-cli__book/src", {"SUMMARY.md", "README.md"}),
+    "tokio_docs": ("tokio-rs__website/content/tokio", {"SUMMARY.md", "README.md"}),
+    "node_docs": ("nodejs__node/doc/api", {"deprecations.md", "documentation.md", "addons.md", "n-api.md", "inspector.md", "report.md", "wasi.md", "v8.md", "intl.md", "tracing.md", "index.md", "README.md", "SUMMARY.md"}),
+    "js_algorithms": ("trekhleb__javascript-algorithms/src", {"SUMMARY.md"}),
     "rust_cookbook": ("rust-lang-nursery__rust-cookbook/src", {"SUMMARY.md", "README.md", "about.md", "index.md"}),
 }
 
@@ -295,9 +356,12 @@ def convert_md(key):
     templates = QUESTIONS[key]
     examples, seen = [], set()
     for p in sorted(base.rglob("*.md")):
+        if re.search(r"\.[a-z]{2}(-[A-Za-z]{2,4})?\.md$", p.name):
+            continue                       # translations (README.ru-RU.md ...)
         if p.name in skip:
             continue
         text = p.read_text(encoding="utf-8").replace("\r\n", "\n")
+        text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.S)       # front matter
         if re.search(r"\{\{#include [^}]*\.md", text):
             continue                       # an overview page that only repeats other pages
         text = expand_includes(text, p.parent)
@@ -318,6 +382,8 @@ def convert_md(key):
             if q in seen:
                 continue
             seen.add(q)
+            if sum(ord(c) > 127 for c in body) > 0.05 * len(body):
+                continue                   # mostly non-English text
             examples.append((q, body))
     return examples
 

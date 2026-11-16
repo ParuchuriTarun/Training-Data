@@ -1,0 +1,5636 @@
+@@@ USER
+Explain Asynchronous in Tokio.
+@@@ ASSISTANT
+In the context of Rust, asynchronous code refers to code that uses the
+async/await language feature, which allows many tasks to run concurrently on a
+few threads (or even a single thread).
+
+## Concurrency and parallelism
+
+Concurrency and parallelism are two related concepts that are both used when
+talking about performing multiple tasks at the same time. If something happens
+in parallel, then it also happens concurrently, but the opposite is not true:
+Alternating between two tasks, but never actually working on both at the same
+time is concurrency but not parallelism.
+
+## Future
+
+A future is a value that stores the current state of some operation. A future
+also has a `poll` method, that makes the operation continue until it needs to
+wait for something, such as an network connection. Calls to the `poll` method
+should return very quickly.
+
+Futures are often created by combining multiple futures using `.await` in an
+async block.
+
+## Executor/scheduler
+
+An executor or scheduler is something that executes futures by calling the
+`poll` method repeatedly.  There is no executor in the standard library, so you
+need an external library for this, and the most widely used executor is provided
+by the Tokio runtime.
+
+An executor is able to run a large number of futures concurrently on a few
+threads. It does this by swapping the currently running task at awaits. If code
+spends a long time without reaching an `.await`, that is called "blocking the
+thread" or "not yielding back to the executor", which prevents other tasks from
+running.
+
+## Runtime
+
+A runtime is a library that contains an executor along with various utilities
+that integrate with that executor, such as timing utilities and IO. The words
+runtime and executor are sometimes used interchangeably. The standard library
+has no runtime, so you need an external library for this, and the most widely
+used runtime is the Tokio runtime.
+
+The word Runtime is also used in other contexts, e.g. the phrase "Rust has no
+runtime" is sometimes used to mean that Rust performs no garbage collection or
+just-in-time compilation.
+
+## Task
+
+A task is an operation running on the Tokio runtime, created by the
+[`tokio::spawn`] or [`Runtime::block_on`] function. Tools for creating futures by
+combining them such as `.await` and [`join!`] do not create new tasks, and each
+combined part is said to be "in the same task".
+
+Multiple tasks are required for parallelism, but it is possible to concurrently
+do multiple things on one task using tools such as `join!`.
+
+## Spawning
+
+Spawning is when the [`tokio::spawn`] function is used to create a new task. It
+can also refer to creating new thread with [`std::thread::spawn`].
+
+## Async block
+
+An async block is an easy way to create a future that runs some code. For
+example:
+
+```rust
+let world = async {
+    println!(" world!");
+};
+let my_future = async {
+    print!("Hello ");
+    world.await;
+};
+```
+
+The code above creates a future called `my_future`, which if executed prints
+`Hello world!`. It does this by first printing hello, and then running the
+`world` future. Note that the code above does not print anything on its own —
+you have to actually execute `my_future` before anything happens, by either
+spawning it directly, or by `.await`ing it in something you spawn.
+
+## Async function
+
+Similarly to an async block, an async function is an easy way to create a
+function whose body becomes a future. All async functions can be rewritten into
+ordinary functions that return a future:
+
+```rust
+async fn do_stuff(i: i32) -> String {
+    // do stuff
+    format!("The integer is {}.", i)
+}
+```
+
+```rust
+use std::future::Future;
+
+// the async function above is the same as this:
+fn do_stuff(i: i32) -> impl Future<Output = String> {
+    async move {
+        // do stuff
+        format!("The integer is {}.", i)
+    }
+}
+```
+
+This uses the `impl Trait` syntax to return a future, since
+[`Future`] is a trait. Note that since the future created by an async block does
+not do anything until it is executed, calling an async function does not do
+anything until the future it returns is executed (ignoring it triggers a warning).
+
+## Yielding
+
+In the context of asynchronous Rust, yielding is what allows the executor to
+execute many futures on a single thread. Every time a future yields, the
+executor is able to swap that future with some other future, and by repeatedly
+swapping the current task, the executor can concurrently execute a large number
+of tasks. A future can only yield at an `.await`, so futures that spend a long
+time between `.await`s can prevent other tasks from running.
+
+To be specific, a future yields whenever it returns from the [`poll`] method.
+
+## Blocking
+
+The word "blocking" is used in two different ways: The first meaning of
+"blocking" is simply to wait for something to finish, and the other meaning of
+blocking is when a future spend a long time without yielding. To be unambiguous,
+you can use the phrase "blocking the thread" for the second meaning.
+
+Tokio's documentation will always use the second meaning of "blocking".
+
+To run blocking code within Tokio, please see the CPU-bound tasks and blocking code section from the Tokio API reference.
+
+## Stream
+
+A [`Stream`] is an asynchronous version of an [`Iterator`], and provides a
+stream of values. It is commonly used together with a `while let` loop like this:
+
+```rust
+use tokio_stream::StreamExt; // for next()
+
+while let Some(item) = stream.next().await {
+    // do something
+}
+```
+
+The word stream is confusingly sometimes used to refer to the [`AsyncRead`] and
+[`AsyncWrite`] traits.
+
+Tokio's stream utilities are currently provided by the [`tokio-stream`] crate.
+Once the `Stream` trait is stabilized in std, the stream utilities will be moved
+into the `tokio` crate.
+
+## Channel
+
+A channel is a tool that allows one part of the code to send messages to other
+parts. Tokio provides a number of channels, each serving a different
+purpose.
+
+- [mpsc]: multi-producer, single-consumer channel. Many values can be sent.
+- [oneshot]: single-producer, single consumer channel. A single value can be sent.
+- [broadcast]: multi-producer, multi-consumer. Many values can be send. Each
+  receiver sees every value.
+- [watch]: single-producer, multi-consumer. Many values can be sent, but no
+  history is kept. Receivers only see the most recent value.
+
+If you need a multi-producer multi-consumer channel where only one consumer sees
+each message, you can use the [`async-channel`] crate.
+
+There are also channels for use outside of asynchronous Rust, such as
+[`std::sync::mpsc`] and [`crossbeam::channel`]. These channels wait for messages
+by blocking the thread, which is not allowed in asynchronous code.
+@@@ END
+
+@@@ USER
+Tokio question: Asynchronous: Backpressure. Show me how it works.
+@@@ ASSISTANT
+Backpressure is a pattern for designing applications that respond well to high
+load. For example, the `mpsc` channel comes in both a bounded and unbounded
+form. By using the bounded channel, the receiver can put "backpressure" on the
+sender if the receiver can't keep up with the number of messages, which avoids
+memory usage growing without bound as more and more messages are sent on the
+channel.
+
+## Actor
+
+A design pattern for designing applications. An actor refers to an independently
+spawned task that manages some resource on behalf of other parts of the
+application, using channels to communicate with those other parts of the
+application.
+
+See [the channels chapter] for an example of an actor.
+@@@ END
+
+@@@ USER
+Explain What #[tokio::main] expands to in Tokio.
+@@@ ASSISTANT
+In most examples of using Tokio, we mark the main function with `#[tokio::main]`
+and make the entire project asynchronous.
+
+In some cases, you may need to run a small portion of synchronous code.  For more
+information on that, see [`spawn_blocking`].
+
+In other cases, it may be easier to structure the application as largely
+synchronous, with smaller or logically distinct asynchronous portions.
+For instance, a GUI application might want to run the GUI code on the
+main thread and run a Tokio runtime next to it on another thread.
+
+This page explains how you can isolate async/await to a small part of your
+project.
+
+# What `#[tokio::main]` expands to
+
+The `#[tokio::main]` macro is a macro that replaces your main function with a
+non-async main function that starts a runtime and then calls your code. For
+instance, this:
+```rust
+#[tokio::main]
+async fn main() {
+    println!("Hello world");
+}
+```
+is turned into this:
+```rust
+fn main() {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            println!("Hello world");
+        })
+}
+```
+by the macro. To use async/await in our own projects, we can do something
+similar where we leverage the [`block_on`] method to enter the asynchronous
+context where appropriate.
+
+# A synchronous interface to mini-redis
+
+In this section, we will go through how to build a synchronous interface to
+mini-redis by storing a `Runtime` object and using its `block_on` method.
+In the following sections, we will discuss some alternate approaches and when
+you should use each approach.
+
+The interface that we will be wrapping is the asynchronous [`Client`] type. It
+has several methods, and we will implement a blocking version of the following
+methods:
+
+ * [`Client::get`]
+ * [`Client::set`]
+ * [`Client::set_expires`]
+ * [`Client::publish`]
+ * [`Client::subscribe`]
+
+To do this, we introduce a new file called `src/clients/blocking_client.rs` and
+initialize it with a wrapper struct around the async `Client` type:
+```rs
+use tokio::net::ToSocketAddrs;
+use tokio::runtime::Runtime;
+
+pub use crate::clients::client::Message;
+
+/// Established connection with a Redis server.
+pub struct BlockingClient {
+    /// The asynchronous `Client`.
+    inner: crate::clients::Client,
+
+    /// A `current_thread` runtime for executing operations on the
+    /// asynchronous client in a blocking manner.
+    rt: Runtime,
+}
+
+impl BlockingClient {
+    pub fn connect<T: ToSocketAddrs>(addr: T) -> crate::Result<BlockingClient> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+
+        // Call the asynchronous connect method using the runtime.
+        let inner = rt.block_on(crate::clients::Client::connect(addr))?;
+
+        Ok(BlockingClient { inner, rt })
+    }
+}
+```
+Here, we have included the constructor function as our first example of how to
+execute asynchronous methods in a non-async context. We do this using the
+[`block_on`] method on the Tokio [`Runtime`] type, which executes an
+asynchronous method and returns its result.
+
+One important detail is the use of the [`current_thread`] runtime. Usually when
+using Tokio, you would be using the default [`multi_thread`] runtime, which will
+spawn a bunch of background threads so it can efficiently run many things at the
+same time. For our use-case, we are only going to be doing one thing at the
+time, so we won't gain anything by running multiple threads. This makes the
+[`current_thread`] runtime a perfect fit as it doesn't spawn any threads.
+
+The [`enable_all`] call enables the IO and timer drivers on the Tokio runtime.
+If they are not enabled, the runtime is unable to perform IO or timers.
+
+> **warning**
+> Because the `current_thread` runtime does not spawn threads, it only operates
+> when `block_on` is called. Once `block_on` returns, all spawned tasks on that
+> runtime will freeze until you call `block_on` again. Use the `multi_threaded`
+> runtime if spawned tasks must keep running when not calling `block_on`.
+
+Once we have this struct, most of the methods are easy to implement:
+```rs
+use bytes::Bytes;
+use std::time::Duration;
+
+impl BlockingClient {
+    pub fn get(&mut self, key: &str) -> crate::Result<Option<Bytes>> {
+        self.rt.block_on(self.inner.get(key))
+    }
+
+    pub fn set(&mut self, key: &str, value: Bytes) -> crate::Result<()> {
+        self.rt.block_on(self.inner.set(key, value))
+    }
+
+    pub fn set_expires(
+        &mut self,
+        key: &str,
+        value: Bytes,
+        expiration: Duration,
+    ) -> crate::Result<()> {
+        self.rt.block_on(self.inner.set_expires(key, value, expiration))
+    }
+
+    pub fn publish(&mut self, channel: &str, message: Bytes) -> crate::Result<u64> {
+        self.rt.block_on(self.inner.publish(channel, message))
+    }
+}
+```
+The [`Client::subscribe`] method is more interesting because it transforms the
+`Client` into a `Subscriber` object. We can implement it in the following
+manner:
+```rs
+/// A client that has entered pub/sub mode.
+///
+/// Once clients subscribe to a channel, they may only perform
+/// pub/sub related commands. The `BlockingClient` type is
+/// transitioned to a `BlockingSubscriber` type in order to
+/// prevent non-pub/sub methods from being called.
+pub struct BlockingSubscriber {
+    /// The asynchronous `Subscriber`.
+    inner: crate::clients::Subscriber,
+
+    /// A `current_thread` runtime for executing operations on the
+    /// asynchronous client in a blocking manner.
+    rt: Runtime,
+}
+
+impl BlockingClient {
+    pub fn subscribe(self, channels: Vec<String>) -> crate::Result<BlockingSubscriber> {
+        let subscriber = self.rt.block_on(self.inner.subscribe(channels))?;
+        Ok(BlockingSubscriber {
+            inner: subscriber,
+            rt: self.rt,
+        })
+    }
+}
+
+impl BlockingSubscriber {
+    pub fn get_subscribed(&self) -> &[String] {
+        self.inner.get_subscribed()
+    }
+
+    pub fn next_message(&mut self) -> crate::Result<Option<Message>> {
+        self.rt.block_on(self.inner.next_message())
+    }
+
+    pub fn subscribe(&mut self, channels: &[String]) -> crate::Result<()> {
+        self.rt.block_on(self.inner.subscribe(channels))
+    }
+
+    pub fn unsubscribe(&mut self, channels: &[String]) -> crate::Result<()> {
+        self.rt.block_on(self.inner.unsubscribe(channels))
+    }
+}
+```
+So, the `subscribe` method will first use the runtime to transform the
+asynchronous `Client` into an asynchronous `Subscriber`. Then, it will store the
+resulting `Subscriber` together with the `Runtime` and implement the various
+methods using [`block_on`].
+
+Note that the asynchronous `Subscriber` struct has a non-async method called
+`get_subscribed`. To handle this, we simply call it directly without involving
+the runtime.
+@@@ END
+
+@@@ USER
+How do I use What #[tokio::main] expands to: Other approaches with Tokio in Rust?
+@@@ ASSISTANT
+The above section explains the simplest way to implement a synchronous wrapper,
+but it is not the only way. The approaches are:
+
+ * Create a [`Runtime`] and call [`block_on`] on the async code.
+ * Create a [`Runtime`] and [`spawn`] things on it.
+ * Run the [`Runtime`] in a separate thread and send messages to it.
+
+We already saw the first approach. The two other approaches are outlined below.
+
+## Spawning things on a runtime
+
+The [`Runtime`] object has a method called [`spawn`]. When you call this method,
+you create a new background task to run on the runtime. For example:
+```rust
+use tokio::runtime::Builder;
+use tokio::time::{sleep, Duration};
+
+fn main() {
+    let runtime = Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let mut handles = Vec::with_capacity(10);
+    for i in 0..10 {
+        handles.push(runtime.spawn(my_bg_task(i)));
+    }
+
+    // Do something time-consuming while the background tasks execute.
+    std::thread::sleep(Duration::from_millis(750));
+    println!("Finished time-consuming task.");
+
+    // Wait for all of them to complete.
+    for handle in handles {
+        // The `spawn` method returns a `JoinHandle`. A `JoinHandle` is
+        // a future, so we can wait for it using `block_on`.
+        runtime.block_on(handle).unwrap();
+    }
+}
+
+async fn my_bg_task(i: u64) {
+    // By subtracting, the tasks with larger values of i sleep for a
+    // shorter duration.
+    let millis = 1000 - 50 * i;
+    println!("Task {} sleeping for {} ms.", i, millis);
+
+    sleep(Duration::from_millis(millis)).await;
+
+    println!("Task {} stopping.", i);
+}
+```
+```text
+Task 0 sleeping for 1000 ms.
+Task 1 sleeping for 950 ms.
+Task 2 sleeping for 900 ms.
+Task 3 sleeping for 850 ms.
+Task 4 sleeping for 800 ms.
+Task 5 sleeping for 750 ms.
+Task 6 sleeping for 700 ms.
+Task 7 sleeping for 650 ms.
+Task 8 sleeping for 600 ms.
+Task 9 sleeping for 550 ms.
+Task 9 stopping.
+Task 8 stopping.
+Task 7 stopping.
+Task 6 stopping.
+Finished time-consuming task.
+Task 5 stopping.
+Task 4 stopping.
+Task 3 stopping.
+Task 2 stopping.
+Task 1 stopping.
+Task 0 stopping.
+```
+In the above example, we spawn 10 background tasks on the runtime, then wait
+for all of them. As an example, this could be a good way of implementing
+background network requests in a graphical application because network requests
+are too time consuming to run them on the main GUI thread. Instead, you spawn
+the request on a Tokio runtime running in the background, and have the task send
+information back to the GUI code when the request has finished, or even
+incrementally if you want a progress bar.
+
+In this example, it is important that the runtime is configured to be a
+[`multi_thread`] runtime. If you change it to be a [`current_thread`] runtime,
+you will find that the time consuming task finishes before any of the background
+tasks start. This is because background tasks spawned on a `current_thread`
+runtime will only execute during calls to `block_on` as the runtime otherwise
+doesn't have anywhere to run them.
+
+The example waits for the spawned tasks to finish by calling `block_on` on the
+[`JoinHandle`] returned by the call to [`spawn`], but this isn't the only way to
+do it. Here are some alternatives:
+
+ * Use a message passing channel such as [`tokio::sync::mpsc`].
+ * Modify a shared value protected by e.g. a `Mutex`. This can be a good
+   approach for a progress bar in a GUI, where the GUI reads the shared value
+   every frame.
+
+The `spawn` method is also available on the [`Handle`] type. The `Handle` type
+can be cloned to get many handles to a runtime, and each `Handle` can be used to
+spawn new tasks on the runtime.
+
+## Sending messages
+
+The third technique is to spawn a runtime and use message passing to communicate
+with it. This involves a bit more boilerplate than the other two approaches, but
+it is the most flexible approach. You can find a basic example below:
+
+```rust
+use tokio::runtime::Builder;
+use tokio::sync::mpsc;
+
+pub struct Task {
+    name: String,
+    // info that describes the task
+}
+
+async fn handle_task(task: Task) {
+    println!("Got task {}", task.name);
+}
+
+#[derive(Clone)]
+pub struct TaskSpawner {
+    spawn: mpsc::Sender<Task>,
+}
+
+impl TaskSpawner {
+    pub fn new() -> TaskSpawner {
+        // Set up a channel for communicating.
+        let (send, mut recv) = mpsc::channel(16);
+
+        // Build the runtime for the new thread.
+        //
+        // The runtime is created before spawning the thread
+        // to more cleanly forward errors if the `unwrap()`
+        // panics.
+        let rt = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        std::thread::spawn(move || {
+            rt.block_on(async move {
+                while let Some(task) = recv.recv().await {
+                    tokio::spawn(handle_task(task));
+                }
+
+                // Once all senders have gone out of scope,
+                // the `.recv()` call returns None and it will
+                // exit from the while loop and shut down the
+                // thread.
+            });
+        });
+
+        TaskSpawner {
+            spawn: send,
+        }
+    }
+
+    pub fn spawn_task(&self, task: Task) {
+        match self.spawn.blocking_send(task) {
+            Ok(()) => {},
+            Err(_) => panic!("The shared runtime has shut down."),
+        }
+    }
+}
+```
+This example could be configured in many ways. For instance, you could use a
+[`Semaphore`] to limit the number of active tasks, or you could use a channel in
+the opposite direction to send a response to the spawner. When you spawn a
+runtime in this way, it is a type of [actor].
+@@@ END
+
+@@@ USER
+How do I use Figuring out when to shut down with Tokio in Rust?
+@@@ ASSISTANT
+The purpose of this page is to give an overview of how to properly implement
+shutdown in asynchronous applications.
+
+There are usually three parts to implementing graceful shutdown:
+
+ * Figuring out when to shut down.
+ * Telling every part of the program to shut down.
+ * Waiting for other parts of the program to shut down.
+
+The rest of this article will go through these parts. A real world
+implementation of the approach described here can be found in [mini-redis],
+specifically the `src/server.rs` and
+`src/shutdown.rs` files.
+
+## Figuring out when to shut down
+
+This will of course depend on the application, but one very common shutdown
+criteria is when the application receives a signal from the operating system.
+This happens e.g. when you press ctrl+c in the terminal while the program is
+running. To detect this, Tokio provides a `tokio::signal::ctrl_c`
+function, which will sleep until such a signal is received. You might use it
+like this:
+```rs
+use tokio::signal;
+
+#[tokio::main]
+async fn main() {
+    // ... spawn application as separate task ...
+
+    match signal::ctrl_c().await {
+        Ok(()) => {},
+        Err(err) => {
+            eprintln!("Unable to listen for shutdown signal: {}", err);
+            // we also shut down in case of error
+        },
+    }
+
+    // send shutdown signal to application and wait
+}
+```
+If you have multiple shutdown conditions, you can use an mpsc channel
+to send the shutdown signal to one place. You can then [select] on
+`ctrl_c` and the channel. For example:
+```rs
+use tokio::signal;
+use tokio::sync::mpsc;
+
+#[tokio::main]
+async fn main() {
+    let (shutdown_send, mut shutdown_recv) = mpsc::unbounded_channel();
+
+    // ... spawn application as separate task ...
+    //
+    // application uses shutdown_send in case a shutdown was issued from inside
+    // the application
+
+    tokio::select! {
+        _ = signal::ctrl_c() => {},
+        _ = shutdown_recv.recv() => {},
+    }
+
+    // send shutdown signal to application and wait
+}
+```
+
+## Telling things to shut down
+
+When you want to tell one or more tasks to shut down, you can use Cancellation Tokens. These tokens allow you to notify tasks that they
+should terminate themselves in response to a cancellation request, making it
+easy to implement graceful shutdowns.
+
+To share a `CancellationToken` between several tasks, you must clone it. This is due
+to the single ownership rule that requires that each value has a single owner. When
+cloning a token, you get another token that's indistinguishable from the original;
+if one is cancelled, then the other is also cancelled. You can make as many clones
+as you need, and when you call `cancel` on one of them, they're all cancelled.
+
+Here are the steps to use `CancellationToken` in multiple tasks:
+
+1. First, create a new `CancellationToken`.
+2. Then, create a clone of the original `CancellationToken` by calling the `clone` method on the original token. This will create a new token that can be used by another task.
+3. Pass the original or cloned token to the tasks that should respond to cancellation requests.
+4. When you want to shut down the tasks gracefully, call the `cancel` method on the original or cloned token. Any task listening to the cancellation request on the original or cloned token will be notified to shut down.
+
+Here is code snippet showcasing the above mentioned steps:
+
+```rs
+// Step 1: Create a new CancellationToken
+let token = CancellationToken::new();
+
+// Step 2: Clone the token for use in another task
+let cloned_token = token.clone();
+
+// Task 1 - Wait for token cancellation or a long time
+let task1_handle = tokio::spawn(async move {
+    tokio::select! {
+        // Step 3: Using cloned token to listen to cancellation requests
+        _ = cloned_token.cancelled() => {
+            // The token was cancelled, task can shut down
+        }
+        _ = tokio::time::sleep(std::time::Duration::from_secs(9999)) => {
+            // Long work has completed
+        }
+    }
+});
+
+// Task 2 - Cancel the original token after a small delay
+tokio::spawn(async move {
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+    // Step 4: Cancel the original or cloned token to notify other tasks about shutting down gracefully
+    token.cancel();
+});
+
+// Wait for tasks to complete
+task1_handle.await.unwrap()
+```
+
+With Cancellation Tokens, you don't have to shut down a task immediately when
+the token is cancelled. Instead, you can run a shutdown procedure before
+terminating the task, such as flushing data to a file or database, or sending
+a shutdown message on a connection.
+
+## Waiting for things to finish shutting down
+
+Once you have told other tasks to shut down, you will need to wait for them to
+finish. One easy way to do so is to use a [task tracker]. A task tracker is a
+collection of tasks. The [`wait`] method of the task tracker gives you a future
+which resolves only after all of its contained futures have resolved **and**
+the task tracker has been closed.
+
+The following example will spawn 10 tasks, then use a task tracker to wait for
+them to shut down.
+
+```rs
+use std::time::Duration;
+use tokio::time::sleep;
+use tokio_util::task::TaskTracker;
+
+#[tokio::main]
+async fn main() {
+    let tracker = TaskTracker::new();
+
+    for i in 0..10 {
+        tracker.spawn(some_operation(i));
+    }
+
+    // Once we spawned everything, we close the tracker.
+    tracker.close();
+
+    // Wait for everything to finish.
+    tracker.wait().await;
+
+    println!("This is printed after all of the tasks.");
+}
+
+async fn some_operation(i: u64) {
+    sleep(Duration::from_millis(100 * i)).await;
+    println!("Task {} shutting down.", i);
+}
+```
+@@@ END
+
+@@@ USER
+Tokio question: Pausing and resuming time in tests. Show me how it works.
+@@@ ASSISTANT
+The purpose of this page is to give advice on how to write useful unit tests in
+asynchronous applications.
+
+## Pausing and resuming time in tests
+
+Sometimes, asynchronous code explicitly waits by calling [`tokio::time::sleep`]
+or waiting on a [`tokio::time::Interval::tick`]. Testing behaviour based on
+time (for example, an exponential backoff) can get cumbersome when the unit
+test starts running very slowly. However, internally, the time-related
+functionality of tokio supports pausing and resuming time. Pausing time has the
+effect that any time-related future may become ready early. The condition for
+the time-related future resolving early is that there are no more other futures
+which may become ready. This essentially fast-forwards time when the only
+future being awaited is time-related:
+
+```rust
+#[tokio::test]
+async fn paused_time() {
+    tokio::time::pause();
+    let start = std::time::Instant::now();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    println!("{:?}ms", start.elapsed().as_millis());
+}
+```
+
+This code prints `0ms` on a reasonable machine.
+
+For unit tests, it is often useful to run with paused time throughout. This can
+be achieved simply by setting the macro argument `start_paused` to `true`:
+
+```rust
+#[tokio::test(start_paused = true)]
+async fn paused_time() {
+    let start = std::time::Instant::now();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    println!("{:?}ms", start.elapsed().as_millis());
+}
+```
+
+Keep in mind that the `start_paused` attribute requires the tokio feature `test-util`.
+See tokio::test "Configure the runtime to start with time paused" for more details.
+
+Of course, the temporal order of future resolution is maintained, even when
+using different time-related futures:
+
+```rust
+#[tokio::test(start_paused = true)]
+async fn interval_with_paused_time() {
+    let mut interval = interval(Duration::from_millis(300));
+    let _ = timeout(Duration::from_secs(1), async move {
+        loop {
+            interval.tick().await;
+            println!("Tick!");
+        }
+    })
+    .await;
+}
+```
+
+This code immediately prints `"Tick!"` exactly 4 times.
+
+## Mocking using [`AsyncRead`] and [`AsyncWrite`]
+
+The generic traits for reading and writing asynchronously ([`AsyncRead`] and
+[`AsyncWrite`]) are implemented by, for example, sockets. They can be used for
+mocking I/O performed by a socket.
+
+Consider, for setup, this simple TCP server loop:
+
+```rust
+use tokio::net::TcpListener;
+
+#[tokio::main]
+async fn main() {
+    let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
+    loop {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            eprintln!("Failed to accept client");
+            continue;
+        };
+
+        tokio::spawn(async move {
+            let (reader, writer) = socket.split();
+            // Run some client connection handler, for example:
+            // handle_connection(reader, writer)
+                // .await
+                // .expect("Failed to handle connection");
+        });
+    }
+}
+```
+
+Here, each TCP client connection is serviced by its dedicated tokio task. This
+task owns a reader and a writer, which are [`split`] off of a [`TcpStream`].
+
+Consider now the actual client handler task, especially the `where`-clause of the
+function signature:
+
+```rust
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+
+async fn handle_connection<Reader, Writer>(
+    reader: Reader,
+    mut writer: Writer,
+) -> std::io::Result<()>
+where
+    Reader: AsyncRead + Unpin,
+    Writer: AsyncWrite + Unpin,
+{
+    let mut line = String::new();
+    let mut reader = BufReader::new(reader);
+
+    loop {
+        if let Ok(bytes_read) = reader.read_line(&mut line).await {
+            if bytes_read == 0 {
+                break Ok(());
+            }
+            writer
+                .write_all(format!("Thanks for your message.\r\n").as_bytes())
+                .await
+                .unwrap();
+        }
+        line.clear();
+    }
+}
+```
+
+Essentially, the given reader and writer, which implement [`AsyncRead`] and
+[`AsyncWrite`], are serviced sequentially. For each received line, the handler
+replies with `"Thanks for your message."`.
+
+To unit test the client connection handler, a [`tokio_test::io::Builder`] can
+be used as a mock:
+
+```rust
+#[tokio::test]
+async fn client_handler_replies_politely() {
+    let reader = tokio_test::io::Builder::new()
+        .read(b"Hi there\r\n")
+        .read(b"How are you doing?\r\n")
+        .build();
+    let writer = tokio_test::io::Builder::new()
+        .write(b"Thanks for your message.\r\n")
+        .write(b"Thanks for your message.\r\n")
+        .build();
+    let _ = handle_connection(reader, writer).await;
+}
+```
+@@@ END
+
+@@@ USER
+Explain Tokio-console in Tokio.
+@@@ ASSISTANT
+`tokio-console` is an htop-like utility that enables you to see a real-time view
+of an application’s spans and events. It can also represent "resources" that the
+Tokio runtime has created, such as Tasks. It's essential for understanding
+performance issues during the development process.
+
+For instance, to use tokio-console in the mini-redis project,
+you need to enable the `tracing` feature for the Tokio package:
+
+```toml
+# Update the tokio import in your Cargo.toml
+tokio = { version = "1", features = ["full", "tracing"] }
+```
+
+Note: The `full` feature doesn't enable `tracing`.
+
+You'll also need to add a dependency on the `console-subscriber` package. This
+crate provides a `Subscriber` implementation that will replace the one currently
+used by mini-redis:
+
+```toml
+# Add this to the dependencies section of your Cargo.toml
+console-subscriber = "0.1.5"
+```
+
+Finally, in `src/bin/server.rs`, replace the call to `tracing_subscriber` with
+the call to `console-subscriber`:
+
+Replace this:
+
+```rust
+tracing_subscriber::fmt::try_init()?;
+```
+
+...with this:
+
+```rust
+console_subscriber::init();
+```
+
+This will enable the `console_subscriber`, which means that any instrumentation
+relevant to `tokio-console` will be recorded. Logging to stdout will still
+happen (based on the value of the `RUST_LOG` environment variable).
+
+Now we should be ready to start up mini-redis again, this time using the
+`tokio_unstable` flag (which is needed to enable tracing):
+
+```sh
+RUSTFLAGS="--cfg tokio_unstable" cargo run --bin mini-redis-server
+```
+
+The `tokio_unstable` flag allows us to make use of additional APIs provided by
+Tokio which do not currently have a guarantee of stability (in other words,
+breaking changes are allowed for these APIs).
+
+All that is remaining is to run the console itself in another terminal. The
+easiest way to do that would be to install it from crates.io:
+
+```sh
+cargo install --locked tokio-console
+```
+
+and then run it with:
+
+```sh
+tokio-console
+```
+
+The initial view you will see is for tokio Tasks that are currently running.
+Example: 
+
+It can also show Tasks for a period of time after they have completed (the color
+for these will be grey). You can generate some traces by running the mini-redis
+hello world example (this is available in the mini-redis repository):
+
+```sh
+cargo run --example hello_world
+```
+
+If you press `r`, you can switch to the Resources view. This displays
+semaphores, mutexes, and other constructs that are being used by the Tokio
+runtime. Example: 
+
+Whenever you need to introspect the Tokio runtime to understand the performance
+of you application better, you can make use of tokio-console to view what is
+happening in real time, helping you to spot deadlocks and other issues.
+
+To learn more about how to use tokio-console, please visit its documentation page.
+
+# Integrating with OpenTelemetry
+
+OpenTelemetry (OTel) means multiple things; for
+one, it's an open specification, defining a data model for traces and metrics
+that can handle the needs of most users. It is also a set of language-specific
+SDKs, providing instrumentation so that traces and metrics can be emitted from
+an application. Thirdly, there is the OpenTelemetry Collector, a binary that
+runs alongside your application to collect the traces and metrics, ultimately
+pushing those out to a telemetry vendor, such as DataDog, Honeycomb, or AWS
+X-Ray. It can also send data to tools such as Prometheus instead.
+
+The opentelemetry crate is what
+provides the OpenTelemetry SDK for Rust, and is what we will be using for this
+tutorial.
+
+In this tutorial, we will be setting up mini-redis to send data to
+Jaeger, which is a UI for visualizing traces.
+
+To run an instance of Jaeger, you can use Docker:
+
+```sh
+docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
+```
+
+You can visit the Jaeger page by going to <http://localhost:16686>.
+It will look like this:
+
+We'll come back to this page once we have some trace data generated and sent.
+
+To set up mini-redis, we'll first need to add a few dependencies. Update your
+`Cargo.toml` with the following:
+
+```toml
+# Implements the types defined in the Otel spec
+opentelemetry = "0.17.0"
+# Integration between the tracing crate and the opentelemetry crate
+tracing-opentelemetry = "0.17.2" 
+# Allows you to export data to Jaeger
+opentelemetry-jaeger = "0.16.0"
+```
+
+Now, in `src/bin/server.rs`, add the following imports:
+
+```rust
+use opentelemetry::global;
+use tracing_subscriber::{
+    fmt, layer::SubscriberExt, util::SubscriberInitExt,
+};
+```
+
+We will look at what each of these do in a moment.
+
+The next step is to replace the call to `tracing_subscriber` with the OTel
+setup.
+
+Replace this:
+
+```rust
+tracing_subscriber::fmt::try_init()?;
+```
+
+...with this:
+
+```rust
+// Allows you to pass along context (i.e., trace IDs) across services
+global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+// Sets up the machinery needed to export data to Jaeger
+// There are other OTel crates that provide pipelines for the vendors
+// mentioned earlier.
+let tracer = opentelemetry_jaeger::new_pipeline()
+    .with_service_name("mini-redis")
+    .install_simple()?;
+
+// Create a tracing layer with the configured tracer
+let opentelemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+
+// The SubscriberExt and SubscriberInitExt traits are needed to extend the
+// Registry to accept `opentelemetry (the OpenTelemetryLayer type).
+tracing_subscriber::registry()
+    .with(opentelemetry)
+    // Continue logging to stdout
+    .with(fmt::Layer::default())
+    .try_init()?;
+```
+
+Now you should be able to start up mini-redis:
+
+```sh
+cargo run --bin mini-redis-server
+```
+
+In another terminal, run the hello world example (this is available in the
+mini-redis repository):
+
+```sh
+cargo run --example hello_world
+```
+
+Now, refresh the Jaeger UI that we had open, and on the main Search page, find
+"mini-redis" as one of the options in the Service dropdown.
+
+Select that option, and click the "Find Traces" button. This should show the
+request we just made from running the example.
+
+Clicking on the trace should show you a detailed view of the spans that were
+emitted during the handling of the hello world example.
+
+That's it for now! You can explore this further by sending more requests, adding
+additional instrumentation for mini-redis, or setting up OTel with a telemetry
+vendor (instead of the Jaeger instance we are running locally). For this last
+one, you might need to pull in an additional crate (for example, for sending
+data to the OTel Collector, you'll need the `opentelemetry-otlp` crate). There
+are many examples available in the opentelemetry-rust repository.
+
+Note: The mini-redis repo already contains a full example of OpenTelemetry with
+AWS X-Ray, details of which can be found in the
+`README`, as well as
+the
+`Cargo.toml`
+and
+`src/bin/server.rs`
+files.
+@@@ END
+
+@@@ USER
+How do I use Setup with Tokio in Rust?
+@@@ ASSISTANT
+The [`tracing`] crate is a framework for instrumenting Rust programs to collect
+structured, event-based diagnostic information.
+
+In asynchronous systems like Tokio, interpreting traditional log messages can
+often be quite challenging. Since individual tasks are multiplexed on the same
+thread, associated events and log lines are intermixed making it difficult to
+trace the logic flow. `tracing` expands upon logging-style diagnostics by
+allowing libraries and applications to record structured events with additional
+information about *temporality* and *causality* — unlike a log message, a
+[`Span`] in `tracing` has a beginning and end time, may be entered and exited
+by the flow of execution, and may exist within a nested tree of similar spans.
+For representing things that occur at a single moment in time, `tracing`
+provides the complementary concept of *events*. Both [`Span`]s and [`Event`]s
+are *structured*, with the ability to record typed data as well as textual
+messages.
+
+You can use `tracing` to:
+
+- emit distributed traces to an [OpenTelemetry] collector
+- debug your application with [Tokio Console]
+- log to [`stdout`], [a log file] or [`journald`]
+- [profile] where your application is spending time
+
+# Setup
+
+To begin, add [`tracing`] and [`tracing-subscriber`] as dependencies:
+
+```toml
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = "0.3"
+```
+
+The [`tracing`] crate provides the API we will use to emit traces. The
+[`tracing-subscriber`] crate provides some basic utilities for forwarding those
+traces to external listeners (e.g., `stdout`).
+
+# Subscribing to Traces
+
+If you are authoring an executable (as opposed to a library), you will need to
+register a tracing [*subscriber*]. Subscribers are types that process traces
+emitted by your application and its dependencies, and can perform tasks
+such as computing metrics, monitoring for errors, and re-emitting traces to the
+outside world (e.g., `journald`, `stdout`, or an `open-telemetry` daemon).
+
+In most circumstances, you should register your tracing subscriber as early as
+possible in your `main` function. For instance, the [`FmtSubscriber`] type
+provided by [`tracing-subscriber`] prints formatted traces and events to
+`stdout`, can be registered like so:
+
+```rust
+#[tokio::main]
+pub async fn main() -> mini_redis::Result<()> {
+    // construct a subscriber that prints formatted traces to stdout
+    let subscriber = tracing_subscriber::FmtSubscriber::new();
+    // use that subscriber to process traces emitted after this point
+    tracing::subscriber::set_global_default(subscriber)?;
+    ...
+}
+```
+
+If you run your application now, you may see some trace events emitted by Tokio,
+but you will need to modify your own application to emit traces to get the most
+out of `tracing`.
+
+## Subscriber Configuration
+
+In the above example, we've configured [`FmtSubscriber`] with its default
+configuration. However, `tracing-subscriber` also provides a number of ways to
+configure the [`FmtSubscriber`]'s behavior, such as customizing the output
+format, including additional information (such as thread IDs or source code
+locations) in the logs, and writing the logs to somewhere other than `stdout`.
+
+For example:
+```rust
+// Start configuring a `fmt` subscriber
+let subscriber = tracing_subscriber::fmt()
+    // Use a more compact, abbreviated log format
+    .compact()
+    // Display source code file paths
+    .with_file(true)
+    // Display source code line numbers
+    .with_line_number(true)
+    // Display the thread ID an event was recorded on
+    .with_thread_ids(true)
+    // Don't display the event's target (module path)
+    .with_target(false)
+    // Build the subscriber
+    .finish();
+```
+
+For details on the available configuration options, see the `tracing_subscriber::fmt` documentation.
+
+In addition to the [`FmtSubscriber`] type from [`tracing-subscriber`], other
+`Subscriber`s can implement their own ways of recording `tracing` data. This
+includes alternative output formats, analysis and aggregation, and integration
+with other systems such as distributed tracing or log aggregation services. A
+number of crates provide additional `Subscriber` implementations that may be of
+interest. See here for an (incomplete) list of additional
+`Subscriber` implementations.
+
+Finally, in some cases, it may be useful to combine multiple different ways of
+recording traces together to build a single `Subscriber` that implements
+multiple behaviors. For this purpose, the `tracing-subscriber` crate provides a
+[`Layer`] trait that represents a component that may be composed together with
+other `Layer`s to form a `Subscriber`. See here for details on using
+`Layer`s.
+@@@ END
+
+@@@ USER
+How do I use Setup: Emitting Spans and Events with Tokio in Rust?
+@@@ ASSISTANT
+The easiest way to emit spans is with the [`instrument`] proc-macro annotation
+provided by [`tracing`], which re-writes the bodies of functions to emit spans
+each time they are invoked; e.g.:
+
+```rust
+#[tracing::instrument]
+fn trace_me(a: u32, b: u32) -> u32 {
+    a + b
+}
+```
+
+Each invocation of `trace_me` will emit a `tracing` Span that:
+
+1. has a verbosity [level] of `info` (the "middle ground" verbosity),
+2. is named `trace_me`,
+3. has fields `a` and `b`, whose values are the arguments of `trace_me`
+
+The [`instrument`] attribute is highly configurable; e.g., to trace
+the method in [`mini-redis-server`] that handles each connection:
+
+```rust
+use tracing::instrument;
+
+impl Handler {
+    /// Process a single connection.
+    #[instrument(
+        name = "Handler::run",
+        skip(self),
+        fields(
+            // `%` serializes the peer IP addr with `Display`
+            peer_addr = %self.connection.peer_addr().unwrap()
+        ),
+    )]
+    async fn run(&mut self) -> mini_redis::Result<()> {
+        ...
+    }
+}
+```
+
+[`mini-redis-server`] will now emit a `tracing` Span for each incoming
+connection that:
+
+1. has a verbosity [level] of `info` (the "middle ground" verbosity),
+2. is named `Handler::run`,
+3. has some structured data associated with it.
+    - `fields(...)` indicates that emitted span *should* include
+    the `fmt::Display` representation of the connection's `SocketAddr` in a field
+    called `peer_addr`.
+    - `skip(self)` indicates that emitted span should *not* record `Handler`'s debug representation.
+
+You can also construct a [`Span`] manually by invoking the [`span!`] macro, or
+any of its leveled shorthands ([`error_span!`], [`warn_span!`], [`info_span!`],
+[`debug_span!`], [`trace_span!`]).
+
+To emit events, invoke the [`event!`] macro, or any of its leveled shorthands
+([`error!`], [`warn!`], [`info!`], [`debug!`], [`trace!`]). For instance, to
+log that a client sent a malformed command:
+```rust
+// Convert the redis frame into a command struct. This returns an
+// error if the frame is not a valid redis command.
+let cmd = match Command::from_frame(frame) {
+    Ok(cmd) => cmd,
+    Err(cause) => {
+        // The frame was malformed and could not be parsed. This is
+        // probably indicative of an issue with the client (as opposed
+        // to our server), so we (1) emit a warning...
+        //
+        // The syntax here is a shorthand provided by the `tracing`
+        // crate. It can be thought of as similar to:
+        //      tracing::warn! {
+        //          cause = format!("{}", cause),
+        //          "failed to parse command from frame"
+        //      };
+        // `tracing` provides structured logging, so information is
+        // "logged" as key-value pairs.
+        tracing::warn! {
+            %cause,
+            "failed to parse command from frame"
+        };
+        // ...and (2) respond to the client with the error:
+        Command::from_error(cause)
+    }
+};
+```
+
+If you run your application, you now will see events decorated with their span's
+context emitted for each incoming connection that it processes.
+@@@ END
+
+@@@ USER
+How do I use Futures with Tokio in Rust?
+@@@ ASSISTANT
+At this point, we have completed a fairly comprehensive tour of asynchronous
+Rust and Tokio. Now we will dig deeper into Rust's asynchronous runtime model.
+At the very beginning of the tutorial, we hinted that asynchronous Rust takes a
+unique approach. Now, we explain what that means.
+
+# Futures
+
+As a quick review, let's take a very basic asynchronous function. This is
+nothing new compared to what the tutorial has covered so far.
+
+```rust
+use tokio::net::TcpStream;
+
+async fn my_async_fn() {
+    println!("hello from async");
+    let _socket = TcpStream::connect("127.0.0.1:3000").await.unwrap();
+    println!("async TCP operation complete");
+}
+```
+
+We call the function and it returns some value. We call `.await` on that value.
+
+```rust
+#[tokio::main]
+async fn main() {
+    let what_is_this = my_async_fn();
+    // Nothing has been printed yet.
+    what_is_this.await;
+    // Text has been printed and socket has been
+    // established and closed.
+}
+```
+
+The value returned by `my_async_fn()` is a future. A future is a value that
+implements the `std::future::Future` trait provided by the standard
+library. They are values that contain the in-progress asynchronous computation.
+
+The `std::future::Future` trait definition is:
+
+```rust
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+pub trait Future {
+    type Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context)
+        -> Poll<Self::Output>;
+}
+```
+
+The associated type `Output` is the type that the future produces once
+it completes. The `Pin` type is how Rust is able to support borrows in
+`async` functions. See the standard library documentation for more
+details.
+
+Unlike how futures are implemented in other languages, a Rust future does not
+represent a computation happening in the background, rather the Rust future
+**is** the computation itself. The owner of the future is responsible for
+advancing the computation by polling the future. This is done by calling
+`Future::poll`.
+
+## Implementing `Future`
+
+Let's implement a very simple future. This future will:
+
+1. Wait until a specific instant in time.
+2. Output some text to STDOUT.
+3. Yield a string.
+
+```rust
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
+
+struct Delay {
+    when: Instant,
+}
+
+impl Future for Delay {
+    type Output = &'static str;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>)
+        -> Poll<&'static str>
+    {
+        if Instant::now() >= self.when {
+            println!("Hello world");
+            Poll::Ready("done")
+        } else {
+            // Ignore this line for now.
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let when = Instant::now() + Duration::from_millis(10);
+    let future = Delay { when };
+
+    let out = future.await;
+    assert_eq!(out, "done");
+}
+```
+
+## Async fn as a Future
+
+In the main function, we instantiate the future and call `.await` on it. From
+async functions, we may call `.await` on any value that implements `Future`. In
+turn, calling an `async` function returns an anonymous type that implements
+`Future`. In the case of `async fn main()`, the generated future is roughly:
+
+```rust
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
+
+enum MainFuture {
+    // Initialized, never polled
+    State0,
+    // Waiting on `Delay`, i.e. the `future.await` line.
+    State1(Delay),
+    // The future has completed.
+    Terminated,
+}
+
+impl Future for MainFuture {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>)
+        -> Poll<()>
+    {
+        use MainFuture::*;
+
+        loop {
+            match *self {
+                State0 => {
+                    let when = Instant::now() +
+                        Duration::from_millis(10);
+                    let future = Delay { when };
+                    *self = State1(future);
+                }
+                State1(ref mut my_future) => {
+                    match Pin::new(my_future).poll(cx) {
+                        Poll::Ready(out) => {
+                            assert_eq!(out, "done");
+                            *self = Terminated;
+                            return Poll::Ready(());
+                        }
+                        Poll::Pending => {
+                            return Poll::Pending;
+                        }
+                    }
+                }
+                Terminated => {
+                    panic!("future polled after completion")
+                }
+            }
+        }
+    }
+}
+```
+
+Rust futures are **state machines**. Here, `MainFuture` is represented as an
+`enum` of the future's possible states. The future starts in the `State0` state.
+When `poll` is invoked, the future attempts to advance its internal state as
+much as possible. If the future is able to complete, `Poll::Ready` is returned
+containing the output of the asynchronous computation.
+
+If the future is **not** able to complete, usually due to resources it is
+waiting on not being ready, then `Poll::Pending` is returned. Receiving
+`Poll::Pending` indicates to the caller that the future will complete at a later
+time and the caller should invoke `poll` again later.
+
+We also see that futures are composed of other futures. Calling `poll` on the
+outer future results in calling the inner future's `poll` function.
+
+# Executors
+
+Asynchronous Rust functions return futures. Futures must have `poll` called on
+them to advance their state. Futures are composed of other futures. So, the
+question is, what calls `poll` on the very most outer future?
+
+Recall from earlier, to run asynchronous functions, they must either be
+passed to `tokio::spawn` or be the main function annotated with
+`#[tokio::main]`. This results in submitting the generated outer future to the
+Tokio executor. The executor is responsible for calling `Future::poll` on the
+outer future, driving the asynchronous computation to completion.
+@@@ END
+
+@@@ USER
+Explain Futures: Mini Tokio in Tokio.
+@@@ ASSISTANT
+To better understand how this all fits together, let's implement our own minimal
+version of Tokio! The full code can be found here.
+
+```rust
+use std::collections::VecDeque;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
+use futures::task;
+
+fn main() {
+    let mut mini_tokio = MiniTokio::new();
+
+    mini_tokio.spawn(async {
+        let when = Instant::now() + Duration::from_millis(10);
+        let future = Delay { when };
+
+        let out = future.await;
+        assert_eq!(out, "done");
+    });
+
+    mini_tokio.run();
+}
+
+struct MiniTokio {
+    tasks: VecDeque<Task>,
+}
+
+type Task = Pin<Box<dyn Future<Output = ()> + Send>>;
+
+impl MiniTokio {
+    fn new() -> MiniTokio {
+        MiniTokio {
+            tasks: VecDeque::new(),
+        }
+    }
+
+    /// Spawn a future onto the mini-tokio instance.
+    fn spawn<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.tasks.push_back(Box::pin(future));
+    }
+
+    fn run(&mut self) {
+        let waker = task::noop_waker();
+        let mut cx = Context::from_waker(&waker);
+
+        while let Some(mut task) = self.tasks.pop_front() {
+            if task.as_mut().poll(&mut cx).is_pending() {
+                self.tasks.push_back(task);
+            }
+        }
+    }
+}
+```
+
+This runs the async block. A `Delay` instance is created with the requested
+delay and is awaited on. However, our implementation so far has a major **flaw**.
+Our executor never goes to sleep. The executor continuously loops **all**
+spawned futures and polls them. Most of the time, the futures will not be ready
+to perform more work and will return `Poll::Pending` again. The process will
+burn CPU cycles and generally not be very efficient.
+
+Ideally, we want mini-tokio to only poll futures when the future is able to make
+progress. This happens when a resource that the task is blocked on becomes ready
+to perform the requested operation. If the task wants to read data from a TCP
+socket, then we only want to poll the task when the TCP socket has received
+data. In our case, the task is blocked on the given `Instant` being reached.
+Ideally, mini-tokio would only poll the task once that instant in time has
+passed.
+
+To achieve this, when a resource is polled, and the resource is **not** ready,
+the resource will send a notification once it transitions into a ready state.
+
+# Wakers
+
+Wakers are the missing piece. This is the system by which a resource is able to
+notify the waiting task that the resource has become ready to continue some
+operation.
+
+Let's look at the `Future::poll` definition again:
+
+```rust
+fn poll(self: Pin<&mut Self>, cx: &mut Context)
+    -> Poll<Self::Output>;
+```
+
+The `Context` argument to `poll` has a `waker()` method. This method returns a
+[`Waker`] bound to the current task. The [`Waker`] has a `wake()` method. Calling
+this method signals to the executor that the associated task should be scheduled
+for execution. Resources call `wake()` when they transition to a ready state to
+notify the executor that polling the task will be able to make progress.
+
+## Updating `Delay`
+
+We can update `Delay` to use wakers:
+
+```rust
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
+use std::thread;
+
+struct Delay {
+    when: Instant,
+}
+
+impl Future for Delay {
+    type Output = &'static str;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>)
+        -> Poll<&'static str>
+    {
+        if Instant::now() >= self.when {
+            println!("Hello world");
+            Poll::Ready("done")
+        } else {
+            // Get a handle to the waker for the current task
+            let waker = cx.waker().clone();
+            let when = self.when;
+
+            // Spawn a timer thread.
+            thread::spawn(move || {
+                let now = Instant::now();
+
+                if now < when {
+                    thread::sleep(when - now);
+                }
+
+                waker.wake();
+            });
+
+            Poll::Pending
+        }
+    }
+}
+```
+
+Now, once the requested duration has elapsed, the calling task is notified and
+the executor can ensure the task is scheduled again. The next step is to update
+mini-tokio to listen for wake notifications.
+
+There are still a few remaining issues with our `Delay` implementation. We will
+fix them later.
+
+> **warning**
+> When a future returns `Poll::Pending`, it **must** ensure that the waker is
+> signalled at some point. Forgetting to do this results in the task hanging
+> indefinitely.
+>
+> Forgetting to wake a task after returning `Poll::Pending` is a common
+> source of bugs.
+
+Recall the first iteration of `Delay`. Here was the future implementation:
+
+```rust
+impl Future for Delay {
+    type Output = &'static str;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>)
+        -> Poll<&'static str>
+    {
+        if Instant::now() >= self.when {
+            println!("Hello world");
+            Poll::Ready("done")
+        } else {
+            // Ignore this line for now.
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+}
+```
+
+Before returning `Poll::Pending`, we called `cx.waker().wake_by_ref()`. This is
+to satisfy the future contract. By returning `Poll::Pending`, we are responsible
+for signalling the waker. Because we didn't implement the timer thread yet, we
+signalled the waker inline. Doing so will result in the future being immediately
+re-scheduled, executed again, and probably not be ready to complete.
+
+Notice that you are allowed to signal the waker more often than necessary. In
+this particular case, we signal the waker even though we are not ready to
+continue the operation at all. There is nothing wrong with this besides some
+wasted CPU cycles. However, this particular implementation will result in a busy
+loop.
+@@@ END
+
+@@@ USER
+How do I use Futures: Updating Mini Tokio with Tokio in Rust?
+@@@ ASSISTANT
+The next step is updating Mini Tokio to receive waker notifications. We want the
+executor to only run tasks when they are woken, and to do this, Mini Tokio will
+provide its own waker. When the waker is invoked, its associated task is queued
+to be executed. Mini-Tokio passes this waker to the future when it polls the
+future.
+
+The updated Mini Tokio will use a channel to store scheduled tasks. Channels
+allow tasks to be queued for execution from any thread. Wakers must be `Send`
+and `Sync`.
+
+> **info**
+> The `Send` and `Sync` traits are marker traits related to concurrency
+> provided by Rust. Types that can be **sent** to a different thread are
+> `Send`. Most types are `Send`, but something like [`Rc`] is not. Types
+> that can be **concurrently** accessed through immutable references are
+> `Sync`. A type can be `Send` but not `Sync` — a good example is
+> [`Cell`], which can be modified through an immutable reference, and
+> is thus not safe to access concurrently.
+>
+> For more details, see the related chapter in the Rust book.
+
+Update the `MiniTokio` struct.
+
+```rust
+use std::sync::mpsc;
+use std::sync::Arc;
+
+struct MiniTokio {
+    scheduled: mpsc::Receiver<Arc<Task>>,
+    sender: mpsc::Sender<Arc<Task>>,
+}
+
+struct Task {
+    // This will be filled in soon.
+}
+```
+
+Wakers are `Sync` and can be cloned. When `wake` is called, the task must be
+scheduled for execution. To implement this, we have a channel. When the `wake()`
+is called on the waker, the task is pushed into the send half of the channel.
+Our `Task` structure will implement the wake logic. To do this, it needs to
+contain both the spawned future and the channel send half. We place the future
+in a `TaskFuture` struct alongside a `Poll` enum to keep track of the latest
+`Future::poll()` result, which is needed to handle spurious wake-ups. More
+details are given in the implementation of the `poll()` method in `TaskFuture`.
+
+```rust
+use std::sync::{Arc, Mutex};
+
+/// A structure holding a future and the result of
+/// the latest call to its `poll` method.
+struct TaskFuture {
+    future: Pin<Box<dyn Future<Output = ()> + Send>>,
+    poll: Poll<()>,
+}
+
+struct Task {
+    // The `Mutex` is to make `Task` implement `Sync`. Only
+    // one thread accesses `task_future` at any given time.
+    // The `Mutex` is not required for correctness. Real Tokio
+    // does not use a mutex here, but real Tokio has
+    // more lines of code than can fit in a single tutorial
+    // page.
+    task_future: Mutex<TaskFuture>,
+    executor: mpsc::Sender<Arc<Task>>,
+}
+
+impl Task {
+    fn schedule(self: &Arc<Self>) {
+        self.executor.send(self.clone());
+    }
+}
+```
+
+To schedule the task, the `Arc` is cloned and sent through the channel. Now, we
+need to hook our `schedule` function with `std::task::Waker`. The
+standard library provides a low-level API to do this using manual vtable construction. This strategy provides maximum flexibility to
+implementors, but requires a bunch of unsafe boilerplate code. Instead of using
+`RawWakerVTable` directly, we will use the [`ArcWake`] utility
+provided by the [`futures`] crate. This allows us to implement a simple trait to
+expose our `Task` struct as a waker.
+
+Add the following dependency to your `Cargo.toml` to pull in `futures`.
+
+```toml
+futures = "0.3"
+```
+
+Then implement `futures::task::ArcWake`.
+
+```rust
+use futures::task::{self, ArcWake};
+use std::sync::Arc;
+impl ArcWake for Task {
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        arc_self.schedule();
+    }
+}
+```
+
+When the timer thread above calls `waker.wake()`, the task is pushed into the
+channel. Next, we implement receiving and executing the tasks in the
+`MiniTokio::run()` function.
+
+```rust
+impl MiniTokio {
+    fn run(&self) {
+        while let Ok(task) = self.scheduled.recv() {
+            task.poll();
+        }
+    }
+
+    /// Initialize a new mini-tokio instance.
+    fn new() -> MiniTokio {
+        let (sender, scheduled) = mpsc::channel();
+
+        MiniTokio { scheduled, sender }
+    }
+
+    /// Spawn a future onto the mini-tokio instance.
+    ///
+    /// The given future is wrapped with the `Task` harness and pushed into the
+    /// `scheduled` queue. The future will be executed when `run` is called.
+    fn spawn<F>(&self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        Task::spawn(future, &self.sender);
+    }
+}
+
+impl TaskFuture {
+    fn new(future: impl Future<Output = ()> + Send + 'static) -> TaskFuture {
+        TaskFuture {
+            future: Box::pin(future),
+            poll: Poll::Pending,
+        }
+    }
+
+    fn poll(&mut self, cx: &mut Context<'_>) {
+        // Spurious wake-ups are allowed, even after a future has                                  
+        // returned `Ready`. However, polling a future which has                                   
+        // already returned `Ready` is *not* allowed. For this                                     
+        // reason we need to check that the future is still pending                                
+        // before we call it. Failure to do so can lead to a panic.
+        if self.poll.is_pending() {
+            self.poll = self.future.as_mut().poll(cx);
+        }
+    }
+}
+
+impl Task {
+    fn poll(self: Arc<Self>) {
+        // Create a waker from the `Task` instance. This
+        // uses the `ArcWake` impl from above.
+        let waker = task::waker(self.clone());
+        let mut cx = Context::from_waker(&waker);
+
+        // No other thread ever tries to lock the task_future
+        let mut task_future = self.task_future.try_lock().unwrap();
+
+        // Poll the inner future
+        task_future.poll(&mut cx);
+    }
+
+    // Spawns a new task with the given future.
+    //
+    // Initializes a new Task harness containing the given future and pushes it
+    // onto `sender`. The receiver half of the channel will get the task and
+    // execute it.
+    fn spawn<F>(future: F, sender: &mpsc::Sender<Arc<Task>>)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        let task = Arc::new(Task {
+            task_future: Mutex::new(TaskFuture::new(future)),
+            executor: sender.clone(),
+        });
+
+        let _ = sender.send(task);
+    }
+}
+```
+
+Multiple things are happening here. First, `MiniTokio::run()` is implemented.
+The function runs in a loop receiving scheduled tasks from the channel.
+As tasks are pushed into the channel when they are woken, these tasks are able
+to make progress when executed.
+
+Additionally, the `MiniTokio::new()` and `MiniTokio::spawn()` functions are
+adjusted to use a channel rather than a `VecDeque`. When new tasks are spawned,
+they are given a clone of the sender-part of the channel, which the task can
+use to schedule itself on the runtime.
+
+The `Task::poll()` function creates the waker using the [`ArcWake`] utility from
+the `futures` crate. The waker is used to create a `task::Context`. That
+`task::Context` is passed to `poll`.
+@@@ END
+
+@@@ USER
+How do I use Futures: Summary with Tokio in Rust?
+@@@ ASSISTANT
+We have now seen an end-to-end example of how asynchronous Rust works. Rust's
+`async/await` feature is backed by traits. This allows third-party crates, like
+Tokio, to provide the execution details.
+
+* Asynchronous Rust operations are lazy and require a caller to poll them.
+* Wakers are passed to futures to link a future to the task calling it.
+* When a resource is **not** ready to complete an operation, `Poll::Pending` is
+  returned and the task's waker is recorded.
+* When the resource becomes ready, the task's waker is notified.
+* The executor receives the notification and schedules the task to execute.
+* The task is polled again, this time the resource is ready and the task makes
+  progress.
+
+# A few loose ends
+
+Recall when we were implementing the `Delay` future, we said there were a few
+more things to fix. Rust's asynchronous model allows a single future to migrate
+across tasks while it executes. Consider the following:
+
+```rust
+use futures::future::poll_fn;
+use std::future::Future;
+use std::pin::Pin;
+
+#[tokio::main]
+async fn main() {
+    let when = Instant::now() + Duration::from_millis(10);
+    let mut delay = Some(Delay { when });
+
+    poll_fn(move |cx| {
+        let mut delay = delay.take().unwrap();
+        let res = Pin::new(&mut delay).poll(cx);
+        assert!(res.is_pending());
+        tokio::spawn(async move {
+            delay.await;
+        });
+
+        Poll::Ready(())
+    }).await;
+}
+```
+
+The `poll_fn` function creates a `Future` instance using a closure. The snippet
+above creates a `Delay` instance, polls it once, then sends the `Delay` instance
+to a new task where it is awaited. In this example, `Delay::poll` is called more
+than once with **different** `Waker` instances. When this happens, you must make
+sure to call `wake` on the `Waker` passed to _the most recent_ call to `poll`.
+
+When implementing a future, it is critical to assume that each call to `poll`
+**could** supply a different `Waker` instance. The poll function must update any
+previously recorded waker with the new one.
+
+Our earlier implementation of `Delay` spawned a new thread every time it was
+polled. This is fine, but can be very inefficient if it is polled too often
+(e.g. if you `select!` over that future and some other future, both are polled
+whenever either has an event). One approach to this is to remember whether you
+have already spawned a thread, and only spawn a new thread if you haven't
+already spawned one.  However if you do this, you must ensure that the thread's
+`Waker` is updated on later calls to poll, as you are otherwise not waking the
+most recent `Waker`.
+
+To fix our earlier implementation, we could do something like this:
+
+```rust
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Waker};
+use std::thread;
+use std::time::{Duration, Instant};
+
+struct Delay {
+    when: Instant,
+    // This is Some when we have spawned a thread, and None otherwise.
+    waker: Option<Arc<Mutex<Waker>>>,
+}
+
+impl Future for Delay {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        // Check the current instant. If the duration has elapsed, then
+        // this future has completed so we return `Poll::Ready`.
+        if Instant::now() >= self.when {
+            return Poll::Ready(());
+        }
+
+        // The duration has not elapsed. If this is the first time the future
+        // is called, spawn the timer thread. If the timer thread is already
+        // running, ensure the stored `Waker` matches the current task's waker.
+        if let Some(waker) = &self.waker {
+            let mut waker = waker.lock().unwrap();
+
+            // Check if the stored waker matches the current task's waker.
+            // This is necessary as the `Delay` future instance may move to
+            // a different task between calls to `poll`. If this happens, the
+            // waker contained by the given `Context` will differ and we
+            // must update our stored waker to reflect this change.
+            if !waker.will_wake(cx.waker()) {
+                *waker = cx.waker().clone();
+            }
+        } else {
+            let when = self.when;
+            let waker = Arc::new(Mutex::new(cx.waker().clone()));
+            self.waker = Some(waker.clone());
+
+            // This is the first time `poll` is called, spawn the timer thread.
+            thread::spawn(move || {
+                let now = Instant::now();
+
+                if now < when {
+                    thread::sleep(when - now);
+                }
+
+                // The duration has elapsed. Notify the caller by invoking
+                // the waker.
+                let waker = waker.lock().unwrap();
+                waker.wake_by_ref();
+            });
+        }
+
+        // By now, the waker is stored and the timer thread is started.
+        // The duration has not elapsed (recall that we checked for this
+        // first thing), ergo the future has not completed so we must
+        // return `Poll::Pending`.
+        //
+        // The `Future` trait contract requires that when `Pending` is
+        // returned, the future ensures that the given waker is signalled
+        // once the future should be polled again. In our case, by
+        // returning `Pending` here, we are promising that we will
+        // invoke the given waker included in the `Context` argument
+        // once the requested duration has elapsed. We ensure this by
+        // spawning the timer thread above.
+        //
+        // If we forget to invoke the waker, the task will hang
+        // indefinitely.
+        Poll::Pending
+    }
+}
+```
+
+It is a bit involved, but the idea is, on each call to `poll`, the future checks
+if the supplied waker matches the previously recorded waker. If the two wakers
+match, then there is nothing else to do. If they do not match, then the recorded
+waker must be updated.
+
+## `Notify` utility
+
+We demonstrated how a `Delay` future could be implemented by hand using wakers.
+Wakers are the foundation of how asynchronous Rust works. Usually, it is not
+necessary to drop down to that level. For example, in the case of `Delay`, we
+could implement it entirely with `async/await` by using the
+`tokio::sync::Notify` utility. This utility provides a basic task
+notification mechanism. It handles the details of wakers, including making sure
+that the recorded waker matches the current task.
+
+Using `Notify`, we can implement a `delay` function using
+`async/await` like this:
+
+```rust
+use tokio::sync::Notify;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use std::thread;
+
+async fn delay(dur: Duration) {
+    let when = Instant::now() + dur;
+    let notify = Arc::new(Notify::new());
+    let notify_clone = notify.clone();
+
+    thread::spawn(move || {
+        let now = Instant::now();
+
+        if now < when {
+            thread::sleep(when - now);
+        }
+
+        notify_clone.notify_one();
+    });
+
+    notify.notified().await;
+}
+```
+@@@ END
+
+@@@ USER
+Tokio question: Message passing. Show me how it works.
+@@@ ASSISTANT
+Now that we have learned a bit about concurrency with Tokio, let's apply this on
+the client side. Put the server code we wrote before into an explicit binary
+file:
+
+```bash
+$ mkdir src/bin
+$ mv src/main.rs src/bin/server.rs
+```
+
+and create a new binary file that will contain the client code:
+
+```bash
+$ touch src/bin/client.rs
+```
+
+In this file you will write this page's code. Whenever you want to run it,
+you will have to launch the server first in a separate terminal window:
+
+```bash
+$ cargo run --bin server
+```
+
+And then the client, __separately__:
+
+```bash
+$ cargo run --bin client
+```
+
+That being said, let's code!
+
+Say we want to run two concurrent Redis commands. We can spawn
+one task per command. Then the two commands would happen concurrently.
+
+At first, we might try something like:
+
+```rust
+use mini_redis::client;
+
+#[tokio::main]
+async fn main() {
+    // Establish a connection to the server
+    let mut client = client::connect("127.0.0.1:6379").await.unwrap();
+
+    // Spawn two tasks, one gets a key, the other sets a key
+    let t1 = tokio::spawn(async {
+        let res = client.get("foo").await;
+    });
+
+    let t2 = tokio::spawn(async {
+        client.set("foo", "bar".into()).await;
+    });
+
+    t1.await.unwrap();
+    t2.await.unwrap();
+}
+```
+
+This does not compile because both tasks need to access the `client` somehow.
+As `Client` does not implement `Copy`, it will not compile without some code to
+facilitate this sharing. Additionally, `Client::set` takes `&mut self`, which
+means that exclusive access is required to call it. We could open a connection
+per task, but that is not ideal. We cannot use `std::sync::Mutex` as `.await`
+would need to be called with the lock held. We could use `tokio::sync::Mutex`,
+but that would only allow a single in-flight request. If the client implements
+[pipelining] (in short, sending many commands without waiting for each prior
+command's response), an async mutex results in underutilizing
+the connection.
+
+# Message passing
+
+The answer is to use message passing. The pattern involves spawning a dedicated
+task to manage the `client` resource. Any task that wishes to issue a request
+sends a message to the `client` task. The `client` task issues the request on
+behalf of the sender, and the response is sent back to the sender.
+
+Using this strategy, a single connection is established. The task managing the
+`client` is able to get exclusive access in order to call `get` and `set`.
+Additionally, the channel works as a buffer. Operations may be sent to the
+`client` task while the `client` task is busy. Once the `client` task is
+available to process new requests, it pulls the next request from the channel.
+This can result in better throughput, and be extended to support connection
+pooling.
+
+# Tokio's channel primitives
+
+Tokio provides a number of channels, each serving a different purpose.
+
+- [mpsc]: multi-producer, single-consumer channel. Many values can be sent.
+- [oneshot]: single-producer, single consumer channel. A single value can be sent.
+- [broadcast]: multi-producer, multi-consumer. Many values can be sent. Each
+  receiver sees every value.
+- [watch]: multi-producer, multi-consumer. Many values can be sent, but no
+  history is kept. Receivers only see the most recent value.
+
+If you need a multi-producer multi-consumer channel where only one consumer sees
+each message, you can use the [`async-channel`] crate. There are also channels
+for use outside of asynchronous Rust, such as [`std::sync::mpsc`] and
+[`crossbeam::channel`]. These channels wait for messages by blocking the
+thread, which is not allowed in asynchronous code.
+
+In this section, we will use [mpsc] and [oneshot]. The other types of message
+passing channels are explored in later sections. The full code from this section
+is found here.
+
+# Define the message type
+
+In most cases, when using message passing, the task receiving the messages
+responds to more than one command. In our case, the task will respond to `GET` and
+`SET` commands. To model this, we first define a `Command` enum and include a
+variant for each command type.
+
+```rust
+use bytes::Bytes;
+
+#[derive(Debug)]
+enum Command {
+    Get {
+        key: String,
+    },
+    Set {
+        key: String,
+        val: Bytes,
+    }
+}
+```
+
+# Create the channel
+
+In the `main` function, an `mpsc` channel is created.
+
+```rust
+use tokio::sync::mpsc;
+
+#[tokio::main]
+async fn main() {
+    // Create a new channel with a capacity of at most 32.
+    let (tx, mut rx) = mpsc::channel(32);
+
+    // ... Rest comes here
+}
+```
+
+The `mpsc` channel is used to **send** commands to the task managing the redis
+connection. The multi-producer capability allows messages to be sent from many
+tasks. Creating the channel returns two values, a sender and a receiver. The two
+handles are used separately. They may be moved to different tasks.
+
+The channel is created with a capacity of 32. If messages are sent faster than
+they are received, the channel will store them. Once the 32 messages are stored
+in the channel, calling `send(...).await` will go to sleep until a message has
+been removed by the receiver.
+
+Sending from multiple tasks is done by **cloning** the `Sender`. For example:
+
+```rust
+use tokio::sync::mpsc;
+
+#[tokio::main]
+async fn main() {
+    let (tx, mut rx) = mpsc::channel(32);
+    let tx2 = tx.clone();
+
+    tokio::spawn(async move {
+        tx.send("sending from first handle").await.unwrap();
+    });
+
+    tokio::spawn(async move {
+        tx2.send("sending from second handle").await.unwrap();
+    });
+
+    while let Some(message) = rx.recv().await {
+        println!("GOT = {}", message);
+    }
+}
+```
+
+Both messages are sent to the single `Receiver` handle. It is not possible to
+clone the receiver of an `mpsc` channel.
+
+When every `Sender` has gone out of scope or has otherwise been dropped, it is
+no longer possible to send more messages into the channel. At this point, the
+`recv` call on the `Receiver` will return `None`, which means that all senders
+are gone and the channel is closed.
+
+In our case of a task that manages the Redis connection, it knows that it
+can close the Redis connection once the channel is closed, as the connection
+will not be used again.
+@@@ END
+
+@@@ USER
+How do I use Message passing: Spawn manager task with Tokio in Rust?
+@@@ ASSISTANT
+Next, spawn a task that processes messages from the channel. First, a client
+connection is established to Redis. Then, received commands are issued via the
+Redis connection.
+
+```rust
+use mini_redis::client;
+// The `move` keyword is used to **move** ownership of `rx` into the task.
+let manager = tokio::spawn(async move {
+    // Establish a connection to the server
+    let mut client = client::connect("127.0.0.1:6379").await.unwrap();
+
+    // Start receiving messages
+    while let Some(cmd) = rx.recv().await {
+        use Command::*;
+
+        match cmd {
+            Get { key } => {
+                client.get(&key).await;
+            }
+            Set { key, val } => {
+                client.set(&key, val).await;
+            }
+        }
+    }
+});
+```
+
+Now, update the two tasks to send commands over the channel instead of issuing
+them directly on the Redis connection.
+
+```rust
+// The `Sender` handles are moved into the tasks. As there are two
+// tasks, we need a second `Sender`.
+let tx2 = tx.clone();
+
+// Spawn two tasks, one gets a key, the other sets a key
+let t1 = tokio::spawn(async move {
+    let cmd = Command::Get {
+        key: "foo".to_string(),
+    };
+
+    tx.send(cmd).await.unwrap();
+});
+
+let t2 = tokio::spawn(async move {
+    let cmd = Command::Set {
+        key: "foo".to_string(),
+        val: "bar".into(),
+    };
+
+    tx2.send(cmd).await.unwrap();
+});
+````
+
+At the bottom of the `main` function, we `.await` the join handles to ensure the
+commands fully complete before the process exits.
+
+```rust
+t1.await.unwrap();
+t2.await.unwrap();
+manager.await.unwrap();
+```
+
+# Receive responses
+
+The final step is to receive the response back from the manager task. The `GET`
+command needs to get the value and the `SET` command needs to know if the
+operation completed successfully.
+
+To pass the response, a `oneshot` channel is used. The `oneshot` channel is a
+single-producer, single-consumer channel optimized for sending a single value.
+In our case, the single value is the response.
+
+Similar to `mpsc`, `oneshot::channel()` returns a sender and receiver handle.
+
+```rust
+use tokio::sync::oneshot;
+
+let (tx, rx) = oneshot::channel();
+```
+
+Unlike `mpsc`, no capacity is specified as the capacity is always one.
+Additionally, neither handle can be cloned.
+
+To receive responses from the manager task, before sending a command, a `oneshot`
+channel is created. The `Sender` half of the channel is included in the command
+to the manager task. The receive half is used to receive the response.
+
+First, update `Command` to include the `Sender`. For convenience, a type alias
+is used to reference the `Sender`.
+
+```rust
+use tokio::sync::oneshot;
+use bytes::Bytes;
+
+/// Multiple different commands are multiplexed over a single channel.
+#[derive(Debug)]
+enum Command {
+    Get {
+        key: String,
+        resp: Responder<Option<Bytes>>,
+    },
+    Set {
+        key: String,
+        val: Bytes,
+        resp: Responder<()>,
+    },
+}
+
+/// Provided by the requester and used by the manager task to send
+/// the command response back to the requester.
+type Responder<T> = oneshot::Sender<mini_redis::Result<T>>;
+```
+
+Now, update the tasks issuing the commands to include the `oneshot::Sender`.
+
+```rust
+let t1 = tokio::spawn(async move {
+    let (resp_tx, resp_rx) = oneshot::channel();
+    let cmd = Command::Get {
+        key: "foo".to_string(),
+        resp: resp_tx,
+    };
+
+    // Send the GET request
+    tx.send(cmd).await.unwrap();
+
+    // Await the response
+    let res = resp_rx.await;
+    println!("GOT = {:?}", res);
+});
+
+let t2 = tokio::spawn(async move {
+    let (resp_tx, resp_rx) = oneshot::channel();
+    let cmd = Command::Set {
+        key: "foo".to_string(),
+        val: "bar".into(),
+        resp: resp_tx,
+    };
+
+    // Send the SET request
+    tx2.send(cmd).await.unwrap();
+
+    // Await the response
+    let res = resp_rx.await;
+    println!("GOT = {:?}", res);
+});
+```
+
+Finally, update the manager task to send the response over the `oneshot` channel.
+
+```rust
+while let Some(cmd) = rx.recv().await {
+    match cmd {
+        Command::Get { key, resp } => {
+            let res = client.get(&key).await;
+            // Ignore errors
+            let _ = resp.send(res);
+        }
+        Command::Set { key, val, resp } => {
+            let res = client.set(&key, val).await;
+            // Ignore errors
+            let _ = resp.send(res);
+        }
+    }
+}
+```
+
+Calling `send` on `oneshot::Sender` completes immediately and does **not**
+require an `.await`. This is because `send` on a `oneshot` channel will always
+fail or succeed immediately without any form of waiting.
+
+Sending a value on a oneshot channel returns `Err` when the receiver half has
+dropped. This indicates the receiver is no longer interested in the response. In
+our scenario, the receiver cancelling interest is an acceptable event. The `Err`
+returned by `resp.send(...)` does not need to be handled.
+
+You can find the entire code here.
+
+# Backpressure and bounded channels
+
+Whenever concurrency or queuing is introduced, it is important to ensure that the
+queing is bounded and the system will gracefully handle the load. Unbounded queues
+will eventually fill up all available memory and cause the system to fail in
+unpredictable ways.
+
+Tokio takes care to avoid implicit queuing. A big part of this is the fact that
+async operations are lazy. Consider the following:
+
+```rust
+loop {
+    async_op();
+}
+```
+
+If the asynchronous operation runs eagerly, the loop will repeatedly queue a new
+`async_op` to run without ensuring the previous operation completed. This
+results in implicit unbounded queuing. Callback based systems and **eager**
+future based systems are particularly susceptible to this.
+
+However, with Tokio and asynchronous Rust, the above snippet will **not** result
+in `async_op` running at all. This is because `.await` is never called. If the
+snippet is updated to use `.await`, then the loop waits for the operation to
+complete before starting over.
+
+```rust
+loop {
+    // Will not repeat until `async_op` completes
+    async_op().await;
+}
+```
+
+Concurrency and queuing must be explicitly introduced. Ways to do this include:
+
+* `tokio::spawn`
+* `select!`
+* `join!`
+* `mpsc::channel`
+
+When doing so, take care to ensure the total amount of concurrency is bounded. For
+example, when writing a TCP accept loop, ensure that the total number of open
+sockets is bounded. When using `mpsc::channel`, pick a manageable channel
+capacity. Specific bound values will be application specific.
+
+Taking care and picking good bounds is a big part of writing reliable Tokio applications.
+@@@ END
+
+@@@ USER
+How do I use Buffered reads with Tokio in Rust?
+@@@ ASSISTANT
+We will now apply what we just learned about I/O and implement the Mini-Redis
+framing layer. Framing is the process of taking a byte stream and converting it
+to a stream of frames. A frame is a unit of data transmitted between two peers.
+The Redis protocol frame is defined as follows:
+
+```rust
+use bytes::Bytes;
+
+enum Frame {
+    Simple(String),
+    Error(String),
+    Integer(u64),
+    Bulk(Bytes),
+    Null,
+    Array(Vec<Frame>),
+}
+```
+
+Note how the frame only consists of data without any semantics. The command
+parsing and implementation happen at a higher level.
+
+For HTTP, a frame might look like:
+
+```rust
+enum HttpFrame {
+    RequestHead {
+        method: Method,
+        uri: Uri,
+        version: Version,
+        headers: HeaderMap,
+    },
+    ResponseHead {
+        status: StatusCode,
+        version: Version,
+        headers: HeaderMap,
+    },
+    BodyChunk {
+        chunk: Bytes,
+    },
+}
+```
+
+To implement framing for Mini-Redis, we will implement a `Connection` struct
+that wraps a `TcpStream` and reads/writes `mini_redis::Frame` values.
+
+```rust
+use tokio::net::TcpStream;
+use mini_redis::{Frame, Result};
+
+struct Connection {
+    stream: TcpStream,
+    // ... other fields here
+}
+
+impl Connection {
+    /// Read a frame from the connection.
+    /// 
+    /// Returns `None` if EOF is reached
+    pub async fn read_frame(&mut self)
+        -> Result<Option<Frame>>
+    {
+        // implementation here
+    }
+
+    /// Write a frame to the connection.
+    pub async fn write_frame(&mut self, frame: &Frame)
+        -> Result<()>
+    {
+        // implementation here
+    }
+}
+```
+
+You can find the details of the Redis wire protocol here. The full
+`Connection` code is found here.
+
+# Buffered reads
+
+The `read_frame` method waits for an entire frame to be received before
+returning. A single call to `TcpStream::read()` may return an arbitrary amount
+of data. It could contain an entire frame, a partial frame, or multiple frames.
+If a partial frame is received, the data is buffered and more data is read from
+the socket.  If multiple frames are received, the first frame is returned and
+the rest of the data is buffered until the next call to `read_frame`.
+
+If you haven't already, create a new file called `connection.rs`.
+
+```bash
+touch src/connection.rs
+```
+
+To implement this, `Connection` needs a read buffer field. Data is read from the
+socket into the read buffer. When a frame is parsed, the corresponding data is
+removed from the buffer.
+
+We will use `BytesMut` as the buffer type. This is a mutable version of
+`Bytes`.
+
+```rust
+use bytes::BytesMut;
+use tokio::net::TcpStream;
+
+pub struct Connection {
+    stream: TcpStream,
+    buffer: BytesMut,
+}
+
+impl Connection {
+    pub fn new(stream: TcpStream) -> Connection {
+        Connection {
+            stream,
+            // Allocate the buffer with 4kb of capacity.
+            buffer: BytesMut::with_capacity(4096),
+        }
+    }
+}
+```
+
+Next, we implement the `read_frame()` method.
+
+```rust
+use tokio::io::AsyncReadExt;
+use bytes::Buf;
+use mini_redis::Result;
+
+pub async fn read_frame(&mut self)
+    -> Result<Option<Frame>>
+{
+    loop {
+        // Attempt to parse a frame from the buffered data. If
+        // enough data has been buffered, the frame is
+        // returned.
+        if let Some(frame) = self.parse_frame()? {
+            return Ok(Some(frame));
+        }
+
+        // There is not enough buffered data to read a frame.
+        // Attempt to read more data from the socket.
+        //
+        // On success, the number of bytes is returned. `0`
+        // indicates "end of stream".
+        if 0 == self.stream.read_buf(&mut self.buffer).await? {
+            // The remote closed the connection. For this to be
+            // a clean shutdown, there should be no data in the
+            // read buffer. If there is, this means that the
+            // peer closed the socket while sending a frame.
+            if self.buffer.is_empty() {
+                return Ok(None);
+            } else {
+                return Err("connection reset by peer".into());
+            }
+        }
+    }
+}
+```
+
+Let's break this down. The `read_frame` method operates in a loop. First,
+`self.parse_frame()` is called. This will attempt to parse a redis frame from
+`self.buffer`. If there is enough data to parse a frame, the frame is returned
+to the caller of `read_frame()`.Otherwise, we attempt to read more data from the
+socket into the buffer. After reading more data, `parse_frame()` is called
+again. This time, if enough data has been received, parsing may succeed.
+
+When reading from the stream, a return value of `0` indicates that no more data
+will be received from the peer. If the read buffer still has data in it, this
+indicates a partial frame has been received and the connection is being
+terminated abruptly. This is an error condition and `Err` is returned.
+@@@ END
+
+@@@ USER
+How do I use Buffered reads: The `Buf` trait with Tokio in Rust?
+@@@ ASSISTANT
+When reading from the stream, `read_buf` is called. This version of the read
+function takes a value implementing [`BufMut`] from the [`bytes`] crate.
+
+First, consider how we would implement the same read loop using `read()`.
+`Vec<u8>` could be used instead of `BytesMut`.
+
+```rust
+use tokio::net::TcpStream;
+
+pub struct Connection {
+    stream: TcpStream,
+    buffer: Vec<u8>,
+    cursor: usize,
+}
+
+impl Connection {
+    pub fn new(stream: TcpStream) -> Connection {
+        Connection {
+            stream,
+            // Allocate the buffer with 4kb of capacity.
+            buffer: vec![0; 4096],
+            cursor: 0,
+        }
+    }
+}
+```
+
+And the `read_frame()` function on `Connection`:
+
+```rust
+use mini_redis::{Frame, Result};
+
+pub async fn read_frame(&mut self)
+    -> Result<Option<Frame>>
+{
+    loop {
+        if let Some(frame) = self.parse_frame()? {
+            return Ok(Some(frame));
+        }
+
+        // Ensure the buffer has capacity
+        if self.buffer.len() == self.cursor {
+            // Grow the buffer
+            self.buffer.resize(self.cursor * 2, 0);
+        }
+
+        // Read into the buffer, tracking the number
+        // of bytes read
+        let n = self.stream.read(
+            &mut self.buffer[self.cursor..]).await?;
+
+        if 0 == n {
+            if self.cursor == 0 {
+                return Ok(None);
+            } else {
+                return Err("connection reset by peer".into());
+            }
+        } else {
+            // Update our cursor
+            self.cursor += n;
+        }
+    }
+}
+```
+
+When working with byte arrays and `read`, we must also maintain a cursor
+tracking how much data has been buffered. We must make sure to pass the empty
+portion of the buffer to `read()`. Otherwise, we would overwrite buffered data.
+If our buffer gets filled up, we must grow the buffer in order to keep reading.
+In `parse_frame()` (not included), we would need to parse data contained by
+`self.buffer[..self.cursor]`.
+
+Because pairing a byte array with a cursor is very common, the `bytes` crate
+provides an abstraction representing a byte array and cursor. The `Buf` trait is
+implemented by types from which data can be read. The `BufMut` trait is
+implemented by types into which data can be written. When passing a `T: BufMut`
+to `read_buf()`, the buffer's internal cursor is automatically updated by
+`read_buf`. Because of this, in our version of `read_frame`, we do not need to
+manage our own cursor.
+
+Additionally, when using `Vec<u8>`, the buffer must be **initialized**. `vec![0;
+4096]` allocates an array of 4096 bytes and writes zero to every entry. When
+resizing the buffer, the new capacity must also be initialized with zeros. The
+initialization process is not free. When working with `BytesMut` and `BufMut`,
+capacity is **uninitialized**. The `BytesMut` abstraction prevents us from
+reading the uninitialized memory. This lets us avoid the initialization step.
+
+# Parsing
+
+Now, let's look at the `parse_frame()` function. Parsing is done in two steps.
+
+1. Ensure a full frame is buffered and find the end index of the frame.
+2. Parse the frame.
+
+The `mini-redis` crate provides us with a function for both of these steps:
+
+1. `Frame::check`
+2. `Frame::parse`
+
+We will also reuse the `Buf` abstraction to help. A `Buf` is passed into
+`Frame::check`. As the `check` function iterates the passed in buffer, the
+internal cursor will be advanced. When `check` returns, the buffer's internal
+cursor points to the end of the frame.
+
+For the `Buf` type, we will use [`std::io::Cursor<&[u8]>`][`Cursor`].
+
+```rust
+use mini_redis::{Frame, Result};
+use mini_redis::frame::Error::Incomplete;
+use bytes::Buf;
+use std::io::Cursor;
+
+fn parse_frame(&mut self)
+    -> Result<Option<Frame>>
+{
+    // Create the `T: Buf` type.
+    let mut buf = Cursor::new(&self.buffer[..]);
+
+    // Check whether a full frame is available
+    match Frame::check(&mut buf) {
+        Ok(_) => {
+            // Get the byte length of the frame
+            let len = buf.position() as usize;
+
+            // Reset the internal cursor for the
+            // call to `parse`.
+            buf.set_position(0);
+
+            // Parse the frame
+            let frame = Frame::parse(&mut buf)?;
+
+            // Discard the frame from the buffer
+            self.buffer.advance(len);
+
+            // Return the frame to the caller.
+            Ok(Some(frame))
+        }
+        // Not enough data has been buffered
+        Err(Incomplete) => Ok(None),
+        // An error was encountered
+        Err(e) => Err(e.into()),
+    }
+}
+```
+
+The full `Frame::check` function can be found here. We will
+not cover it in its entirety.
+
+The relevant thing to note is that `Buf`'s "byte iterator" style APIs are used.
+These fetch data and advance the internal cursor. For example, to parse a frame,
+the first byte is checked to determine the type of the frame. The function used
+is [`Buf::get_u8`]. This fetches the byte at the current cursor's position and
+advances the cursor by one.
+
+There are more useful methods on the [`Buf`] trait. Check the API docs
+for more details.
+@@@ END
+
+@@@ USER
+How do I use Buffered reads: Buffered writes with Tokio in Rust?
+@@@ ASSISTANT
+The other half of the framing API is the `write_frame(frame)` function. This
+function writes an entire frame to the socket. In order to minimize `write`
+syscalls, writes will be buffered. A write buffer is maintained and frames are
+encoded to this buffer before being written to the socket. However, unlike
+`read_frame()`, the entire frame is not always buffered to a byte array before
+writing to the socket.
+
+Consider a bulk stream frame. The value being written is `Frame::Bulk(Bytes)`.
+The wire format of a bulk frame is a frame head, which consists of the `$`
+character followed by the data length in bytes. The majority of the frame is the
+contents of the `Bytes` value. If the data is large, copying it to an
+intermediate buffer would be costly.
+
+To implement buffered writes, we will use the `BufWriter` struct.
+This struct is initialized with a `T: AsyncWrite` and implements `AsyncWrite`
+itself. When `write` is called on `BufWriter`, the write does not go directly to
+the inner writer, but to a buffer. When the buffer is full, the contents are
+flushed to the inner writer and the inner buffer is cleared. There are also
+optimizations that allow bypassing the buffer in certain cases.
+
+We will not attempt a full implementation of `write_frame()` as part of the
+tutorial. See the full implementation here.
+
+First, the `Connection` struct is updated:
+
+```rust
+use tokio::io::BufWriter;
+use tokio::net::TcpStream;
+use bytes::BytesMut;
+
+pub struct Connection {
+    stream: BufWriter<TcpStream>,
+    buffer: BytesMut,
+}
+
+impl Connection {
+    pub fn new(stream: TcpStream) -> Connection {
+        Connection {
+            stream: BufWriter::new(stream),
+            buffer: BytesMut::with_capacity(4096),
+        }
+    }
+}
+```
+
+Next, `write_frame()` is implemented.
+
+```rust
+use tokio::io::{self, AsyncWriteExt};
+use mini_redis::Frame;
+
+async fn write_frame(&mut self, frame: &Frame)
+    -> io::Result<()>
+{
+    match frame {
+        Frame::Simple(val) => {
+            self.stream.write_u8(b'+').await?;
+            self.stream.write_all(val.as_bytes()).await?;
+            self.stream.write_all(b"\r\n").await?;
+        }
+        Frame::Error(val) => {
+            self.stream.write_u8(b'-').await?;
+            self.stream.write_all(val.as_bytes()).await?;
+            self.stream.write_all(b"\r\n").await?;
+        }
+        Frame::Integer(val) => {
+            self.stream.write_u8(b':').await?;
+            self.write_decimal(*val).await?;
+        }
+        Frame::Null => {
+            self.stream.write_all(b"$-1\r\n").await?;
+        }
+        Frame::Bulk(val) => {
+            let len = val.len();
+
+            self.stream.write_u8(b'$').await?;
+            self.write_decimal(len as u64).await?;
+            self.stream.write_all(val).await?;
+            self.stream.write_all(b"\r\n").await?;
+        }
+        Frame::Array(_val) => unimplemented!(),
+    }
+
+    self.stream.flush().await;
+
+    Ok(())
+}
+```
+
+The functions used here are provided by [`AsyncWriteExt`]. They are available on
+`TcpStream` as well, but it would not be advisable to issue single byte writes
+without the intermediate buffer.
+
+* [`write_u8`] writes a single byte to the writer.
+* [`write_all`] writes the entire slice to the writer.
+* [`write_decimal`] is implemented by mini-redis.
+
+The function ends with a call to `self.stream.flush().await`. Because
+`BufWriter` stores writes in an intermediate buffer, calls to `write` do not
+guarantee that the data is written to the socket. Before returning, we want the
+frame to be written to the socket. The call to `flush()` writes any data pending
+in the buffer to the socket.
+
+Another alternative would be to **not** call `flush()` in `write_frame()`.
+Instead, provide a `flush()` function on `Connection`. This would allow the
+caller to write queue multiple small frames in the write buffer then write them
+all to the socket with one `write` syscall. Doing this complicates the
+`Connection` API. Simplicity is one of Mini-Redis' goals, so we decided to
+include the `flush().await` call in `fn write_frame()`.
+@@@ END
+
+@@@ USER
+Tokio question: The code. Show me how it works.
+@@@ ASSISTANT
+We will get started by writing a very basic Tokio application. It will connect
+to the Mini-Redis server, set the value of the key `hello` to `world`. It will
+then read back the key. This will be done using the Mini-Redis client library.
+
+# The code
+
+## Generate a new crate
+
+Let's start by generating a new Rust app:
+
+```bash
+$ cargo new my-redis
+$ cd my-redis
+```
+
+## Add dependencies
+
+Next, open `Cargo.toml` and add the following right below `[dependencies]`:
+
+```toml
+tokio = { version = "1", features = ["full"] }
+mini-redis = "0.4"
+```
+
+## Write the code
+
+Then, open `main.rs` and replace the contents of the file with:
+
+```rust
+use mini_redis::{client, Result};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Open a connection to the mini-redis address.
+    let mut client = client::connect("127.0.0.1:6379").await?;
+
+    // Set the key "hello" with value "world"
+    client.set("hello", "world".into()).await?;
+
+    // Get key "hello"
+    let result = client.get("hello").await?;
+
+    println!("got value from the server; result={:?}", result);
+
+    Ok(())
+}
+```
+
+Make sure the Mini-Redis server is running. In a separate terminal window, run:
+
+```bash
+$ mini-redis-server
+```
+
+If you have not already installed mini-redis, you can do so with
+
+```bash
+$ cargo install mini-redis
+```
+
+Now, run the `my-redis` application:
+
+```bash
+$ cargo run
+got value from the server; result=Some(b"world")
+```
+
+Success!
+
+You can find the full code here.
+
+# Breaking it down
+
+Let's take some time to go over what we just did. There isn't much code, but a
+lot is happening.
+
+```rust
+let mut client = client::connect("127.0.0.1:6379").await?;
+```
+
+The [`client::connect`] function is provided by the `mini-redis` crate. It
+asynchronously establishes a TCP connection with the specified remote address.
+Once the connection is established, a `client` handle is returned. Even though
+the operation is performed asynchronously, the code we write **looks**
+synchronous. The only indication that the operation is asynchronous is the
+`.await` operator.
+
+## What is asynchronous programming?
+
+Most computer programs are executed in the same order in which they are written.
+The first line executes, then the next, and so on.  With synchronous programming,
+when a program encounters an operation that cannot be completed immediately, it
+will block until the operation completes. For example, establishing a TCP
+connection requires an exchange with a peer over the network, which can take a
+sizeable amount of time. During this time, the thread is blocked.
+
+With asynchronous programming, operations that cannot complete immediately are
+suspended to the background. The thread is not blocked, and can continue running
+other things. Once the operation completes, the task is unsuspended and continues
+processing from where it left off. Our example from before only has one task, so
+nothing happens while it is suspended, but asynchronous programs typically have
+many such tasks.
+
+Although asynchronous programming can result in faster applications, it often
+results in much more complicated programs. The programmer is required to track
+all the state necessary to resume work once the asynchronous operation
+completes. Historically, this is a tedious and error-prone task.
+
+## Compile-time green-threading
+
+Rust implements asynchronous programming using a feature called [`async/await`].
+Functions that perform asynchronous operations are labeled with the `async`
+keyword. In our example, the `connect` function is defined like this:
+
+```rust
+use mini_redis::Result;
+use mini_redis::client::Client;
+use tokio::net::ToSocketAddrs;
+
+pub async fn connect<T: ToSocketAddrs>(addr: T) -> Result<Client> {
+    // ...
+}
+```
+
+The `async fn` definition looks like a regular synchronous function, but
+operates asynchronously. Rust transforms the `async fn` at **compile** time into
+a routine that operates asynchronously. Any calls to `.await` within the `async
+fn` yield control back to the thread. The thread may do other work while the
+operation processes in the background.
+
+> **warning**
+> Although other languages implement [`async/await`] too, Rust takes a unique
+> approach. Primarily, Rust's async operations are **lazy**. This results in
+> different runtime semantics than other languages.
+
+If this doesn't quite make sense yet, don't worry. We will explore `async/await`
+more throughout the guide.
+
+## Using `async/await`
+
+Async functions are called like any other Rust function. However, calling these
+functions does not result in the function body executing. Instead, calling an
+`async fn` returns a value representing the operation. This is conceptually
+analogous to a zero-argument closure. To actually run the operation, you should
+use the `.await` operator on the return value.
+
+For example, the given program
+
+```rust
+async fn say_world() {
+    println!("world");
+}
+
+#[tokio::main]
+async fn main() {
+    // Calling `say_world()` does not execute the body of `say_world()`.
+    let op = say_world();
+
+    // This println! comes first
+    println!("hello");
+
+    // Calling `.await` on `op` starts executing `say_world`.
+    op.await;
+}
+```
+
+outputs:
+
+```text
+hello
+world
+```
+
+The return value of an `async fn` is an anonymous type that implements the
+[`Future`] trait.
+
+## Async `main` function
+
+The main function used to launch the application differs from the usual one
+found in most of Rust's crates.
+
+1. It is an `async fn`
+2. It is annotated with `#[tokio::main]`
+
+An `async fn` is used as we want to enter an asynchronous context. However,
+asynchronous functions must be executed by a [runtime]. The runtime contains the
+asynchronous task scheduler, provides evented I/O, timers, etc. The runtime does
+not automatically start, so the main function needs to start it.
+
+The `#[tokio::main]` function is a macro. It transforms the `async fn main()`
+into a synchronous `fn main()` that initializes a runtime instance and executes
+the async main function.
+
+For example, the following:
+
+```rust
+#[tokio::main]
+async fn main() {
+    println!("hello");
+}
+```
+
+gets transformed into:
+
+```rust
+fn main() {
+    let mut rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        println!("hello");
+    })
+}
+```
+
+The details of the Tokio runtime will be covered later.
+
+## Cargo features
+
+When depending on Tokio for this tutorial, the `full` feature flag is enabled:
+
+```toml
+tokio = { version = "1", features = ["full"] }
+```
+
+Tokio has a lot of functionality (TCP, UDP, Unix sockets, timers, sync
+utilities, multiple scheduler types, etc). Not all applications need all
+functionality. When attempting to optimize compile time or the end application
+footprint, the application can decide to opt into **only** the features it uses.
+@@@ END
+
+@@@ USER
+Tokio question: Tokio's role in your project. Show me how it works.
+@@@ ASSISTANT
+Tokio is an asynchronous runtime for the Rust programming language. It provides
+the building blocks needed for writing networking applications. It gives the
+flexibility to target a wide range of systems, from large servers with dozens of
+cores to small embedded devices.
+
+At a high level, Tokio provides a few major components:
+
+ - A multi-threaded runtime for executing asynchronous code.
+ - An asynchronous version of the standard library.
+ - A large ecosystem of libraries.
+
+# Tokio's role in your project
+
+When you write your application in an asynchronous manner, you enable it to
+scale much better by reducing the cost of doing many things at the same time.
+However, asynchronous Rust code does not run on its own, so you must choose a
+runtime to execute it. The Tokio library is the most widely used runtime,
+surpassing all other runtimes in usage combined.
+
+Additionally, Tokio provides many useful utilities. When writing asynchronous
+code, you cannot use the ordinary blocking APIs provided by the Rust standard
+library, and must instead use asynchronous versions of them. These alternate
+versions are provided by Tokio, mirroring the API of the Rust standard library
+where it makes sense.
+
+# Advantages of Tokio
+
+This section will outline some advantages of Tokio.
+
+## Fast
+
+Tokio is _fast_, built on top of the Rust programming language, which itself is
+fast. This is done in the spirit of Rust with the goal that you should not be
+able to improve the performance by writing equivalent code by hand.
+
+Tokio is _scalable_, built on top of the async/await language feature, which
+itself is scalable. When dealing with networking, there's a limit to how fast
+you can handle a connection due to latency, so the only way to scale is to
+handle many connections at once. With the async/await language feature,
+increasing the number of concurrent operations becomes incredibly cheap,
+allowing you to scale to a large number of concurrent tasks.
+
+## Reliable
+
+Tokio is built using Rust, which is a language that empowers everyone
+to build reliable and efficient software. A number of
+studies have found that roughly ~70% of high severity security bugs
+are the result of memory unsafety. Using Rust eliminates this entire class of
+bugs in your applications.
+
+Tokio also focuses heavily on providing consistent behaviour with no surprises.
+Tokio's major goal is to allow users to deploy predictable software that will
+perform the same day in and day out with reliable response times and no
+unpredictable latency spikes.
+
+## Easy
+
+With Rust's async/await feature, the complexity of writing asynchronous
+applications has been lowered substantially. Paired with Tokio's utilities and
+vibrant ecosystem, writing applications is a breeze.
+
+Tokio follows the standard library's naming convention when it makes sense. This
+allows easily converting code written with only the standard library to code
+written with Tokio. With the strong type system of Rust, the ability to deliver
+correct code easily is unparalleled.
+
+## Flexible
+
+Tokio provides multiple variations of the runtime. Everything from a
+multi-threaded, [work-stealing] runtime to a light-weight, single-threaded
+runtime. Each of these runtimes come with many knobs to allow users to tune them
+to their needs.
+
+# When not to use Tokio
+
+Although Tokio is useful for many projects that need to do a lot of things
+simultaneously, there are also some use-cases where Tokio is not a good fit.
+
+ - Speeding up CPU-bound computations by running them in parallel on several
+   threads. Tokio is designed for IO-bound applications where each individual
+   task spends most of its time waiting for IO. If the only thing your
+   application does is run computations in parallel, you should be using
+   [rayon]. That said, it is still possible to "mix & match"
+   if you need to do both. See this blog post for a practical example.
+ - Reading a lot of files. Although it seems like Tokio would be useful for
+   projects that simply need to read a lot of files, Tokio provides no advantage
+   here compared to an ordinary threadpool. This is because operating systems
+   generally do not provide asynchronous file APIs.
+ - Sending a single web request. The place where Tokio gives you an advantage is
+   when you need to do many things at the same time. If you need to use a
+   library intended for asynchronous Rust such as [reqwest], but you don't need
+   to do a lot of things at once, you should prefer the blocking version of that
+   library, as it will make your project simpler. Using Tokio will still work,
+   of course, but provides no real advantage over the blocking API. If the
+   library doesn't provide a blocking API, see the chapter on    bridging with sync code.
+
+# Getting Help
+
+At any point, if you get stuck, you can always get help on [Discord] or GitHub discussions. Don't worry about asking "beginner" questions. We all start
+somewhere and are happy to help.
+@@@ END
+
+@@@ USER
+How do I use AsyncRead and AsyncWrite with Tokio in Rust?
+@@@ ASSISTANT
+I/O in Tokio operates in much the same way as in `std`, but asynchronously. There
+is a trait for reading ([`AsyncRead`]) and a trait for writing ([`AsyncWrite`]).
+Specific types implement these traits as appropriate ([`TcpStream`], [`File`],
+[`Stdout`]). [`AsyncRead`] and [`AsyncWrite`] are also implemented by a number
+of data structures, such as `Vec<u8>` and `&[u8]`. This allows using byte arrays
+where a reader or writer is expected.
+
+This page will cover basic I/O reading and writing with Tokio and work through a
+few examples. The next page will get into a more advanced I/O example.
+
+# `AsyncRead` and `AsyncWrite`
+
+These two traits provide the facilities to asynchronously read from and write to
+byte streams. The methods on these traits are typically not called directly,
+similar to how you don't manually call the `poll` method from the `Future`
+trait. Instead, you will use them through the utility methods provided by
+[`AsyncReadExt`] and [`AsyncWriteExt`].
+
+Let's briefly look at a few of these methods. All of these functions are `async`
+and must be used with `.await`.
+
+## `async fn read()`
+
+`AsyncReadExt::read` provides an async method for reading data into a
+buffer, returning the number of bytes read.
+
+**Note:** when `read()` returns `Ok(0)`, this signifies that the stream is
+closed. Any further calls to `read()` will complete immediately with `Ok(0)`.
+With [`TcpStream`] instances, this signifies that the read half of the socket is
+closed.
+
+```rust
+use tokio::fs::File;
+use tokio::io::{self, AsyncReadExt};
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let mut f = File::open("foo.txt").await?;
+    let mut buffer = [0; 10];
+
+    // read up to 10 bytes
+    let n = f.read(&mut buffer[..]).await?;
+
+    println!("The bytes: {:?}", &buffer[..n]);
+    Ok(())
+}
+```
+
+## `async fn read_to_end()`
+
+`AsyncReadExt::read_to_end` reads all bytes from the stream until
+EOF.
+
+```rust
+use tokio::io::{self, AsyncReadExt};
+use tokio::fs::File;
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let mut f = File::open("foo.txt").await?;
+    let mut buffer = Vec::new();
+
+    // read the whole file
+    f.read_to_end(&mut buffer).await?;
+    Ok(())
+}
+```
+
+## `async fn write()`
+
+`AsyncWriteExt::write` writes a buffer into the writer, returning how
+many bytes were written.
+
+```rust
+use tokio::io::{self, AsyncWriteExt};
+use tokio::fs::File;
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let mut file = File::create("foo.txt").await?;
+
+    // Writes some prefix of the byte string, but not necessarily all of it.
+    let n = file.write(b"some bytes").await?;
+
+    println!("Wrote the first {} bytes of 'some bytes'.", n);
+    Ok(())
+}
+```
+
+## `async fn write_all()`
+
+`AsyncWriteExt::write_all` writes the entire buffer into the
+writer.
+
+```rust
+use tokio::io::{self, AsyncWriteExt};
+use tokio::fs::File;
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let mut file = File::create("foo.txt").await?;
+
+    file.write_all(b"some bytes").await?;
+    Ok(())
+}
+```
+
+Both traits include a number of other helpful methods. See the API docs for a
+comprehensive list.
+
+# Helper functions
+
+Additionally, just like `std`, the [`tokio::io`] module contains a number of
+helpful utility functions as well as APIs for working with standard input,
+standard output and standard error. For example,
+`tokio::io::copy` asynchronously copies the entire contents of a reader
+into a writer.
+
+```rust
+use tokio::fs::File;
+use tokio::io;
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let mut reader: &[u8] = b"hello";
+    let mut file = File::create("foo.txt").await?;
+
+    io::copy(&mut reader, &mut file).await?;
+    Ok(())
+}
+```
+
+Note that this uses the fact that byte arrays also implement `AsyncRead`.
+
+# Echo server
+
+Let's practice doing some asynchronous I/O. We will be writing an echo server.
+
+The echo server binds a `TcpListener` and accepts inbound connections in a loop.
+For each inbound connection, data is read from the socket and written
+immediately back to the socket. The client sends data to the server and receives
+the exact same data back.
+
+We will implement the echo server twice, using slightly different strategies.
+
+## Using `io::copy()`
+
+To start, we will implement the echo logic using the `io::copy` utility.
+
+You can write up this code in a new binary file:
+
+```bash
+$ touch src/bin/echo-server-copy.rs
+```
+
+That you can launch (or just check the compilation) with:
+
+```bash
+$ cargo run --bin echo-server-copy
+```
+
+You will be able to try the server using a standard command-line tool such as `telnet`, or by writing
+a simple client like the one found in the documentation for `tokio::net::TcpStream`.
+
+This is a TCP server and needs an accept loop. A new task is spawned to process
+each accepted socket.
+
+```rust
+use tokio::io;
+use tokio::net::TcpListener;
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:6142").await?;
+
+    loop {
+        let (mut socket, _) = listener.accept().await?;
+
+        tokio::spawn(async move {
+            // Copy data here
+        });
+    }
+}
+```
+
+As seen earlier, this utility function takes a reader and a writer and copies
+data from one to the other. However, we only have a single `TcpStream`. This
+single value implements **both** `AsyncRead` and `AsyncWrite`. Because
+`io::copy` requires `&mut` for both the reader and the writer, the socket cannot
+be used for both arguments.
+
+```rust
+// This fails to compile
+io::copy(&mut socket, &mut socket).await
+```
+@@@ END
+
+@@@ USER
+How do I use AsyncRead and AsyncWrite: Splitting a reader + writer with Tokio in Rust?
+@@@ ASSISTANT
+To work around this problem, we must split the socket into a reader handle and a
+writer handle. The best way to split a reader/writer combo depends on the
+specific type.
+
+Any reader + writer type can be split using the `io::split` utility.
+This function takes a single value and returns separate reader and  writer
+handles. These two handles can be used independently, including from separate
+tasks.
+
+For example, the echo client could handle concurrent reads and writes like this:
+
+```rust
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let socket = TcpStream::connect("127.0.0.1:6142").await?;
+    let (mut rd, mut wr) = io::split(socket);
+
+    // Write data in the background
+    tokio::spawn(async move {
+        wr.write_all(b"hello\r\n").await?;
+        wr.write_all(b"world\r\n").await?;
+
+        // Explicitly shut down the write half to signal EOF to the peer;
+        // `io::split` does not close the connection on drop.
+        wr.shutdown().await?;
+
+        // Sometimes, the rust type inferencer needs
+        // a little help
+        Ok::<_, io::Error>(())
+    });
+
+    let mut buf = vec![0; 128];
+
+    loop {
+        let n = rd.read(&mut buf).await?;
+
+        if n == 0 {
+            break;
+        }
+
+        println!("GOT {:?}", &buf[..n]);
+    }
+
+    Ok(())
+}
+```
+
+Because `io::split` supports **any** value that implements `AsyncRead +
+AsyncWrite` and returns independent handles, internally `io::split` uses an
+`Arc` and a `Mutex`. This overhead can be avoided with `TcpStream`. `TcpStream`
+offers two specialized split functions.
+
+[`TcpStream::split`] takes a **reference** to the stream and returns a reader
+and writer handle. Because a reference is used, both handles must stay on the
+**same** task that `split()` was called from. This specialized `split` is
+zero-cost. There is no `Arc` or `Mutex` needed. `TcpStream` also provides
+[`into_split`] which supports handles that can move across tasks at the cost of
+only an `Arc`.
+
+Because `io::copy()` is called on the same task that owns the `TcpStream`, we
+can use [`TcpStream::split`]. The task that processes the echo logic in the server becomes:
+
+```rust
+tokio::spawn(async move {
+    let (mut rd, mut wr) = socket.split();
+    
+    if io::copy(&mut rd, &mut wr).await.is_err() {
+        eprintln!("failed to copy");
+    }
+});
+```
+
+You can find the entire code here.
+
+## Manual copying
+
+Now let's look at how we would write the echo server by copying the data
+manually. To do this, we use `AsyncReadExt::read` and
+`AsyncWriteExt::write_all`.
+
+The full echo server is as follows:
+
+```rust
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:6142").await?;
+
+    loop {
+        let (mut socket, _) = listener.accept().await?;
+
+        tokio::spawn(async move {
+            let mut buf = vec![0; 1024];
+
+            loop {
+                match socket.read(&mut buf).await {
+                    // Return value of `Ok(0)` signifies that the remote has
+                    // closed
+                    Ok(0) => return,
+                    Ok(n) => {
+                        // Copy the data back to socket
+                        if socket.write_all(&buf[..n]).await.is_err() {
+                            // Unexpected socket error. There isn't much we can
+                            // do here so just stop processing.
+                            return;
+                        }
+                    }
+                    Err(_) => {
+                        // Unexpected socket error. There isn't much we can do
+                        // here so just stop processing.
+                        return;
+                    }
+                }
+            }
+        });
+    }
+}
+```
+
+(You can put this code into `src/bin/echo-server.rs` and launch it with
+`cargo run --bin echo-server`).
+
+Let's break it down. First, since the `AsyncRead` and `AsyncWrite` utilities are
+used, the extension traits must be brought into scope.
+
+```rust
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+```
+
+## Allocating a buffer
+
+The strategy is to read some data from the socket into a buffer then write the
+contents of the buffer back to the socket.
+
+```rust
+let mut buf = vec![0; 1024];
+```
+
+A stack buffer is explicitly avoided. Recall from earlier, we noted that
+all task data that lives across calls to `.await` must be stored by the task. In
+this case, `buf` is used across `.await` calls. All task data is stored in a
+single allocation. You can think of it as an `enum` where each variant is the
+data that needs to be stored for a specific call to `.await`.
+
+If the buffer is represented by a stack array, the internal structure for tasks
+spawned per accepted socket might look something like:
+
+```rust
+struct Task {
+    // internal task fields here
+    task: enum {
+        AwaitingRead {
+            socket: TcpStream,
+            buf: [BufferType],
+        },
+        AwaitingWriteAll {
+            socket: TcpStream,
+            buf: [BufferType],
+        }
+
+    }
+}
+```
+
+If a stack array is used as the buffer type, it will be stored *inline* in the
+task structure. This will make the task structure very big. Additionally, buffer
+sizes are often page sized. This will, in turn, make `Task` an awkward size:
+`$page-size + a-few-bytes`.
+
+The compiler optimizes the layout of async blocks further than a basic `enum`.
+In practice, variables are not moved around between variants as would be
+required with an `enum`. However, the task struct size is at least as big as the
+largest variable.
+
+Because of this, it is usually more efficient to use a dedicated allocation for
+the buffer.
+
+## Handling EOF
+
+When the read half of the TCP stream is shut down, a call to `read()` returns
+`Ok(0)`. It is important to exit the read loop at this point. Forgetting to
+break from the read loop on EOF is a common source of bugs.
+
+```rust
+loop {
+    match socket.read(&mut buf).await {
+        // Return value of `Ok(0)` signifies that the remote has
+        // closed
+        Ok(0) => return,
+        // ... other cases handled here
+    }
+}
+```
+
+Forgetting to break from the read loop usually results in a 100% CPU infinite
+loop situation. As the socket is closed, `socket.read()` returns immediately.
+The loop then repeats forever.
+
+Full code can be found here.
+@@@ END
+
+@@@ USER
+How do I use tokio::select! with Tokio in Rust?
+@@@ ASSISTANT
+So far, when we wanted to add concurrency to the system, we spawned a new task.
+We will now cover some additional ways to concurrently execute asynchronous code
+with Tokio.
+
+# `tokio::select!`
+
+The `tokio::select!` macro allows waiting on multiple async computations and
+returns when a **single** computation completes.
+
+For example:
+
+```rust
+use tokio::sync::oneshot;
+
+#[tokio::main]
+async fn main() {
+    let (tx1, rx1) = oneshot::channel();
+    let (tx2, rx2) = oneshot::channel();
+
+    tokio::spawn(async {
+        let _ = tx1.send("one");
+    });
+
+    tokio::spawn(async {
+        let _ = tx2.send("two");
+    });
+
+    tokio::select! {
+        val = rx1 => {
+            println!("rx1 completed first with {:?}", val);
+        }
+        val = rx2 => {
+            println!("rx2 completed first with {:?}", val);
+        }
+    }
+}
+```
+
+Two oneshot channels are used. Either channel could complete first. The
+`select!` statement awaits on both channels and binds `val` to the value
+returned by the task. When either `tx1` or `tx2` complete, the associated block
+is executed.
+
+The branch that **does not** complete is dropped. In the example, the
+computation is awaiting the `oneshot::Receiver` for each channel. The
+`oneshot::Receiver` for the channel that did not complete yet is dropped.
+
+## Cancellation
+
+With asynchronous Rust, cancellation is performed by dropping a future. Recall
+from "Async in depth", async Rust operation are implemented using
+futures and futures are lazy. The operation only proceeds when the future is
+polled. If the future is dropped, the operation cannot proceed because all
+associated state has been dropped.
+
+That said, sometimes an asynchronous operation will spawn background tasks or
+start other operation that run in the background. For example, in the above
+example, a task is spawned to send a message back. Usually, the task will
+perform some computation to generate the value.
+
+Futures or other types can implement `Drop` to cleanup background resources.
+Tokio's `oneshot::Receiver` implements `Drop` by sending a closed notification to
+the `Sender` half. The sender half can receive this notification and abort the
+in-progress operation by dropping it.
+
+```rust
+use tokio::sync::oneshot;
+
+async fn some_operation() -> String {
+    // Compute value here
+}
+
+#[tokio::main]
+async fn main() {
+    let (mut tx1, rx1) = oneshot::channel();
+    let (tx2, rx2) = oneshot::channel();
+
+    tokio::spawn(async {
+        // Select on the operation and the oneshot's
+        // `closed()` notification.
+        tokio::select! {
+            val = some_operation() => {
+                let _ = tx1.send(val);
+            }
+            _ = tx1.closed() => {
+                // `some_operation()` is canceled, the
+                // task completes and `tx1` is dropped.
+            }
+        }
+    });
+
+    tokio::spawn(async {
+        let _ = tx2.send("two");
+    });
+
+    tokio::select! {
+        val = rx1 => {
+            println!("rx1 completed first with {:?}", val);
+        }
+        val = rx2 => {
+            println!("rx2 completed first with {:?}", val);
+        }
+    }
+}
+```
+
+## The `Future` implementation
+
+To help better understand how `select!` works, let's look at what a hypothetical
+`Future` implementation would look like. This is a simplified version. In
+practice, `select!` includes additional functionality like randomly selecting
+the branch to poll first.
+
+```rust
+use tokio::sync::oneshot;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+struct MySelect {
+    rx1: oneshot::Receiver<&'static str>,
+    rx2: oneshot::Receiver<&'static str>,
+}
+
+impl Future for MySelect {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        if let Poll::Ready(val) = Pin::new(&mut self.rx1).poll(cx) {
+            println!("rx1 completed first with {:?}", val);
+            return Poll::Ready(());
+        }
+
+        if let Poll::Ready(val) = Pin::new(&mut self.rx2).poll(cx) {
+            println!("rx2 completed first with {:?}", val);
+            return Poll::Ready(());
+        }
+
+        Poll::Pending
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let (tx1, rx1) = oneshot::channel();
+    let (tx2, rx2) = oneshot::channel();
+
+    // use tx1 and tx2
+
+    MySelect {
+        rx1,
+        rx2,
+    }.await;
+}
+```
+
+The `MySelect` future contains the futures from each branch. When `MySelect` is
+polled, the first branch is polled. If it is ready, the value is used and
+`MySelect` completes. After `.await` receives the output from a future, the
+future is dropped. This results in the futures for both branches to be dropped.
+As one branch did not complete, the operation is effectively cancelled.
+
+Remember from the previous section:
+
+> When a future returns `Poll::Pending`, it **must** ensure the waker is
+> signalled at some point in the future. Forgetting to do this results in the
+> task hanging indefinitely.
+
+There is no explicit usage of the `Context` argument in the `MySelect`
+implementation. Instead, the waker requirement is met by passing `cx` to the
+inner futures. As the inner future must also meet the waker requirement, by only
+returning `Poll::Pending` when receiving `Poll::Pending` from an inner future,
+`MySelect` also meets the waker requirement.
+@@@ END
+
+@@@ USER
+Explain tokio::select!: Syntax in Tokio.
+@@@ ASSISTANT
+The `select!` macro can handle more than two branches. The current limit is 64
+branches. Each branch is structured as:
+
+```text
+<pattern> = <async expression> => <handler>,
+```
+
+When the `select` macro is evaluated, all the `<async expression>`s are
+aggregated and executed concurrently. When an expression completes, the result
+is matched against `<pattern>`. If the result matches the pattern, then all
+remaining async expressions are dropped and `<handler>` is executed. The
+`<handler>` expression has access to any bindings established by `<pattern>`.
+
+The basic case for `<pattern>` is a variable name, the result of the async
+expression is bound to the variable name and `<handler>` has access to that
+variable. This is why, in the original example, `val` was used for `<pattern>`
+and `<handler>` was able to access `val`.
+
+If `<pattern>` **does not** match the result of the async computation, then the
+remaining async expressions continue to execute concurrently until the next one
+completes. At this time, the same logic is applied to that result.
+
+Because `select!` takes any async expression, it is possible to define more
+complicated computations to select on.
+
+Here, we select on the output of a `oneshot` channel and a TCP connection.
+
+```rust
+use tokio::net::TcpStream;
+use tokio::sync::oneshot;
+
+#[tokio::main]
+async fn main() {
+    let (tx, rx) = oneshot::channel();
+
+    // Spawn a task that sends a message over the oneshot
+    tokio::spawn(async move {
+        tx.send("done").unwrap();
+    });
+
+    tokio::select! {
+        socket = TcpStream::connect("localhost:3465") => {
+            println!("Socket connected {:?}", socket);
+        }
+        msg = rx => {
+            println!("received message first {:?}", msg);
+        }
+    }
+}
+```
+
+Here, we select on a oneshot and accepting sockets from a `TcpListener`.
+
+```rust
+use tokio::net::TcpListener;
+use tokio::sync::oneshot;
+use std::io;
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let (tx, rx) = oneshot::channel();
+
+    tokio::spawn(async move {
+        tx.send(()).unwrap();
+    });
+
+    let mut listener = TcpListener::bind("localhost:3465").await?;
+
+    tokio::select! {
+        _ = async {
+            loop {
+                let (socket, _) = listener.accept().await?;
+                tokio::spawn(async move { process(socket) });
+            }
+
+            // Help the rust type inferencer out
+            Ok::<_, io::Error>(())
+        } => {}
+        _ = rx => {
+            println!("terminating accept loop");
+        }
+    }
+
+    Ok(())
+}
+```
+
+The accept loop runs until an error is encountered or `rx` receives a value. The
+`_` pattern indicates that we have no interest in the return value of the async
+computation.
+
+# Return value
+
+The `tokio::select!` macro returns the result of the evaluated `<handler>` expression.
+
+```rust
+async fn computation1() -> String {
+    // .. computation
+}
+
+async fn computation2() -> String {
+    // .. computation
+}
+
+#[tokio::main]
+async fn main() {
+    let out = tokio::select! {
+        res1 = computation1() => res1,
+        res2 = computation2() => res2,
+    };
+
+    println!("Got = {}", out);
+}
+```
+
+Because of this, it is required that the `<handler>` expression for **each**
+branch evaluates to the same type. If the output of a `select!` expression is
+not needed, it is good practice to have the expression evaluate to `()`.
+
+# Errors
+
+Using the `?` operator propagates the error from the expression. How this works
+depends on whether `?` is used from an async expression or from a handler.
+Using `?` in an async expression propagates the error out of the async
+expression. This makes the output of the async expression a `Result`. Using `?`
+from a handler immediately propagates the error out of the `select!` expression.
+Let's look at the accept loop example again:
+
+```rust
+use tokio::net::TcpListener;
+use tokio::sync::oneshot;
+use std::io;
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    // [setup `rx` oneshot channel]
+
+    let listener = TcpListener::bind("localhost:3465").await?;
+
+    tokio::select! {
+        res = async {
+            loop {
+                let (socket, _) = listener.accept().await?;
+                tokio::spawn(async move { process(socket) });
+            }
+
+            // Help the rust type inferencer out
+            Ok::<_, io::Error>(())
+        } => {
+            res?;
+        }
+        _ = rx => {
+            println!("terminating accept loop");
+        }
+    }
+
+    Ok(())
+}
+```
+
+Notice `listener.accept().await?`. The `?` operator propagates the error out of
+that expression and to the `res` binding. On an error, `res` will be set to
+`Err(_)`. Then, in the handler, the `?` operator is used again. The `res?`
+statement will propagate an error out of the `main` function.
+
+# Pattern matching
+
+Recall that the `select!` macro branch syntax was defined as:
+
+```text
+<pattern> = <async expression> => <handler>,
+```
+
+So far, we have only used variable bindings for `<pattern>`. However, any Rust
+pattern can be used. For example, say we are receiving from multiple MPSC
+channels, we might do something like this:
+
+```rust
+use tokio::sync::mpsc;
+
+#[tokio::main]
+async fn main() {
+    let (mut tx1, mut rx1) = mpsc::channel(128);
+    let (mut tx2, mut rx2) = mpsc::channel(128);
+
+    tokio::spawn(async move {
+        // Do something w/ `tx1` and `tx2`
+    });
+
+    tokio::select! {
+        Some(v) = rx1.recv() => {
+            println!("Got {:?} from rx1", v);
+        }
+        Some(v) = rx2.recv() => {
+            println!("Got {:?} from rx2", v);
+        }
+        else => {
+            println!("Both channels closed");
+        }
+    }
+}
+```
+
+In this example, the `select!` expression waits on receiving a value from `rx1`
+and `rx2`. If a channel closes, `recv()` returns `None`. This **does not** match
+the pattern and the branch is disabled. The `select!` expression will continue
+waiting on the remaining branches.
+
+Notice that this `select!` expression includes an `else` branch. The `select!`
+expression must evaluate to a value. When using pattern matching, it is possible
+that **none** of the branches match their associated patterns. If this happens,
+the `else` branch is evaluated.
+@@@ END
+
+@@@ USER
+Explain tokio::select!: Borrowing in Tokio.
+@@@ ASSISTANT
+When spawning tasks, the spawned async expression must own all of its data. The
+`select!` macro does not have this limitation. Each branch's async expression
+may borrow data and operate concurrently. Following Rust's borrow rules,
+multiple async expressions may immutably borrow a single piece of data **or** a
+single async expression may mutably borrow a piece of data.
+
+Let's look at some examples. Here, we simultaneously send the same data to two
+different TCP destinations.
+
+```rust
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
+use std::io;
+use std::net::SocketAddr;
+
+async fn race(
+    data: &[u8],
+    addr1: SocketAddr,
+    addr2: SocketAddr
+) -> io::Result<()> {
+    tokio::select! {
+        Ok(_) = async {
+            let mut socket = TcpStream::connect(addr1).await?;
+            socket.write_all(data).await?;
+            Ok::<_, io::Error>(())
+        } => {}
+        Ok(_) = async {
+            let mut socket = TcpStream::connect(addr2).await?;
+            socket.write_all(data).await?;
+            Ok::<_, io::Error>(())
+        } => {}
+        else => {}
+    };
+
+    Ok(())
+}
+```
+
+The `data` variable is being borrowed **immutably** from both async expressions.
+When one of the operations completes successfully, the other one is dropped.
+Because we pattern match on `Ok(_)`, if an expression fails, the other one
+continues to execute.
+
+When it comes to each branch's `<handler>`, `select!` guarantees that only a
+single `<handler>` runs. Because of this, each `<handler>` may mutably borrow
+the same data.
+
+For example this modifies `out` in both handlers:
+
+```rust
+use tokio::sync::oneshot;
+
+#[tokio::main]
+async fn main() {
+    let (tx1, rx1) = oneshot::channel();
+    let (tx2, rx2) = oneshot::channel();
+
+    let mut out = String::new();
+
+    tokio::spawn(async move {
+        // Send values on `tx1` and `tx2`.
+    });
+
+    tokio::select! {
+        _ = rx1 => {
+            out.push_str("rx1 completed");
+        }
+        _ = rx2 => {
+            out.push_str("rx2 completed");
+        }
+    }
+
+    println!("{}", out);
+}
+```
+
+# Loops
+
+The `select!` macro is often used in loops. This section will go over some
+examples to show common ways of using the `select!` macro in a loop. We start
+by selecting over multiple channels:
+
+```rust
+use tokio::sync::mpsc;
+
+#[tokio::main]
+async fn main() {
+    let (tx1, mut rx1) = mpsc::channel(128);
+    let (tx2, mut rx2) = mpsc::channel(128);
+    let (tx3, mut rx3) = mpsc::channel(128);
+
+    loop {
+        let msg = tokio::select! {
+            Some(msg) = rx1.recv() => msg,
+            Some(msg) = rx2.recv() => msg,
+            Some(msg) = rx3.recv() => msg,
+            else => { break }
+        };
+
+        println!("Got {:?}", msg);
+    }
+
+    println!("All channels have been closed.");
+}
+```
+
+This example selects over the three channel receivers. When a message is
+received on any channel, it is written to STDOUT. When a channel is closed,
+`recv()` returns with `None`. By using pattern matching, the `select!`
+macro continues waiting on the remaining channels. When all channels are
+closed, the `else` branch is evaluated and the loop is terminated.
+
+The `select!` macro randomly picks branches to check first for readiness. When
+multiple channels have pending values, a random channel will be picked to
+receive from. This is to handle the case where the receive loop processes
+messages slower than they are pushed into the channels, meaning that the
+channels start to fill up. If `select!` **did not** randomly pick a branch
+to check first, on each iteration of the loop, `rx1` would be checked first. If
+`rx1` always contained a new message, the remaining channels would never be
+checked.
+
+> **info**
+> If when `select!` is evaluated, multiple channels have pending messages, only
+> one channel has a value popped. All other channels remain untouched, and their
+> messages stay in those channels until the next loop iteration. No messages are
+> lost.
+
+## Resuming an async operation
+
+Now we will show how to run an asynchronous operation across multiple calls to
+`select!`. In this example, we have an MPSC channel with item type `i32`, and an
+asynchronous function. We want to run the asynchronous function until it
+completes or an even integer is received on the channel.
+
+```rust
+async fn action() {
+    // Some asynchronous logic
+}
+
+#[tokio::main]
+async fn main() {
+    let (mut tx, mut rx) = tokio::sync::mpsc::channel(128);    
+    
+    let operation = action();
+    tokio::pin!(operation);
+    
+    loop {
+        tokio::select! {
+            _ = &mut operation => break,
+            Some(v) = rx.recv() => {
+                if v % 2 == 0 {
+                    break;
+                }
+            }
+        }
+    }
+}
+```
+
+Note how, instead of calling `action()` in the `select!` macro, it is called
+**outside** the loop. The return of `action()` is assigned to `operation`
+**without** calling `.await`. Then we call `tokio::pin!` on `operation`.
+
+Inside the `select!` loop, instead of passing in `operation`, we pass in `&mut
+operation`. The `operation` variable is tracking the in-flight asynchronous
+operation. Each iteration of the loop uses the same operation instead of issuing
+a new call to `action()`.
+
+The other `select!` branch receives a message from the channel. If the message
+is even, we are done looping. Otherwise, start the `select!` again.
+
+This is the first time we use `tokio::pin!`. We aren't going to get into the
+details of pinning yet. The thing to note is that, to `.await` a reference,
+the value being referenced must be pinned or implement `Unpin`.
+
+If we remove the `tokio::pin!` line and try to compile, we get the following
+error:
+
+```text
+error[E0599]: no method named `poll` found for struct
+     `std::pin::Pin<&mut &mut impl std::future::Future>`
+     in the current scope
+  --> src/main.rs:16:9
+   |
+16 | /         tokio::select! {
+17 | |             _ = &mut operation => break,
+18 | |             Some(v) = rx.recv() => {
+19 | |                 if v % 2 == 0 {
+...  |
+22 | |             }
+23 | |         }
+   | |_________^ method not found in
+   |             `std::pin::Pin<&mut &mut impl std::future::Future>`
+   |
+   = note: the method `poll` exists but the following trait bounds
+            were not satisfied:
+           `impl std::future::Future: std::marker::Unpin`
+           which is required by
+           `&mut impl std::future::Future: std::future::Future`
+```
+
+Although we covered `Future` in the previous chapter, this error still isn't
+very clear. If you hit such an error about `Future` not being implemented when attempting
+to call `.await` on a **reference**, then the future probably needs to be pinned.
+
+Read more about `Pin` on the standard library.
+@@@ END
+
+@@@ USER
+How do I use tokio::select!: Modifying a branch with Tokio in Rust?
+@@@ ASSISTANT
+Let's look at a slightly more complicated loop. We have:
+
+1. A channel of `i32` values.
+2. An async operation to perform on `i32` values.
+
+The logic we want to implement is:
+
+1. Wait for an **even** number on the channel.
+2. Start the asynchronous operation using the even number as input.
+3. Wait for the operation, but at the same time listen for more even numbers on
+   the channel.
+4. If a new even number is received before the existing operation completes,
+   abort the existing operation and start it over with the new even number.
+
+```rust
+async fn action(input: Option<i32>) -> Option<String> {
+    // If the input is `None`, return `None`.
+    // This could also be written as `let i = input?;`
+    let i = match input {
+        Some(input) => input,
+        None => return None,
+    };
+    // async logic here
+}
+
+#[tokio::main]
+async fn main() {
+    let (mut tx, mut rx) = tokio::sync::mpsc::channel(128);
+    
+    let mut done = false;
+    let operation = action(None);
+    tokio::pin!(operation);
+    
+    tokio::spawn(async move {
+        let _ = tx.send(1).await;
+        let _ = tx.send(3).await;
+        let _ = tx.send(2).await;
+    });
+    
+    loop {
+        tokio::select! {
+            res = &mut operation, if !done => {
+                done = true;
+
+                if let Some(v) = res {
+                    println!("GOT = {}", v);
+                    return;
+                }
+            }
+            Some(v) = rx.recv() => {
+                if v % 2 == 0 {
+                    // `.set` is a method on `Pin`.
+                    operation.set(action(Some(v)));
+                    done = false;
+                }
+            }
+        }
+    }
+}
+```
+
+We use a similar strategy as the previous example. The async fn is called
+outside of the loop and assigned to `operation`. The `operation` variable is
+pinned. The loop selects on both `operation` and the channel receiver.
+
+Notice how `action` takes `Option<i32>` as an argument. Before we receive the
+first even number, we need to instantiate `operation` to something. We make
+`action` take `Option` and return `Option`. If `None` is passed in, `None` is
+returned. The first loop iteration, `operation` completes immediately with
+`None`.
+
+This example uses some new syntax. The first branch includes `, if !done`. This
+is a branch precondition. Before explaining how it works, let's look at what
+happens if the precondition is omitted. Leaving out `, if !done` and running the
+example results in the following output:
+
+```text
+thread 'main' panicked at '`async fn` resumed after completion', src/main.rs:1:55
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+```
+
+This error happens when attempting to use `operation` **after** it has already
+completed. Usually, when using `.await`, the value being awaited is consumed. In
+this example, we await on a reference. This means `operation` is still around
+after it has completed.
+
+To avoid this panic, we must take care to disable the first branch if
+`operation` has completed. The `done` variable is used to track whether or not
+`operation` completed. A `select!` branch may include a **precondition**. This
+precondition is checked **before** `select!` awaits on the branch. If the
+condition evaluates to `false` then the branch is disabled. The `done` variable
+is initialized to `false`. When `operation` completes, `done` is set to `true`.
+The next loop iteration will disable the `operation` branch. When an even
+message is received from the channel, `operation` is reset and `done` is set to
+`false`.
+
+# Per-task concurrency
+
+Both `tokio::spawn` and `select!` enable running concurrent asynchronous
+operations. However, the strategy used to run concurrent operations differs. The
+`tokio::spawn` function takes an asynchronous operation and spawns a new task to
+run it. A task is the object that the Tokio runtime schedules. Two different
+tasks are scheduled independently by Tokio. They may run simultaneously on
+different operating system threads. Because of this, a spawned task has the same
+restriction as a spawned thread: no borrowing.
+
+The `select!` macro runs all branches concurrently **on the same task**. Because
+all branches of the `select!` macro are executed on the same task, they will
+never run **simultaneously**. The `select!` macro multiplexes asynchronous
+operations on a single task.
+@@@ END
+
+@@@ USER
+Explain Mini-Redis in Tokio.
+@@@ ASSISTANT
+This tutorial will take you step by step through the process of building a
+[Redis] client and server. We will start with the basics of asynchronous
+programming with Rust and build up from there. We will implement a subset of
+Redis commands but will get a comprehensive tour of Tokio.
+
+# Mini-Redis
+
+The project that you will build in this tutorial is available as Mini-Redis on GitHub. Mini-Redis is designed with the primary goal of learning
+Tokio, and is therefore very well commented, but this also means that Mini-Redis
+is missing some features you would want in a real Redis library. You can find
+production-ready Redis libraries on crates.io.
+
+We will use Mini-Redis directly in the tutorial. This allows us to use parts of
+Mini-Redis in the tutorial before we implement them later in the tutorial.
+
+# Getting Help
+
+At any point, if you get stuck, you can always get help on [Discord] or GitHub discussions. Don't worry about asking "beginner" questions. We all start
+somewhere and are happy to help.
+
+# Prerequisites
+
+Readers should already be familiar with [Rust]. The Rust book is an
+excellent resource to get started with.
+
+While not required, some experience with writing networking code using the Rust standard library or another language can be helpful.
+
+No pre-existing knowledge of Redis is required.
+
+## Rust
+
+Before getting started, you should make sure that you have the
+Rust toolchain installed and ready to go. If you don't have it,
+the easiest way to install it is using [rustup].
+
+This tutorial requires a minimum of Rust version `1.45.0`, but the most
+recent stable version of Rust is recommended.
+
+To check that Rust is installed on your computer, run the following:
+
+```bash
+$ rustc --version
+```
+
+You should see output like `rustc 1.46.0 (04488afe3 2020-08-24)`.
+
+## Mini-Redis server
+
+Next, install the Mini-Redis server. This will be used to test our client as we
+build it.
+
+```bash
+$ cargo install mini-redis
+```
+
+Make sure that it was successfully installed by starting the server:
+
+```bash
+$ mini-redis-server
+```
+
+Then, in a separate terminal window, try to get the key `foo` using `mini-redis-cli`
+
+```bash
+$ mini-redis-cli get foo
+```
+
+You should see `(nil)`.
+
+# Ready to go
+
+That's it, everything is ready to go. Go to the next page to write your first
+asynchronous Rust application.
+@@@ END
+
+@@@ USER
+Tokio question: Strategies. Show me how it works.
+@@@ ASSISTANT
+So far, we have a key-value server working. However, there is a major flaw:
+state is not shared across connections. We will fix that in this article.
+
+# Strategies
+
+There are a couple of different ways to share state in Tokio.
+
+1. Guard the shared state with a Mutex.
+2. Spawn a task to manage the state and use message passing to operate on it.
+
+Generally you want to use the first approach for simple data, and the second
+approach for things that require asynchronous work such as I/O primitives.  In
+this chapter, the shared state is a `HashMap` and the operations are `insert`
+and `get`. Neither of these operations is asynchronous, so we will use a
+`Mutex`.
+
+The latter approach is covered in the next chapter.
+
+# Add `bytes` dependency
+
+Instead of using `Vec<u8>`, the Mini-Redis crate uses `Bytes` from the [`bytes`]
+crate. The goal of `Bytes` is to provide a robust byte array structure for
+network programming. The biggest feature it adds over `Vec<u8>` is shallow
+cloning. In other words, calling `clone()` on a `Bytes` instance does not copy
+the underlying data. Instead, a `Bytes` instance is a reference-counted handle
+to some underlying data. The `Bytes` type is roughly an `Arc<Vec<u8>>` but with
+some added capabilities.
+
+To depend on `bytes`, add the following to your `Cargo.toml` in the
+`[dependencies]` section:
+
+```toml
+bytes = "1"
+```
+
+# Initialize the `HashMap`
+
+The `HashMap` will be shared across many tasks and potentially many threads. To
+support this, it is wrapped in `Arc<Mutex<_>>`.
+
+First, for convenience, add the following type alias after the `use` statements.
+
+```rust
+use bytes::Bytes;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+type Db = Arc<Mutex<HashMap<String, Bytes>>>;
+```
+
+Then, update the `main` function to initialize the `HashMap` and pass an `Arc`
+**handle** to the `process` function. Using `Arc` allows the `HashMap` to be
+referenced concurrently from many tasks, potentially running on many threads.
+Throughout Tokio, the term **handle** is used to reference a value that provides
+access to some shared state.
+
+```rust
+use tokio::net::TcpListener;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+#[tokio::main]
+async fn main() {
+    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
+
+    println!("Listening");
+
+    let db = Arc::new(Mutex::new(HashMap::new()));
+
+    loop {
+        let (socket, _) = listener.accept().await.unwrap();
+        // Clone the handle to the hash map.
+        let db = db.clone();
+
+        println!("Accepted");
+        tokio::spawn(async move {
+            process(socket, db).await;
+        });
+    }
+}
+```
+
+## On using `std::sync::Mutex` and `tokio::sync::Mutex`
+
+Note that `std::sync::Mutex` and **not** `tokio::sync::Mutex` is used to guard
+the `HashMap`. A common error is to unconditionally use `tokio::sync::Mutex`
+from within async code. An async mutex is a mutex that is locked across calls
+to `.await`.
+
+A synchronous mutex will block the current thread when waiting to acquire the
+lock. This, in turn, will block other tasks from processing. Switching
+to `tokio::sync::Mutex` will cause the task to yield control back to the
+executor, but this will usually not help with performance as the asynchronous
+mutex uses a synchronous mutex internally.
+
+As a rule of thumb, using a synchronous mutex from within asynchronous code is
+fine as long as contention remains low and the lock is not held across calls to
+`.await`.
+
+# Update `process()`
+
+The process function no longer initializes a `HashMap`. Instead, it takes the
+shared handle to the `HashMap` as an argument. It also needs to lock the
+`HashMap` before using it. Remember that the value's type for the `HashMap` is
+now `Bytes` (which we can cheaply clone), so this needs to be changed as well.
+
+```rust
+use tokio::net::TcpStream;
+use mini_redis::{Connection, Frame};
+
+async fn process(socket: TcpStream, db: Db) {
+    use mini_redis::Command::{self, Get, Set};
+
+    // Connection, provided by `mini-redis`, handles parsing frames from
+    // the socket
+    let mut connection = Connection::new(socket);
+
+    while let Some(frame) = connection.read_frame().await.unwrap() {
+        let response = match Command::from_frame(frame).unwrap() {
+            Set(cmd) => {
+                let mut db = db.lock().unwrap();
+                db.insert(cmd.key().to_string(), cmd.value().clone());
+                Frame::Simple("OK".to_string())
+            }           
+            Get(cmd) => {
+                let db = db.lock().unwrap();
+                if let Some(value) = db.get(cmd.key()) {
+                    Frame::Bulk(value.clone())
+                } else {
+                    Frame::Null
+                }
+            }
+            cmd => panic!("unimplemented {:?}", cmd),
+        };
+
+        // Write the response to the client
+        connection.write_frame(&response).await.unwrap();
+    }
+}
+```
+@@@ END
+
+@@@ USER
+Tokio question: Strategies: Holding a `MutexGuard` across an `.await`. Show me how it works.
+@@@ ASSISTANT
+You might write code that looks like this:
+```rust
+use std::sync::{Mutex, MutexGuard};
+
+async fn increment_and_do_stuff(mutex: &Mutex<i32>) {
+    let mut lock: MutexGuard<i32> = mutex.lock().unwrap();
+    *lock += 1;
+
+    do_something_async().await;
+} // lock goes out of scope here
+```
+When you try to spawn something that calls this function, you will encounter the
+following error message:
+```text
+error: future cannot be sent between threads safely
+   --> src/lib.rs:13:5
+    |
+13  |     tokio::spawn(async move {
+    |     ^^^^^^^^^^^^ future created by async block is not `Send`
+    |
+   ::: /playground/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-0.2.21/src/task/spawn.rs:127:21
+    |
+127 |         T: Future + Send + 'static,
+    |                     ---- required by this bound in `tokio::task::spawn::spawn`
+    |
+    = help: within `impl std::future::Future`, the trait `std::marker::Send` is not implemented for `std::sync::MutexGuard<'_, i32>`
+note: future is not `Send` as this value is used across an await
+   --> src/lib.rs:7:5
+    |
+4   |     let mut lock: MutexGuard<i32> = mutex.lock().unwrap();
+    |         -------- has type `std::sync::MutexGuard<'_, i32>` which is not `Send`
+...
+7   |     do_something_async().await;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ await occurs here, with `mut lock` maybe used later
+8   | }
+    | - `mut lock` is later dropped here
+```
+This happens because the `std::sync::MutexGuard` type is **not** `Send`. This
+means that you can't send a mutex lock to another thread, and the error happens
+because the Tokio runtime can move a task between threads at every `.await`.
+To avoid this, you should restructure your code such that the mutex lock's
+destructor runs before the `.await`.
+```rust
+// This works!
+async fn increment_and_do_stuff(mutex: &Mutex<i32>) {
+    {
+        let mut lock: MutexGuard<i32> = mutex.lock().unwrap();
+        *lock += 1;
+    } // lock goes out of scope here
+
+    do_something_async().await;
+}
+```
+Note that this does not work:
+```rust
+use std::sync::{Mutex, MutexGuard};
+
+// This fails too.
+async fn increment_and_do_stuff(mutex: &Mutex<i32>) {
+    let mut lock: MutexGuard<i32> = mutex.lock().unwrap();
+    *lock += 1;
+    drop(lock);
+
+    do_something_async().await;
+}
+```
+This is because the compiler currently calculates whether a future is `Send`
+based on scope information only. The compiler will hopefully be updated to
+support explicitly dropping it in the future, but for now, you must explicitly
+use a scope.
+
+Note that the error discussed here is also discussed in the Send bound section from the spawning chapter.
+
+You should not try to circumvent this issue by spawning the task in a way that
+does not require it to be `Send`, because if Tokio suspends your task at an
+`.await` while the task is holding the lock, some other task may be scheduled to
+run on the same thread, and this other task may also try to lock that mutex,
+which would result in a deadlock as the task waiting to lock the mutex would
+prevent the task holding the mutex from releasing the mutex.
+
+Keep in mind that some mutex crates implement `Send` for their MutexGuards.
+In this case, there is no compiler error, even if you hold a MutexGuard across
+an `.await`. The code compiles, but it deadlocks!
+
+We will discuss some approaches to avoid these issues below:
+
+## Restructure your code to not hold the lock across an `.await`
+
+The safest way to handle a mutex is to wrap it in a struct, and lock the mutex
+only inside non-async methods on that struct.
+```rust
+use std::sync::Mutex;
+
+struct CanIncrement {
+    mutex: Mutex<i32>,
+}
+impl CanIncrement {
+    // This function is not marked async.
+    fn increment(&self) {
+        let mut lock = self.mutex.lock().unwrap();
+        *lock += 1;
+    }
+}
+
+async fn increment_and_do_stuff(can_incr: &CanIncrement) {
+    can_incr.increment();
+    do_something_async().await;
+}
+```
+This pattern guarantees that you won't run into the `Send` error, because the
+mutex guard does not appear anywhere in an async function. It also protects you
+from deadlocks, when using crates whose `MutexGuard` implements `Send`.
+
+You can find a more detailed example in this blog post.
+
+## Spawn a task to manage the state and use message passing to operate on it
+
+This is the second approach mentioned in the start of this chapter, and is often
+used when the shared resource is an I/O resource. See the next chapter for more
+details.
+
+## Use Tokio's asynchronous mutex
+
+The [`tokio::sync::Mutex`] type provided by Tokio can also be used. The primary
+feature of the Tokio mutex is that it can be held across an `.await` without any
+issues. That said, an asynchronous mutex is more expensive than an ordinary
+mutex, and it is typically better to use one of the two other approaches.
+```rust
+use tokio::sync::Mutex; // note! This uses the Tokio mutex
+
+// This compiles!
+// (but restructuring the code would be better in this case)
+async fn increment_and_do_stuff(mutex: &Mutex<i32>) {
+    let mut lock = mutex.lock().await;
+    *lock += 1;
+
+    do_something_async().await;
+} // lock goes out of scope here
+```
+
+# Tasks, threads, and contention
+
+Using a blocking mutex to guard short critical sections is an acceptable
+strategy when contention is minimal. When a lock is contended, the thread
+executing the task must block and wait on the mutex. This will not only block
+the current task but it will also block all other tasks scheduled on the current
+thread.
+
+By default, the Tokio runtime uses a multi-threaded scheduler. Tasks are
+scheduled on any number of threads managed by the runtime. If a large number of
+tasks are scheduled to execute and they all require access to the mutex, then
+there will be contention. On the other hand, if the
+`current_thread` runtime flavor is used, then the mutex will
+never be contended.
+
+> **info**
+> The `current_thread` runtime flavor is a lightweight,
+> single-threaded runtime. It is a good choice when only spawning
+> a few tasks and opening a handful of sockets. For example, this
+> option works well when providing a synchronous API bridge on top
+> of an asynchronous client library.
+
+If contention on a synchronous mutex becomes a problem, the best fix is rarely
+to switch to the Tokio mutex. Instead, options to consider are to:
+
+- Let a dedicated task manage state and use message passing.
+- Shard the mutex.
+- Restructure the code to avoid the mutex.
+@@@ END
+
+@@@ USER
+How do I use Strategies: Mutex sharding with Tokio in Rust?
+@@@ ASSISTANT
+In our case, as each *key* is independent, mutex sharding will work well. To do
+this, instead of having a single `Mutex<HashMap<_, _>>` instance, we would
+introduce `N` distinct instances.
+
+```rust
+type ShardedDb = Arc<Vec<Mutex<HashMap<String, Vec<u8>>>>>;
+
+fn new_sharded_db(num_shards: usize) -> ShardedDb {
+    let mut db = Vec::with_capacity(num_shards);
+    for _ in 0..num_shards {
+        db.push(Mutex::new(HashMap::new()));
+    }
+    Arc::new(db)
+}
+```
+
+Then, finding the cell for any given key becomes a two step process. First, the
+key is used to identify which shard it is part of. Then, the key is looked up in
+the `HashMap`.
+
+```rust
+let shard = db[hash(key) % db.len()].lock().unwrap();
+shard.insert(key, value);
+```
+
+The simple implementation outlined above requires using a fixed number of
+shards, and the number of shards cannot be changed once the sharded map is
+created.
+
+The [dashmap] crate provides an implementation of a more sophisticated
+sharded hash map. You may also want to have a look at such concurrent hash table
+implementations as [leapfrog] and [flurry], the latter being a port of Java's
+`ConcurrentHashMap` data structure.
+
+Before you start using any of these crates, be sure you structure your code so,
+that you cannot hold a `MutexGuard` across an `.await`. If you don't, you will
+either have compiler errors (in case of non-Send guards) or your code will
+deadlock (in case of Send guards). See a full example and more context in this blog post.
+@@@ END
+
+@@@ USER
+Explain Accepting sockets in Tokio.
+@@@ ASSISTANT
+We are going to shift gears and start working on the Redis server.
+
+First, move the client `SET`/`GET` code from the previous section to an example
+file. This way, we can run it against our server.
+
+```bash
+$ mkdir -p examples
+$ mv src/main.rs examples/hello-redis.rs
+```
+
+Then create a new, empty `src/main.rs` and continue.
+
+# Accepting sockets
+
+The first thing our Redis server needs to do is to accept inbound TCP sockets.
+This is done by binding `tokio::net::TcpListener` to port **6379**.
+
+> **info**
+> Many of Tokio's types are named the same as their synchronous equivalent in
+> the Rust standard library. When it makes sense, Tokio exposes the same APIs
+> as `std` but using `async fn`.
+
+Then the sockets are accepted in a loop. Each socket is processed then closed.
+For now, we will read the command, print it to stdout and respond with an error.
+
+`src/main.rs`
+
+```rust
+use tokio::net::{TcpListener, TcpStream};
+use mini_redis::{Connection, Frame};
+
+#[tokio::main]
+async fn main() {
+    // Bind the listener to the address
+    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
+
+    loop {
+        // The second item contains the IP and port of the new connection.
+        let (socket, _) = listener.accept().await.unwrap();
+        process(socket).await;
+    }
+}
+
+async fn process(socket: TcpStream) {
+    // The `Connection` lets us read/write redis **frames** instead of
+    // byte streams. The `Connection` type is defined by mini-redis.
+    let mut connection = Connection::new(socket);
+
+    if let Some(frame) = connection.read_frame().await.unwrap() {
+        println!("GOT: {:?}", frame);
+
+        // Respond with an error
+        let response = Frame::Error("unimplemented".to_string());
+        connection.write_frame(&response).await.unwrap();
+    }
+}
+```
+
+Now, run this accept loop:
+
+```bash
+$ cargo run
+```
+
+In a separate terminal window, run the `hello-redis` example (the `SET`/`GET`
+command from the previous section, which is playing the role of the Redis
+client):
+
+```bash
+$ cargo run --example hello-redis
+```
+
+The output should be:
+
+```text
+Error: "unimplemented"
+```
+
+In the server terminal, the output is:
+
+```text
+GOT: Array([Bulk(b"set"), Bulk(b"hello"), Bulk(b"world")])
+```
+
+# Concurrency
+
+Our server has a slight problem (besides only responding with errors). It
+processes inbound requests one at a time. When a connection is accepted, the
+server stays inside the accept loop block until the response is fully written to
+the socket.
+
+We want our Redis server to process **many** concurrent requests. To do this, we
+need to add some concurrency.
+
+> **info**
+> Concurrency and parallelism are not the same thing. If you alternate between
+> two tasks, then you are working on both tasks concurrently, but not in
+> parallel. For it to qualify as parallel, you would need two people, one
+> dedicated to each task.
+>
+> One of the advantages of using Tokio is that asynchronous code allows you to
+> work on many tasks concurrently, without having to work on them in parallel
+> using ordinary threads. In fact, Tokio can run many tasks concurrently on a
+> single thread!
+
+To process connections concurrently, a new task is spawned for each inbound
+connection. The connection is processed on this task.
+
+The accept loop becomes:
+
+```rust
+use tokio::net::TcpListener;
+
+#[tokio::main]
+async fn main() {
+    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
+
+    loop {
+        let (socket, _) = listener.accept().await.unwrap();
+        // A new task is spawned for each inbound socket. The socket is
+        // moved to the new task and processed there.
+        tokio::spawn(async move {
+            process(socket).await;
+        });
+    }
+}
+```
+
+## Tasks
+
+A Tokio task is an asynchronous green thread. They are created by passing an
+`async` block to `tokio::spawn`. The `tokio::spawn` function returns a
+`JoinHandle`, which the caller may use to interact with the spawned task. The
+`async` block may have a return value. The caller may obtain the return value
+using `.await` on the `JoinHandle`.
+
+For example:
+
+```rust
+#[tokio::main]
+async fn main() {
+    let handle = tokio::spawn(async {
+        // Do some async work
+        "return value"
+    });
+
+    // Do some other work
+
+    let out = handle.await.unwrap();
+    println!("GOT {}", out);
+}
+```
+
+Awaiting on `JoinHandle` returns a `Result`. When a task encounters an error
+during execution, the `JoinHandle` will return an `Err`. This happens when the
+task either panics, or if the task is forcefully cancelled by the runtime
+shutting down.
+
+Tasks are the unit of execution managed by the scheduler. Spawning the task
+submits it to the Tokio scheduler, which then ensures that the task executes
+when it has work to do. The spawned task may be executed on the same thread
+as where it was spawned, or it may execute on a different runtime thread. The
+task can also be moved between threads after being spawned.
+
+Tasks in Tokio are very lightweight. Under the hood, they require only a single
+allocation and 64 bytes of memory. Applications should feel free to spawn
+thousands, if not millions of tasks.
+@@@ END
+
+@@@ USER
+How do I use Accepting sockets: `'static` bound with Tokio in Rust?
+@@@ ASSISTANT
+When you spawn a task on the Tokio runtime, its type's lifetime must be `'static`. This
+means that the spawned task must not contain any references to data owned
+outside the task.
+
+> **info**
+> It is a common misconception that `'static` always means "lives forever",
+> but this is not the case. Just because a value is `'static` does not mean
+> that you have a memory leak. You can read more in Common Rust Lifetime > Misconceptions.
+
+For example, the following will not compile:
+
+```rust
+use tokio::task;
+
+#[tokio::main]
+async fn main() {
+    let v = vec![1, 2, 3];
+
+    task::spawn(async {
+        println!("Here's a vec: {:?}", v);
+    });
+}
+```
+
+Attempting to compile this results in the following error:
+
+```text
+error[E0373]: async block may outlive the current function, but
+              it borrows `v`, which is owned by the current function
+ --> src/main.rs:7:23
+  |
+7 |       task::spawn(async {
+  |  _______________________^
+8 | |         println!("Here's a vec: {:?}", v);
+  | |                                        - `v` is borrowed here
+9 | |     });
+  | |_____^ may outlive borrowed value `v`
+  |
+note: function requires argument type to outlive `'static`
+ --> src/main.rs:7:17
+  |
+7 |       task::spawn(async {
+  |  _________________^
+8 | |         println!("Here's a vector: {:?}", v);
+9 | |     });
+  | |_____^
+help: to force the async block to take ownership of `v` (and any other
+      referenced variables), use the `move` keyword
+  |
+7 |     task::spawn(async move {
+8 |         println!("Here's a vec: {:?}", v);
+9 |     });
+  |
+```
+
+This happens because, by default, variables are not **moved** into async blocks.
+The `v` vector remains owned by the `main` function. The `println!` line borrows
+`v`. The rust compiler helpfully explains this to us and even suggests the fix!
+Changing line 7 to `task::spawn(async move {` will instruct the compiler to
+**move** `v` into the spawned task. Now, the task owns all of its data, making
+it `'static`.
+
+If a single piece of data must be accessible from more than one task
+concurrently, then it must be shared using synchronization primitives such as
+`Arc`.
+
+Note that the error message talks about the argument type *outliving* the
+`'static` lifetime. This terminology can be rather confusing because the
+`'static` lifetime lasts until the end of the program, so if it outlives it,
+don't you have a memory leak? The explanation is that it is the *type*, not the
+*value* that must outlive the `'static` lifetime, and the value may be destroyed
+before its type is no longer valid.
+
+When we say that a value is `'static`, all that means is that it would not be
+incorrect to keep that value around forever. This is important because the
+compiler is unable to reason about how long a newly spawned task stays around.
+We have to make sure that the task is allowed to live forever, so that Tokio
+can make the task run as long as it needs to.
+
+The article that the info-box earlier links to uses the terminology "bounded by
+`'static`" rather than "its type outlives `'static`" or "the value is `'static`"
+to refer to `T: 'static`. These all mean the same thing, but are different from
+"annotated with `'static`" as in `&'static T`.
+
+## `Send` bound
+
+Tasks spawned by `tokio::spawn` **must** implement `Send`. This allows the Tokio
+runtime to move the tasks between threads while they are suspended at an
+`.await`.
+
+Tasks are `Send` when **all** data that is held **across** `.await` calls is
+`Send`. This is a bit subtle. When `.await` is called, the task yields back to
+the scheduler. The next time the task is executed, it resumes from the point it
+last yielded. To make this work, all state that is used **after** `.await` must
+be saved by the task. If this state is `Send`, i.e. can be moved across threads,
+then the task itself can be moved across threads. Conversely, if the state is not
+`Send`, then neither is the task.
+
+For example, this works:
+
+```rust
+use tokio::task::yield_now;
+use std::rc::Rc;
+
+#[tokio::main]
+async fn main() {
+    tokio::spawn(async {
+        // The scope forces `rc` to drop before `.await`.
+        {
+            let rc = Rc::new("hello");
+            println!("{}", rc);
+        }
+
+        // `rc` is no longer used. It is **not** persisted when
+        // the task yields to the scheduler
+        yield_now().await;
+    });
+}
+```
+
+This does not:
+
+```rust
+use tokio::task::yield_now;
+use std::rc::Rc;
+
+#[tokio::main]
+async fn main() {
+    tokio::spawn(async {
+        let rc = Rc::new("hello");
+
+        // `rc` is used after `.await`. It must be persisted to
+        // the task's state.
+        yield_now().await;
+
+        println!("{}", rc);
+    });
+}
+```
+
+Attempting to compile the snippet results in:
+
+```text
+error: future cannot be sent between threads safely
+   --> src/main.rs:6:5
+    |
+6   |     tokio::spawn(async {
+    |     ^^^^^^^^^^^^ future created by async block is not `Send`
+    | 
+   ::: [..]spawn.rs:127:21
+    |
+127 |         T: Future + Send + 'static,
+    |                     ---- required by this bound in
+    |                          `tokio::task::spawn::spawn`
+    |
+    = help: within `impl std::future::Future`, the trait
+    |       `std::marker::Send` is not  implemented for
+    |       `std::rc::Rc<&str>`
+note: future is not `Send` as this value is used across an await
+   --> src/main.rs:10:9
+    |
+7   |         let rc = Rc::new("hello");
+    |             -- has type `std::rc::Rc<&str>` which is not `Send`
+...
+10  |         yield_now().await;
+    |         ^^^^^^^^^^^^^^^^^ await occurs here, with `rc` maybe
+    |                           used later
+11  |         println!("{}", rc);
+12  |     });
+    |     - `rc` is later dropped here
+```
+
+We will discuss a special case of this error in more depth in the next chapter.
+@@@ END
+
+@@@ USER
+How do I use Accepting sockets: Store values with Tokio in Rust?
+@@@ ASSISTANT
+We will now implement the `process` function to handle incoming commands. We
+will use a `HashMap` to store values. `SET` commands will insert into the
+`HashMap` and `GET` values will load them. Additionally, we will use a loop to
+accept more than one command per connection.
+
+```rust
+use tokio::net::TcpStream;
+use mini_redis::{Connection, Frame};
+
+async fn process(socket: TcpStream) {
+    use mini_redis::Command::{self, Get, Set};
+    use std::collections::HashMap;
+
+    // A hashmap is used to store data
+    let mut db = HashMap::new();
+
+    // Connection, provided by `mini-redis`, handles parsing frames from
+    // the socket
+    let mut connection = Connection::new(socket);
+
+    // Use `read_frame` to receive a command from the connection.
+    while let Some(frame) = connection.read_frame().await.unwrap() {
+        let response = match Command::from_frame(frame).unwrap() {
+            Set(cmd) => {
+                // The value is stored as `Vec<u8>`
+                db.insert(cmd.key().to_string(), cmd.value().to_vec());
+                Frame::Simple("OK".to_string())
+            }
+            Get(cmd) => {
+                if let Some(value) = db.get(cmd.key()) {
+                    // `Frame::Bulk` expects data to be of type `Bytes`. This
+                    // type will be covered later in the tutorial. For now,
+                    // `&Vec<u8>` is converted to `Bytes` using `into()`.
+                    Frame::Bulk(value.clone().into())
+                } else {
+                    Frame::Null
+                }
+            }
+            cmd => panic!("unimplemented {:?}", cmd),
+        };
+
+        // Write the response to the client
+        connection.write_frame(&response).await.unwrap();
+    }
+}
+```
+
+Now, start the server:
+
+```bash
+$ cargo run
+```
+
+and in a separate terminal window, run the `hello-redis` client example again:
+
+```bash
+$ cargo run --example hello-redis
+```
+
+Now, the output from the client will be:
+
+```text
+got value from the server; result=Some(b"world")
+```
+
+We can now get and set values, but there is a problem: The values are not
+shared between connections. If another socket connects and tries to `GET`
+the `hello` key, it will not find anything.
+
+You can find the full code here.
+
+In the next section, we will implement persisting data for all sockets.
+@@@ END
+
+@@@ USER
+Explain Iteration in Tokio.
+@@@ ASSISTANT
+A stream is an asynchronous series of values. It is the asynchronous equivalent
+to Rust's `std::iter::Iterator` and is represented by the [`Stream`]
+trait. Streams can be iterated in `async` functions. They can also be
+transformed using adapters. Tokio provides a number of common adapters on the
+[`StreamExt`] trait.
+
+Tokio provides stream support in a separate crate: `tokio-stream`.
+
+```toml
+tokio-stream = "0.1"
+```
+
+> **info**
+> Currently, Tokio's Stream utilities exist in the `tokio-stream` crate.
+> Once the `Stream` trait is stabilized in the Rust standard library, Tokio's
+> stream utilities will be moved into the `tokio` crate.
+
+# Iteration
+
+Currently, the Rust programming language does not support async `for` loops.
+Instead, iterating streams is done using a `while let` loop paired with
+`StreamExt::next()`.
+
+```rust
+use tokio_stream::StreamExt;
+
+#[tokio::main]
+async fn main() {
+    let mut stream = tokio_stream::iter(&[1, 2, 3]);
+
+    while let Some(v) = stream.next().await {
+        println!("GOT = {:?}", v);
+    }
+}
+```
+
+Like iterators, the `next()` method returns `Option<T>` where `T` is the
+stream's value type. Receiving `None` indicates that stream iteration is
+terminated.
+@@@ END
+
+@@@ USER
+How do I use Iteration: Mini-Redis broadcast with Tokio in Rust?
+@@@ ASSISTANT
+Let's go over a slightly more complicated example using the Mini-Redis client.
+
+Full code can be found here.
+
+```rust
+use tokio_stream::StreamExt;
+use mini_redis::client;
+
+async fn publish() -> mini_redis::Result<()> {
+    let mut client = client::connect("127.0.0.1:6379").await?;
+
+    // Publish some data
+    client.publish("numbers", "1".into()).await?;
+    client.publish("numbers", "two".into()).await?;
+    client.publish("numbers", "3".into()).await?;
+    client.publish("numbers", "four".into()).await?;
+    client.publish("numbers", "five".into()).await?;
+    client.publish("numbers", "6".into()).await?;
+    Ok(())
+}
+
+async fn subscribe() -> mini_redis::Result<()> {
+    let client = client::connect("127.0.0.1:6379").await?;
+    let subscriber = client.subscribe(vec!["numbers".to_string()]).await?;
+    let messages = subscriber.into_stream();
+
+    tokio::pin!(messages);
+
+    while let Some(msg) = messages.next().await {
+        println!("got = {:?}", msg);
+    }
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> mini_redis::Result<()> {
+    tokio::spawn(async {
+        publish().await
+    });
+
+    subscribe().await?;
+
+    println!("DONE");
+
+    Ok(())
+}
+```
+
+A task is spawned to publish messages to the Mini-Redis server on the "numbers"
+channel. Then, on the main task, we subscribe to the "numbers" channel and
+display received messages.
+
+After subscribing, [`into_stream()`] is called on the returned subscriber. This
+consumes the `Subscriber`, returning a stream that yields messages as they
+arrive. Before we start iterating the messages, note that the stream is
+pinned to the stack using [`tokio::pin!`]. Calling `next()` on a stream
+requires the stream to be pinned. The `into_stream()` function returns a
+stream that is *not* pinned, we must explicitly pin it in order to iterate it.
+
+> **info**
+> A Rust value is "pinned" when it can no longer be moved in memory. A key
+> property of a pinned value is that pointers can be taken to the pinned
+> data and the caller can be confident the pointer stays valid. This feature
+> is used by `async/await` to support borrowing data across `.await` points.
+
+If we forget to pin the stream, we get an error like this:
+
+```text
+error[E0277]: `from_generator::GenFuture<[static generator@Subscriber::into_stream::{closure#0} for<'r, 's, 't0, 't1, 't2, 't3, 't4, 't5, 't6> {ResumeTy, &'r mut Subscriber, Subscriber, impl Future, (), std::result::Result<Option<Message>, Box<(dyn std::error::Error + Send + Sync + 't0)>>, Box<(dyn std::error::Error + Send + Sync + 't1)>, &'t2 mut async_stream::yielder::Sender<std::result::Result<Message, Box<(dyn std::error::Error + Send + Sync + 't3)>>>, async_stream::yielder::Sender<std::result::Result<Message, Box<(dyn std::error::Error + Send + Sync + 't4)>>>, std::result::Result<Message, Box<(dyn std::error::Error + Send + Sync + 't5)>>, impl Future, Option<Message>, Message}]>` cannot be unpinned
+  --> streams/src/main.rs:29:36
+   |
+29 |     while let Some(msg) = messages.next().await {
+   |                                    ^^^^ within `tokio_stream::filter::_::__Origin<'_, impl Stream, [closure@streams/src/main.rs:22:17: 25:10]>`, the trait `Unpin` is not implemented for `from_generator::GenFuture<[static generator@Subscriber::into_stream::{closure#0} for<'r, 's, 't0, 't1, 't2, 't3, 't4, 't5, 't6> {ResumeTy, &'r mut Subscriber, Subscriber, impl Future, (), std::result::Result<Option<Message>, Box<(dyn std::error::Error + Send + Sync + 't0)>>, Box<(dyn std::error::Error + Send + Sync + 't1)>, &'t2 mut async_stream::yielder::Sender<std::result::Result<Message, Box<(dyn std::error::Error + Send + Sync + 't3)>>>, async_stream::yielder::Sender<std::result::Result<Message, Box<(dyn std::error::Error + Send + Sync + 't4)>>>, std::result::Result<Message, Box<(dyn std::error::Error + Send + Sync + 't5)>>, impl Future, Option<Message>, Message}]>`
+   |
+   = note: required because it appears within the type `impl Future`
+   = note: required because it appears within the type `async_stream::async_stream::AsyncStream<std::result::Result<Message, Box<(dyn std::error::Error + Send + Sync + 'static)>>, impl Future>`
+   = note: required because it appears within the type `impl Stream`
+   = note: required because it appears within the type `tokio_stream::filter::_::__Origin<'_, impl Stream, [closure@streams/src/main.rs:22:17: 25:10]>`
+   = note: required because of the requirements on the impl of `Unpin` for `tokio_stream::filter::Filter<impl Stream, [closure@streams/src/main.rs:22:17: 25:10]>`
+   = note: required because it appears within the type `tokio_stream::map::_::__Origin<'_, tokio_stream::filter::Filter<impl Stream, [closure@streams/src/main.rs:22:17: 25:10]>, [closure@streams/src/main.rs:26:14: 26:40]>`
+   = note: required because of the requirements on the impl of `Unpin` for `tokio_stream::map::Map<tokio_stream::filter::Filter<impl Stream, [closure@streams/src/main.rs:22:17: 25:10]>, [closure@streams/src/main.rs:26:14: 26:40]>`
+   = note: required because it appears within the type `tokio_stream::take::_::__Origin<'_, tokio_stream::map::Map<tokio_stream::filter::Filter<impl Stream, [closure@streams/src/main.rs:22:17: 25:10]>, [closure@streams/src/main.rs:26:14: 26:40]>>`
+   = note: required because of the requirements on the impl of `Unpin` for `tokio_stream::take::Take<tokio_stream::map::Map<tokio_stream::filter::Filter<impl Stream, [closure@streams/src/main.rs:22:17: 25:10]>, [closure@streams/src/main.rs:26:14: 26:40]>>`
+```
+
+If you hit an error message like this, try pinning the value!
+
+Before trying to run this, start the Mini-Redis server:
+
+```bash
+$ mini-redis-server
+```
+
+Then try running the code. We will see the messages outputted to STDOUT.
+
+```text
+got = Ok(Message { channel: "numbers", content: b"1" })
+got = Ok(Message { channel: "numbers", content: b"two" })
+got = Ok(Message { channel: "numbers", content: b"3" })
+got = Ok(Message { channel: "numbers", content: b"four" })
+got = Ok(Message { channel: "numbers", content: b"five" })
+got = Ok(Message { channel: "numbers", content: b"6" })
+```
+
+Some early messages may be dropped as there is a race between subscribing and
+publishing. The program never exits. A subscription to a Mini-Redis channel
+stays active as long as the server is active.
+
+Let's see how we can work with streams to expand on this program.
+@@@ END
+
+@@@ USER
+Explain Iteration: Adapters in Tokio.
+@@@ ASSISTANT
+Functions that take a [`Stream`] and return another [`Stream`] are often called
+'stream adapters', as they're a form of the 'adapter pattern'. Common stream
+adapters include [`map`], [`take`], and [`filter`].
+
+Lets update the Mini-Redis so that it will exit. After receiving three messages,
+stop iterating messages. This is done using [`take`]. This adapter limits the
+stream to yield at **most** `n` messages.
+
+```rust
+let messages = subscriber
+    .into_stream()
+    .take(3);
+```
+
+Running the program again, we get:
+
+```text
+got = Ok(Message { channel: "numbers", content: b"1" })
+got = Ok(Message { channel: "numbers", content: b"two" })
+got = Ok(Message { channel: "numbers", content: b"3" })
+```
+
+This time the program ends.
+
+Now, let's limit the stream to single digit numbers. We will check this by
+checking for the message length. We use the [`filter`] adapter to drop any
+message that does not match the predicate.
+
+```rust
+let messages = subscriber
+    .into_stream()
+    .filter(|msg| match msg {
+        Ok(msg) if msg.content.len() == 1 => true,
+        _ => false,
+    })
+    .take(3);
+```
+
+Running the program again, we get:
+
+```text
+got = Ok(Message { channel: "numbers", content: b"1" })
+got = Ok(Message { channel: "numbers", content: b"3" })
+got = Ok(Message { channel: "numbers", content: b"6" })
+```
+
+Note that the order in which adapters are applied matters. Calling `filter`
+first then `take` is different than calling `take` then `filter`.
+
+Finally, we will tidy up the output by stripping the `Ok(Message { ... })` part
+of the output. This is done with [`map`]. Because this is applied **after**
+`filter`, we know the message is `Ok`, so we can use `unwrap()`.
+
+```rust
+let messages = subscriber
+    .into_stream()
+    .filter(|msg| match msg {
+        Ok(msg) if msg.content.len() == 1 => true,
+        _ => false,
+    })
+    .map(|msg| msg.unwrap().content)
+    .take(3);
+```
+
+Now, the output is:
+
+```text
+got = b"1"
+got = b"3"
+got = b"6"
+```
+
+Another option would be to combine the [`filter`] and [`map`] steps into a single call using [`filter_map`].
+
+There are more available adapters. See the list here.
+
+# Implementing `Stream`
+
+The [`Stream`] trait is very similar to the [`Future`] trait.
+
+```rust
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+pub trait Stream {
+    type Item;
+
+    fn poll_next(
+        self: Pin<&mut Self>, 
+        cx: &mut Context<'_>
+    ) -> Poll<Option<Self::Item>>;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, None)
+    }
+}
+```
+
+The `Stream::poll_next()` function is much like `Future::poll`, except it can be called
+repeatedly to receive many values from the stream. Just as we saw in Async in depth, when a stream is **not** ready to return a value, `Poll::Pending`
+is returned instead. The task's waker is registered. Once the stream should be
+polled again, the waker is notified.
+
+The `size_hint()` method is used the same way as it is with iterators.
+
+Usually, when manually implementing a `Stream`, it is done by composing futures
+and other streams. As an example, let's build off of the `Delay` future we
+implemented in Async in depth. We will convert it to a stream that
+yields `()` three times at 10 ms intervals.
+
+```rust
+use tokio_stream::Stream;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::Duration;
+
+struct Interval {
+    rem: usize,
+    delay: Delay,
+}
+
+impl Interval {
+    fn new() -> Self {
+        Self {
+            rem: 3,
+            delay: Delay { when: Instant::now() }
+        }
+    }
+}
+
+impl Stream for Interval {
+    type Item = ();
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>)
+        -> Poll<Option<()>>
+    {
+        if self.rem == 0 {
+            // No more delays
+            return Poll::Ready(None);
+        }
+
+        match Pin::new(&mut self.delay).poll(cx) {
+            Poll::Ready(_) => {
+                let when = self.delay.when + Duration::from_millis(10);
+                self.delay = Delay { when };
+                self.rem -= 1;
+                Poll::Ready(Some(()))
+            }
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+```
+
+## `async-stream`
+
+Manually implementing streams using the [`Stream`] trait can be tedious.
+Unfortunately, the Rust programming language does not yet support `async/await`
+syntax for defining streams. This is in the works, but not yet ready.
+
+The [`async-stream`] crate is available as a temporary solution. This crate
+provides a `stream!` macro that transforms the input into a stream. Using
+this crate, the above interval can be implemented like this:
+
+```rust
+use async_stream::stream;
+use std::time::{Duration, Instant};
+
+stream! {
+    let mut when = Instant::now();
+    for _ in 0..3 {
+        let delay = Delay { when };
+        delay.await;
+        yield ();
+        when += Duration::from_millis(10);
+    }
+}
+```
+@@@ END
+

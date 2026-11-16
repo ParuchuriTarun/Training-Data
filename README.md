@@ -45,7 +45,7 @@ The training loader drops any example whose user and assistant text together are
 
 ## Size
 
-About 4,400 examples and about 3.8 million training tokens (2026-11-16). A 2B model needs far more than that,
+About 6,200 examples and about 6.4 million training tokens (2026-11-16). A 2B model needs far more than that,
 so collecting more data is the current work.
 
 ## Licence and provenance

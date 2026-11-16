@@ -1,0 +1,494 @@
+@@@ USER
+Why do I get this error in Rust and how do I fix it?
+
+error[E0382]: borrow of moved value: `name`
+
+```rust
+fn main() {
+    let name = String::from("Asha");
+    let greeting = name;
+    println!("{} {}", name, greeting);
+}
+```
+@@@ ASSISTANT
+**What is wrong:** a `String` owns its text on the heap, and Rust allows only one owner. `let greeting = name;` *moves* the ownership to `greeting`, so `name` is no longer valid. Using it on the next line is the error.
+
+**Fix 1: clone**, when you really need two independent copies:
+
+```rust
+fn main() {
+    let name = String::from("Asha");
+    let greeting = name.clone();
+    println!("{} {}", name, greeting);
+}
+```
+
+**Fix 2: borrow**, when you only need to read it (cheaper, no copy):
+
+```rust
+fn main() {
+    let name = String::from("Asha");
+    let greeting = &name;
+    println!("{} {}", name, greeting);
+}
+```
+
+Changes made:
+- Fix 1: `name` became `name.clone()`, so both variables own separate strings.
+- Fix 2: `name` became `&name`, so `greeting` only borrows it and `name` stays the owner.
+
+Simple types such as `i32`, `bool` and `char` are `Copy`, so they are copied instead of moved and never cause this error. The same move also happens when you pass a `String` to a function by value; pass `&name` unless the function needs to own it.
+@@@ END
+
+@@@ USER
+Rust says error[E0499]: cannot borrow `s` as mutable more than once at a time. How do I fix it?
+
+```rust
+fn main() {
+    let mut s = String::from("hi");
+    let a = &mut s;
+    let b = &mut s;
+    a.push('!');
+    b.push('?');
+    println!("{}", s);
+}
+```
+@@@ ASSISTANT
+**What is wrong:** Rust allows only one mutable reference to a value at a time. With two, both could change the string in different ways (for example reallocating it), which is how data races and crashes start. Here `a` is still used after `b` is created, so the two borrows overlap.
+
+**Fix:** finish using one reference before creating the next.
+
+```rust
+fn main() {
+    let mut s = String::from("hi");
+
+    let a = &mut s;
+    a.push('!'); // last use of `a`, its borrow ends here
+
+    let b = &mut s;
+    b.push('?');
+
+    println!("{}", s);
+}
+```
+
+Output: `hi!?`
+
+Changes made:
+- Moved `a.push('!')` up so it happens before `b` is created. The compiler ends a borrow at its last use.
+
+If you really need two pieces of the same data at once, split it: `let (left, right) = v.split_at_mut(2);` gives two non-overlapping mutable slices of one vector.
+@@@ END
+
+@@@ USER
+How do I write a generic Stack<T> in Rust, and print it only when T can be displayed?
+@@@ ASSISTANT
+Define the struct with a type parameter `T`. Put methods that work for every `T` in one `impl<T>` block, and methods that need extra abilities in a separate block with a trait bound.
+
+```rust
+use std::fmt::Display;
+
+struct Stack<T> {
+    items: Vec<T>,
+}
+
+impl<T> Stack<T> {
+    fn new() -> Self {
+        Stack { items: Vec::new() }
+    }
+
+    fn push(&mut self, item: T) {
+        self.items.push(item);
+    }
+
+    fn pop(&mut self) -> Option<T> {
+        self.items.pop()
+    }
+
+    fn peek(&self) -> Option<&T> {
+        self.items.last()
+    }
+
+    fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+}
+
+// This method exists only when T implements Display.
+impl<T: Display> Stack<T> {
+    fn describe(&self) -> String {
+        let parts: Vec<String> = self.items.iter().map(|i| i.to_string()).collect();
+        format!("[{}]", parts.join(" | "))
+    }
+}
+
+fn main() {
+    let mut s = Stack::new();
+    s.push(10);
+    s.push(20);
+    s.push(30);
+    println!("{}", s.describe());
+    println!("peek = {:?}, len = {}", s.peek(), s.len());
+    println!("pop = {:?}", s.pop());
+    println!("empty = {}", s.is_empty());
+
+    let mut words: Stack<String> = Stack::new();
+    words.push("hello".to_string());
+    println!("{}", words.describe());
+}
+```
+
+Output:
+
+```
+[10 | 20 | 30]
+peek = Some(30), len = 3
+pop = Some(30)
+empty = false
+[hello]
+```
+
+Notes:
+- `pop` and `peek` return `Option`, so an empty stack is handled by the type system and never panics.
+- `peek` returns `Option<&T>`, a reference, so the item stays in the stack.
+- Calling `describe()` on a `Stack` of a type without `Display` is a compile error, not a runtime surprise.
+@@@ END
+
+@@@ USER
+How do I overload operators like + and * for my own struct in Rust, for example a 2D vector?
+@@@ ASSISTANT
+Implement the matching trait from `std::ops`: `Add` for `+`, `Sub` for `-`, `Mul` for `*`, `Neg` for unary `-`. Each trait has an associated `Output` type and one method.
+
+```rust
+use std::ops::{Add, Mul, Neg, Sub};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Vec2 {
+    x: f64,
+    y: f64,
+}
+
+impl Add for Vec2 {
+    type Output = Vec2;
+    fn add(self, other: Vec2) -> Vec2 {
+        Vec2 { x: self.x + other.x, y: self.y + other.y }
+    }
+}
+
+impl Sub for Vec2 {
+    type Output = Vec2;
+    fn sub(self, other: Vec2) -> Vec2 {
+        Vec2 { x: self.x - other.x, y: self.y - other.y }
+    }
+}
+
+// Vec2 * f64 (scale)
+impl Mul<f64> for Vec2 {
+    type Output = Vec2;
+    fn mul(self, k: f64) -> Vec2 {
+        Vec2 { x: self.x * k, y: self.y * k }
+    }
+}
+
+impl Neg for Vec2 {
+    type Output = Vec2;
+    fn neg(self) -> Vec2 {
+        Vec2 { x: -self.x, y: -self.y }
+    }
+}
+
+impl Vec2 {
+    fn length(self) -> f64 {
+        (self.x * self.x + self.y * self.y).sqrt()
+    }
+}
+
+fn main() {
+    let a = Vec2 { x: 3.0, y: 4.0 };
+    let b = Vec2 { x: 1.0, y: 2.0 };
+    println!("{:?}", a + b);
+    println!("{:?}", a - b);
+    println!("{:?}", a * 2.0);
+    println!("{:?}", -a);
+    println!("{}", a.length());
+    println!("{}", a == Vec2 { x: 3.0, y: 4.0 });
+}
+```
+
+Output:
+
+```
+Vec2 { x: 4.0, y: 6.0 }
+Vec2 { x: 2.0, y: 2.0 }
+Vec2 { x: 6.0, y: 8.0 }
+Vec2 { x: -3.0, y: -4.0 }
+5
+true
+```
+
+Notes:
+- Deriving `Copy` matters here: `a + b` takes both values by value, and without `Copy` the next line could not use `a` again.
+- `Mul<f64>` gives `vec * 2.0`. For `2.0 * vec` you would also implement `Mul<Vec2> for f64`.
+- Keep operators intuitive. If `+` does not mean addition for your type, use a named method instead.
+@@@ END
+
+@@@ USER
+What are From, Into and TryFrom in Rust and when do I use each?
+@@@ ASSISTANT
+- `From<T>` converts a value that can never fail. Implement it, and you automatically get `Into` for free.
+- `TryFrom<T>` is for conversions that can fail; it returns a `Result`.
+- Use `.into()` at the call site when the target type is clear from context.
+
+```rust
+use std::convert::TryFrom;
+
+struct Celsius(f64);
+struct Fahrenheit(f64);
+
+impl From<Fahrenheit> for Celsius {
+    fn from(f: Fahrenheit) -> Celsius {
+        Celsius((f.0 - 32.0) * 5.0 / 9.0)
+    }
+}
+
+#[derive(Debug)]
+enum Level {
+    Low,
+    Medium,
+    High,
+}
+
+impl TryFrom<i32> for Level {
+    type Error = String;
+
+    fn try_from(n: i32) -> Result<Level, String> {
+        match n {
+            1 => Ok(Level::Low),
+            2 => Ok(Level::Medium),
+            3 => Ok(Level::High),
+            other => Err(format!("{} is not a valid level (use 1-3)", other)),
+        }
+    }
+}
+
+fn print_temp(c: Celsius) {
+    println!("{:.1} C", c.0);
+}
+
+fn main() {
+    let c = Celsius::from(Fahrenheit(212.0));
+    println!("{:.1} C", c.0);
+
+    // Into comes for free:
+    let c2: Celsius = Fahrenheit(32.0).into();
+    print_temp(c2);
+
+    println!("{:?}", Level::try_from(2));
+    println!("{:?}", Level::try_from(9));
+
+    let big: i64 = 3_000_000_000;
+    println!("{:?}", i32::try_from(big).is_err()); // true: does not fit in i32
+    let small: i32 = 42;
+    let wide: i64 = small.into(); // lossless, so plain From/Into works
+    println!("{}", wide);
+}
+```
+
+Output:
+
+```
+100.0 C
+0.0 C
+Ok(Medium)
+Err("9 is not a valid level (use 1-3)")
+true
+42
+```
+
+Rule of thumb: widening a number (`i32` to `i64`) uses `From`; narrowing (`i64` to `i32`) uses `TryFrom`, because it can overflow. Avoid `as` for narrowing, since it silently cuts the value.
+@@@ END
+
+@@@ USER
+Explain closures in Rust: Fn, FnMut, FnOnce, and how to store several closures in a list.
+@@@ ASSISTANT
+A closure is a function without a name that can use variables from the place where it was created. Rust picks one of three traits depending on what the closure does with those variables:
+
+- `Fn`: only reads the captured values; can be called many times.
+- `FnMut`: changes a captured value; can be called many times, but the variable must be `mut`.
+- `FnOnce`: moves a captured value out (consumes it), so it can be called only once.
+
+```rust
+fn apply_twice<F: Fn(i32) -> i32>(f: F, x: i32) -> i32 {
+    f(f(x))
+}
+
+fn call_n_times<F: FnMut()>(mut f: F, n: usize) {
+    for _ in 0..n {
+        f();
+    }
+}
+
+fn run_once<F: FnOnce() -> String>(f: F) -> String {
+    f()
+}
+
+fn make_adder(n: i32) -> impl Fn(i32) -> i32 {
+    move |x| x + n
+}
+
+fn main() {
+    let bonus = 10;
+    println!("{}", apply_twice(|x| x + bonus, 1)); // Fn: only reads `bonus`
+
+    let mut count = 0;
+    call_n_times(|| count += 1, 3);                 // FnMut: changes `count`
+    println!("count = {}", count);
+
+    let name = String::from("Asha");
+    println!("{}", run_once(move || name));         // FnOnce: gives `name` away
+
+    let add5 = make_adder(5);
+    println!("{}", add5(10));
+
+    // Different closures have different types, so a list needs Box<dyn Fn>.
+    let steps: Vec<Box<dyn Fn(i32) -> i32>> = vec![
+        Box::new(|x| x + 1),
+        Box::new(|x| x * 10),
+        Box::new(move |x| x - bonus),
+    ];
+    let result = steps.iter().fold(2, |acc, step| step(acc));
+    println!("{}", result);
+}
+```
+
+Output:
+
+```
+21
+count = 3
+Asha
+15
+20
+```
+
+Notes:
+- `move` copies or moves the captured variables into the closure; it is required when a closure outlives the function that created it (as in `make_adder`).
+- Prefer the most general bound you can: a function that only needs to call something once should take `FnOnce`, which accepts every kind of closure.
+- `impl Fn(...)` as a return type hides the closure type; use `Box<dyn Fn(...)>` when you must return different closures from different branches.
+@@@ END
+
+@@@ USER
+How do I run a terminal command from Rust and read its output?
+@@@ ASSISTANT
+Use `std::process::Command`. `.output()` waits for the command to finish and collects its output; `.status()` just returns the exit code and lets the output go to your terminal.
+
+```rust
+use std::process::Command;
+
+fn run(program: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|e| format!("could not start '{}': {}", program, e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        let err = String::from_utf8_lossy(&output.stderr);
+        Err(format!("'{}' failed ({}): {}", program, output.status, err.trim()))
+    }
+}
+
+fn main() {
+    match run("rustc", &["--version"]) {
+        Ok(text) => println!("found: {}", text),
+        Err(e) => println!("error: {}", e),
+    }
+
+    // Show the output live and only look at the exit code:
+    let status = Command::new("rustc").arg("--version").status();
+    match status {
+        Ok(s) if s.success() => println!("exit code 0"),
+        Ok(s) => println!("failed: {}", s),
+        Err(e) => println!("cannot run: {}", e),
+    }
+}
+```
+
+Things to know:
+- Pass each argument separately with `.arg()` / `.args()`. Do not build one long string: there is no shell involved, so there is no quoting problem and no command injection from user input.
+- A built-in shell command such as `dir` on Windows is not a program. Run it as `Command::new("cmd").args(["/C", "dir"])`, or on Linux `Command::new("sh").args(["-c", "ls"])`.
+- Two kinds of errors exist: the program could not start (`Err` from `.output()`), and the program ran but returned a failure code (`status.success()` is false). Check both.
+- Use `.current_dir("path")` to set the working folder and `.env("NAME", "value")` to set an environment variable.
+@@@ END
+
+@@@ USER
+How do I read command-line arguments in Rust without a library? I want `mytool --name Asha --count 3`.
+@@@ ASSISTANT
+`std::env::args()` gives the arguments as an iterator; the first item is the program name. Walk through them and read the value that follows each flag.
+
+```rust
+use std::env;
+use std::process;
+
+struct Options {
+    name: String,
+    count: u32,
+    verbose: bool,
+}
+
+fn parse_args(args: &[String]) -> Result<Options, String> {
+    let mut name = String::from("world");
+    let mut count = 1u32;
+    let mut verbose = false;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--name" => {
+                i += 1;
+                name = args.get(i).ok_or("--name needs a value")?.clone();
+            }
+            "--count" => {
+                i += 1;
+                let text = args.get(i).ok_or("--count needs a value")?;
+                count = text.parse().map_err(|_| format!("'{}' is not a number", text))?;
+            }
+            "--verbose" | "-v" => verbose = true,
+            other => return Err(format!("unknown option: {}", other)),
+        }
+        i += 1;
+    }
+    Ok(Options { name, count, verbose })
+}
+
+fn main() {
+    let args: Vec<String> = env::args().skip(1).collect(); // skip the program name
+    let opts = match parse_args(&args) {
+        Ok(o) => o,
+        Err(msg) => {
+            eprintln!("error: {}", msg);
+            eprintln!("usage: mytool [--name NAME] [--count N] [--verbose]");
+            process::exit(2);
+        }
+    };
+    if opts.verbose {
+        println!("(verbose) greeting {} {} time(s)", opts.name, opts.count);
+    }
+    for _ in 0..opts.count {
+        println!("Hello, {}!", opts.name);
+    }
+}
+```
+
+Try it: `cargo run -- --name Asha --count 3` (the `--` separates cargo's own options from your program's).
+
+Notes:
+- `.ok_or("message")?` turns a missing value (`None`) into an error, and `?` returns it.
+- Exit code 2 is the usual convention for "wrong usage"; 1 means the program ran but failed.
+- For many options, flags with short names, and automatic `--help`, the `clap` crate does all of this in a few lines. Hand-written parsing is fine for two or three options.
+@@@ END

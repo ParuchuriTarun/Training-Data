@@ -1,0 +1,82 @@
+examples read: 412
+accepted: 316
+rejected: 70
+
+  appdev          64 examples (0 multi-turn)
+  english        104 examples (0 multi-turn)
+  fundamentals    36 examples (0 multi-turn)
+  longhorizon     17 examples (17 multi-turn)
+  seed            15 examples (1 multi-turn)
+  webdev          80 examples (2 multi-turn)
+
+REJECTED:
+  appdev/batch_0004.txt #11: near-duplicate of appdev/batch_0003.txt #3
+  appdev/batch_0004.txt #13: near-duplicate of appdev/batch_0003.txt #6
+  appdev/batch_0004.txt #15: near-duplicate of longhorizon/batch_0002.txt #6-9
+  appdev/batch_0004.txt #17: same question
+  appdev/batch_0004.txt #2: same question
+  appdev/batch_0004.txt #4: near-duplicate of appdev/batch_0003.txt #4
+  appdev/batch_0004.txt #7: near-duplicate of appdev/batch_0003.txt #10
+  appdev/batch_0004.txt #8: near-duplicate of appdev/batch_0003.txt #11
+  appdev/batch_0005.txt #16: near-duplicate of appdev/batch_0004.txt #10
+  appdev/batch_0005.txt #6: near-duplicate of fundamentals/batch_0002.txt #3
+  english/batch_0005.txt #10: same question
+  english/batch_0005.txt #11: same question
+  english/batch_0005.txt #12: near-duplicate of english/batch_0004.txt #15
+  english/batch_0005.txt #15: same question
+  english/batch_0005.txt #4: near-duplicate of english/batch_0004.txt #4
+  english/batch_0005.txt #5: near-duplicate of english/batch_0004.txt #5
+  english/batch_0005.txt #9: same question
+  english/batch_0006.txt #1: same question
+  english/batch_0006.txt #10: same question
+  english/batch_0006.txt #11: same question
+  english/batch_0006.txt #12: same question
+  english/batch_0006.txt #13: near-duplicate of english/batch_0004.txt #15
+  english/batch_0006.txt #14: same question
+  english/batch_0006.txt #15: same question
+  english/batch_0006.txt #16: same question
+  english/batch_0006.txt #17: same question
+  english/batch_0006.txt #18: same question
+  english/batch_0006.txt #2: same question
+  english/batch_0006.txt #3: same question
+  english/batch_0006.txt #4: near-duplicate of english/batch_0004.txt #4
+  english/batch_0006.txt #6: same question
+  english/batch_0006.txt #7: same question
+  english/batch_0006.txt #8: same question
+  english/batch_0006.txt #9: same question
+  fundamentals/batch_0003.txt #3: near-duplicate of fundamentals/batch_0002.txt #3
+  fundamentals/batch_0003.txt #4: near-duplicate of fundamentals/batch_0002.txt #4
+  fundamentals/batch_0003.txt #5: same question
+  fundamentals/batch_0003.txt #6: near-duplicate of appdev/batch_0004.txt #20
+  fundamentals/batch_0003.txt #7: same question
+  fundamentals/batch_0003.txt #8: near-duplicate of fundamentals/batch_0002.txt #8
+  fundamentals/batch_0003.txt #9: same question
+  fundamentals/batch_0004.txt #1: near-duplicate of appdev/batch_0005.txt #12
+  fundamentals/batch_0004.txt #10: same question
+  fundamentals/batch_0004.txt #11: near-duplicate of fundamentals/batch_0002.txt #8
+  fundamentals/batch_0004.txt #12: near-duplicate of fundamentals/batch_0002.txt #4
+  fundamentals/batch_0004.txt #2: same question
+  fundamentals/batch_0004.txt #3: same question
+  fundamentals/batch_0004.txt #4: near-duplicate of appdev/batch_0005.txt #7
+  fundamentals/batch_0004.txt #5: near-duplicate of appdev/batch_0005.txt #10
+  fundamentals/batch_0004.txt #6: same question
+  fundamentals/batch_0004.txt #7: same question
+  fundamentals/batch_0004.txt #8: same question
+  fundamentals/batch_0004.txt #9: near-duplicate of appdev/batch_0004.txt #20
+  webdev/batch_0004.txt #1: near-duplicate of webdev/batch_0003.txt #3
+  webdev/batch_0004.txt #10: near-duplicate of webdev/batch_0003.txt #13
+  webdev/batch_0004.txt #11: near-duplicate of webdev/batch_0003.txt #14
+  webdev/batch_0004.txt #12: same question
+  webdev/batch_0004.txt #13: near-duplicate of seed/batch_0001.txt #4-6
+  webdev/batch_0004.txt #14: near-duplicate of webdev/batch_0003.txt #4
+  webdev/batch_0004.txt #15: near-duplicate of webdev/batch_0003.txt #16
+  webdev/batch_0004.txt #17: same question
+  webdev/batch_0004.txt #2: near-duplicate of webdev/batch_0003.txt #5
+  webdev/batch_0004.txt #5: near-duplicate of webdev/batch_0003.txt #6
+  webdev/batch_0004.txt #6: near-duplicate of webdev/batch_0003.txt #7
+  webdev/batch_0004.txt #8: near-duplicate of webdev/batch_0003.txt #11
+  webdev/batch_0004.txt #9: same question
+  webdev/batch_0005.txt #10: near-duplicate of webdev/batch_0003.txt #14
+  webdev/batch_0005.txt #14: near-duplicate of webdev/batch_0003.txt #15
+  webdev/batch_0005.txt #4: near-duplicate of webdev/batch_0003.txt #13
+  webdev/batch_0005.txt #6: near-duplicate of webdev/batch_0003.txt #19

@@ -1,0 +1,609 @@
+@@@ USER
+How do I implement optimistic UI with rollback in React?
+@@@ ASSISTANT
+Keep a snapshot of the previous state, apply the optimistic change, reconcile or roll back on the response.
+
+```tsx
+"use client";
+import { useState } from "react";
+
+type Todo = { id: string; title: string; done: boolean };
+
+export function TodoList({ initial }: { initial: Todo[] }) {
+  const [todos, setTodos] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggle(id: string) {
+    setError(null);
+    const previous = todos;
+    setTodos((cur) => cur.map((t) => t.id === id ? { ...t, done: !t.done } : t));
+    try {
+      const res = await fetch(`/api/todos/${id}/toggle`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const updated = await res.json();
+      setTodos((cur) => cur.map((t) => t.id === id ? updated : t));
+    } catch {
+      setTodos(previous);
+      setError("Could not save. Your change was reverted.");
+    }
+  }
+
+  return (
+    <div>
+      {error && <p role="alert">{error}</p>}
+      {todos.map((t) => (
+        <label key={t.id}>
+          <input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} />
+          {t.title}
+        </label>
+      ))}
+    </div>
+  );
+}
+```
+
+Rules:
+- Always keep the pre-update snapshot for rollback.
+- Reconcile with the server response; never trust the optimistic value.
+- React 19 `useOptimistic` handles this for you; use it where available.
+- Disable the control while a request is in flight or debounce rapid toggles.
+- Never leave the optimistic value permanently diverged: on error, refetch.
+@@@ END
+
+@@@ USER
+How do I virtualize a long list so 10,000 rows do not freeze the browser?
+@@@ ASSISTANT
+Render only the visible rows plus a small overscan, inside a tall scroll container.
+
+```tsx
+"use client";
+import { useEffect, useRef, useState } from "react";
+
+const ROW_H = 36;
+const OVERSCAN = 8;
+
+export function VirtualTable({ rows }: { rows: { id: string; name: string }[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [height, setHeight] = useState(600);
+
+  useEffect(() => {
+    const el = scrollRef.current!;
+    const update = () => setHeight(el.clientHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const start = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const visibleCount = Math.ceil(height / ROW_H) + OVERSCAN * 2;
+  const end = Math.min(rows.length, start + visibleCount);
+  const slice = rows.slice(start, end);
+
+  return (
+    <div ref={scrollRef} style={{ height: 600, overflowY: "auto", position: "relative" }}
+      onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}>
+      <div style={{ height: rows.length * ROW_H }}>
+        {slice.map((row, i) => (
+          <div key={row.id} style={{ position: "absolute", top: (start + i) * ROW_H, height: ROW_H, width: "100%" }}>
+            {row.name}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+Rules:
+- Variable row heights need a measurement cache.
+- Keep the active row in the rendered window for keyboard navigation.
+- For very large data, fetch pages on scroll instead of loading everything.
+- TanStack Virtual does this; use it once the hand-rolled version works.
+@@@ END
+
+@@@ USER
+Why does 100vh overflow on mobile Safari and how do I fix full-screen layouts?
+@@@ ASSISTANT
+`100vh` includes the area under the collapsible address bar. Use dynamic viewport units.
+
+```css
+.hero { height: 100vh; height: 100dvh; }
+@supports (height: 100svh) {
+  .hero { height: 100svh; }
+  .modal { height: 100svh; }
+}
+```
+
+- `svh`: stable, always excludes dynamic chrome. Best for layouts that must not jump.
+- `dvh`: changes as chrome shows/hides. Best for full-bleed heroes.
+- `lvh`: largest possible value.
+
+Test on a real device: iOS Safari and Chrome Android both collapse chrome on scroll. For modals, use `100svh` with internal `overflow-y: auto`.
+@@@ END
+
+@@@ USER
+How do I fix CLS from late-loading ads, embeds, and charts?
+@@@ ASSISTANT
+Reserve space for everything that loads late.
+
+```css
+.ad-slot { min-height: 250px; aspect-ratio: 300 / 250; background: #f3f4f6; display: grid; place-items: center; }
+iframe[src*="youtube"] { aspect-ratio: 16 / 9; width: 100%; height: auto; }
+```
+
+```html
+<div class="ad-slot" data-ad-slot="leaderboard"></div>
+<div style="min-height: 320px"><canvas id="chart" width="800" height="320"></canvas></div>
+```
+
+- Every ad slot, iframe, canvas, and chart needs explicit dimensions before load.
+- Never insert content above existing content after load.
+- Images need `width` + `height` or aspect ratio.
+- Fonts: `font-display: swap` with metric-adjusted fallback.
+- Skeleton screens must match final dimensions.
+- Measure with Web Vitals; CLS above 0.1 needs investigation.
+@@@ END
+
+@@@ USER
+How do I implement a search box with debounce, abort, and stale-result protection?
+@@@ ASSISTANT
+Debounce, abort the previous request, and ignore out-of-order responses.
+
+```tsx
+"use client";
+import { useEffect, useRef, useState } from "react";
+
+export function SearchBox() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<string[]>([]);
+  const requestId = useRef(0);
+
+  useEffect(() => {
+    if (query.trim().length < 2) { setResults([]); return; }
+    const id = ++requestId.current;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+        const data = await res.json();
+        if (requestId.current !== id) return;
+        setResults(data.items);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setResults([]);
+      }
+    }, 300);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [query]);
+
+  return (
+    <div>
+      <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search products" />
+      <ul>{results.map((r) => <li key={r}>{r}</li>)}</ul>
+    </div>
+  );
+}
+```
+
+- Debounce 250–400 ms, minimum length 2.
+- Abort on cleanup; also keep a request id as a second guard.
+- Show loading with `role="status"` and keep previous results while fetching.
+- Cache repeated queries with `staleTime` in TanStack Query.
+@@@ END
+
+@@@ USER
+How do I keep filters in the URL so links are shareable and Back works?
+@@@ ASSISTANT
+URL is the source of truth for shareable state.
+
+```tsx
+"use client";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback } from "react";
+
+export function FilterBar() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const status = params.get("status") ?? "all";
+  const sort = params.get("sort") ?? "newest";
+  const page = Math.max(1, Number(params.get("page") ?? 1));
+
+  const update = useCallback((patch: Record<string, string>) => {
+    const next = new URLSearchParams(params.toString());
+    for (const [k, v] of Object.entries(patch)) {
+      if (!v) next.delete(k); else next.set(k, v);
+    }
+    router.push(`?${next.toString()}`, { scroll: false });
+  }, [params, router]);
+
+  return (
+    <div>
+      <select value={status} onChange={(e) => update({ status: e.target.value, page: "1" })}>
+        <option value="all">All</option><option value="active">Active</option>
+      </select>
+      <select value={sort} onChange={(e) => update({ sort: e.target.value })}>
+        <option value="newest">Newest</option><option value="price-asc">Price low to high</option>
+      </select>
+      <button onClick={() => update({ page: String(page + 1) })}>Next</button>
+    </div>
+  );
+}
+```
+
+- Validate params on the server; unknown values fall back to defaults.
+- Reset page to 1 when a filter changes.
+- Use `router.replace` for typing, `router.push` for deliberate changes.
+- SSR reads the same params so shared links render identically.
+@@@ END
+
+@@@ USER
+How do I preload critical resources without hurting performance?
+@@@ ASSISTANT
+Preload only what renders immediately: one hero image, critical CSS, one font.
+
+```html
+<link rel="preconnect" href="https://api.example.com" crossorigin>
+<link rel="preconnect" href="https://cdn.example.com" crossorigin>
+<link rel="preload" as="image" href="/hero.jpg" fetchpriority="high" imagesrcset="/hero.jpg 1x, /hero-2x.jpg 2x">
+<link rel="preload" as="style" href="/critical.css">
+<link rel="preload" as="font" href="/fonts/inter.woff2" type="font/woff2" crossorigin>
+```
+
+- `preconnect`: at most 2–3 critical origins. `dns-prefetch` for the rest.
+- Preload one LCP image, not ten.
+- Font preload needs `font/woff2` + `crossorigin`.
+- Never preload what is also `async` — it may fetch twice.
+- Check Lighthouse for unused preloaded resources and remove them.
+- Always set image dimensions to prevent shift.
+@@@ END
+
+@@@ USER
+How do I add server rendering and SEO metadata in Next.js App Router?
+@@@ ASSISTANT
+Export `metadata` and `generateMetadata` from route files.
+
+```tsx
+import type { Metadata } from "next";
+
+type Props = { params: Promise<{ slug: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params;
+  const res = await fetch(`https://api.example.com/products/${slug}`, { next: { revalidate: 3600 } });
+  const product = await res.json();
+  return {
+    title: `${product.name} | Example Store`,
+    description: product.description.slice(0, 160),
+    alternates: { canonical: `/products/${slug}` },
+    openGraph: { title: product.name, description: product.description.slice(0, 160), images: [product.imageUrl] },
+    twitter: { card: "summary_large_image" },
+    robots: { index: true, follow: true },
+  };
+}
+
+export default async function ProductPage({ params }: Props) {
+  const { slug } = await params;
+  const res = await fetch(`https://api.example.com/products/${slug}`, { next: { revalidate: 3600 } });
+  const product = await res.json();
+  return <main><h1>{product.name}</h1><p>{product.description}</p></main>;
+}
+```
+
+- Fetch once, cache with `cache()`, reuse in metadata and page.
+- Use `notFound()` for missing products to return a real 404.
+- Add `sitemap.ts` and `robots.ts`.
+- Verify with `curl`: title and meta must be in the SSR HTML, not only client-rendered.
+@@@ END
+
+@@@ USER
+How do I make a site accessible with skip links, landmarks, and keyboard support?
+@@@ ASSISTANT
+Skip link + landmarks + visible focus.
+
+```html
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<header>...</header>
+<nav aria-label="Primary">...</nav>
+<main id="main-content" tabindex="-1">...</main>
+<footer>...</footer>
+```
+
+```css
+.skip-link { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.skip-link:focus { position: fixed; top: 0; left: 0; width: auto; height: auto; padding: 12px 20px; background: #111; color: #fff; z-index: 100; }
+:focus-visible { outline: 3px solid #1d4ed8; outline-offset: 2px; }
+```
+
+- One `<main>`, labeled `<nav>` per purpose.
+- Never remove focus outlines without a replacement.
+- Every control reachable and operable with Tab + Enter/Space.
+- Modals trap focus and return it to the trigger.
+- Run axe in CI; test with keyboard only.
+- Respect `prefers-reduced-motion` and `prefers-contrast`.
+@@@ END
+
+@@@ USER
+How do I handle wide tables on mobile without unreadable text?
+@@@ ASSISTANT
+Scrollable region with a sticky first column, or cards under a breakpoint.
+
+```css
+.table-scroll { overflow-x: auto; }
+table { min-width: 640px; border-collapse: collapse; }
+th:first-child, td:first-child { position: sticky; left: 0; background: var(--color-surface); }
+@media (max-width: 640px) {
+  thead { display: none; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  tr { border: 1px solid var(--line); margin-bottom: 12px; border-radius: 8px; padding: 8px; }
+  td::before { content: attr(data-label); font-weight: 600; display: block; font-size: 12px; text-transform: uppercase; }
+}
+```
+
+```html
+<table>
+  <thead><tr><th>Name</th><th>Status</th></tr></thead>
+  <tbody><tr><td data-label="Name">Acme</td><td data-label="Status">Paid</td></tr></tbody>
+</table>
+```
+
+- `data-label` must match the column; keep mobile and desktop HTML in sync.
+- Scroll region needs `tabindex="0"` and an `aria-label`.
+- Filters must work at 360 px wide with 44 px targets.
+- Row actions must not be hover-only.
+@@@ END
+
+@@@ USER
+How do I add print styles for invoices?
+@@@ ASSISTANT
+Hide navigation and buttons; repeat table headers.
+
+```css
+@media print {
+  .no-print, nav, header, footer, .sidebar { display: none !important; }
+  body { background: white; color: #000; font-size: 11pt; }
+  thead { display: table-header-group; }
+  tr, img { page-break-inside: avoid; }
+  .page-break { page-break-before: always; }
+}
+@page { margin: 12mm; }
+```
+
+```html
+<div class="invoice">
+  <table>
+    <thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead>
+    <tbody>...</tbody>
+    <tfoot><tr><td colspan="3">Total: $1,240</td></tr></tfoot>
+  </table>
+  <button class="no-print" onclick="window.print()">Print invoice</button>
+</div>
+```
+
+- `thead` as `table-header-group` repeats on every page.
+- Ensure grayscale readability; `print-color-adjust: exact` only for essential shading.
+- Never split a row across pages.
+- Offer a server-rendered PDF for exact fidelity.
+@@@ END
+
+@@@ USER
+How do I debounce search input in React with cleanup and a minimum length?
+@@@ ASSISTANT
+Effect with timeout + cleanup + abort.
+
+```tsx
+"use client";
+import { useEffect, useState } from "react";
+
+export function SearchInput() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<string[]>([]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setResults([]); return; }
+    const controller = new AbortController();
+    const id = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: controller.signal });
+        setResults((await res.json()).items);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setResults([]);
+      }
+    }, 250);
+    return () => { clearTimeout(id); controller.abort(); };
+  }, [query]);
+
+  return <div>
+    <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search..." />
+    <ul>{results.map((r) => <li key={r}>{r}</li>)}</ul>
+  </div>;
+}
+```
+
+- Debounce 200–350 ms, minimum length 2.
+- Abort on cleanup so stale responses cannot win.
+- Keep previous results visible while fetching.
+@@@ END
+
+@@@ USER
+How do I implement theme toggle with system preference and no flash?
+@@@ ASSISTANT
+Blocking script in `<head>` sets the class before first paint.
+
+```tsx
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `
+          try {
+            var t = localStorage.getItem("theme");
+            if (t === "dark" || (!t && matchMedia("(prefers-color-scheme: dark)").matches)) {
+              document.documentElement.classList.add("dark");
+            }
+          } catch (e) {}
+        `}} />
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+```tsx
+"use client";
+import { useEffect, useState } from "react";
+
+export function ThemeToggle() {
+  const [dark, setDark] = useState(false);
+  useEffect(() => { setDark(document.documentElement.classList.contains("dark")); }, []);
+  function toggle() {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+  }
+  return <button onClick={toggle} aria-pressed={dark}>{dark ? "Light mode" : "Dark mode"}</button>;
+}
+```
+
+- No flash: the script runs before render.
+- Default to `prefers-color-scheme` when no stored choice.
+- Style with CSS variables; components never hard-code colors.
+- `color-scheme: light dark` on `:root` for native controls.
+@@@ END
+
+@@@ USER
+How do I implement file uploads with progress and chunked resume?
+@@@ ASSISTANT
+XHR for progress, chunked puts with retry, persisted session for resume.
+
+```ts
+async function uploadFile(file: File, onProgress: (pct: number) => void, signal: AbortSignal) {
+  const CHUNK = 5 * 1024 * 1024;
+  const session = await createSession(file.name, file.size);
+  for (let off = 0; off < file.size; off += CHUNK) {
+    if (signal.aborted) throw new DOMException("aborted", "AbortError");
+    const slice = file.slice(off, Math.min(off + CHUNK, file.size));
+    let attempts = 0;
+    while (true) {
+      try { await putChunk(session.id, off, slice, signal); break; }
+      catch (err) { attempts++; if (attempts >= 3) throw err; await new Promise(r => setTimeout(r, 500 * attempts)); }
+    }
+    onProgress(Math.min(100, ((off + slice.size) / file.size) * 100));
+  }
+  return completeSession(session.id);
+}
+```
+
+Server: `POST /uploads` creates a session; `PUT /uploads/:id/chunks/:offset` is idempotent by offset; `POST /uploads/:id/complete` verifies size and checksum. Persist `{ sessionId, uploadedOffsets[] }` in IndexedDB for resume after refresh.
+@@@ END
+
+@@@ USER
+How do I implement pricing page with monthly/annual toggle that updates the URL?
+@@@ ASSISTANT
+Interval in the URL; prices in cents formatted with `Intl.NumberFormat`.
+
+```tsx
+"use client";
+import { useRouter, useSearchParams } from "next/navigation";
+
+const PLANS = [
+  { id: "pro", name: "Pro", monthly: 1200 },
+  { id: "team", name: "Team", monthly: 4900 },
+];
+
+function formatCents(cents: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents);
+}
+
+export function Pricing() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const interval = params.get("interval") === "annual" ? "annual" : "monthly";
+  return (
+    <main>
+      <div role="group" aria-label="Billing interval">
+        <button aria-pressed={interval === "monthly"} onClick={() => router.push("?interval=monthly", { scroll: false })}>Monthly</button>
+        <button aria-pressed={interval === "annual"} onClick={() => router.push("?interval=annual", { scroll: false })}>Annual (save 20%)</button>
+      </div>
+      {PLANS.map((p) => <article key={p.id}><h3>{p.name}</h3><p>{formatCents(interval === "annual" ? p.monthly * 0.8 : p.monthly)}/mo</p></article>)}
+    </main>
+  );
+}
+```
+
+- Server reads the same param so SSR matches the shared link.
+- `aria-pressed` announces toggle state.
+- Announce price changes with `aria-live="polite"`.
+@@@ END
+
+@@@ USER
+What is the difference between loading lazy, decoding async, and fetchpriority low?
+@@@ ASSISTANT
+When to fetch, how to decode, and relative priority.
+
+```html
+<img src="/hero.jpg" fetchpriority="high" decoding="async" alt="...">
+<img src="/chart.png" loading="lazy" decoding="async" fetchpriority="low" alt="...">
+```
+
+- `loading="lazy"`: defers fetch until near the viewport. Never on the LCP image.
+- `decoding="async"`: decode off the main thread. Pair with `lazy` below the fold.
+- `fetchpriority`: `high` for LCP, `low` for below-fold, `auto` default.
+
+Always set dimensions to prevent shift. Use `srcset`/`sizes` so mobile does not download the desktop file. Do not combine `lazy` with preload of the same image.
+@@@ END
+
+@@@ USER
+How do I build a real-time activity feed without polling?
+@@@ ASSISTANT
+SSE for one-way server-to-client updates.
+
+```ts
+app.get("/api/feed", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+  const send = (id: number, type: string, data: unknown) => {
+    res.write(`id: ${id}\nevent: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+  const heartbeat = setInterval(() => res.write(": ping\n\n"), 15_000);
+  let lastId = 0;
+  const onActivity = (a: unknown) => { lastId += 1; send(lastId, "activity", a); };
+  bus.on("activity", onActivity);
+  req.on("close", () => { clearInterval(heartbeat); bus.off("activity", onActivity); });
+});
+```
+
+```ts
+const source = new EventSource("/api/feed");
+source.addEventListener("activity", (e) => prependToFeed(JSON.parse(e.data)));
+```
+
+- Event id enables resume from `Last-Event-ID`; replay missed events.
+- Heartbeats keep proxies from closing idle connections.
+- New items prepend without moving the user's scroll; show "3 new items" instead.
+@@@ END
+
+@@@ USER
+Why does a plain Map as a cache leak memory in a long-running worker?
+@@@ ASSISTANT
+It grows without bound. At 40 entries/min, even small entries fill the heap in days.
+
+```ts
+const cache = new Map<string, ParsedReport>();
+// Every parsed report is retained forever. OOM in ~10 days.
+```
+
+Fixes in order:
+1. Measure hit rate. Below ~20%, delete the cache.
+2. If hit rate is real, bound it: LRU with `max`, `maxSize`, and `ttl`.
+3. Or cache on disk (content-addressed file, atomic write, TTL cleanup). Disk cache gives reuse without heap retention.
+
+Add a regression test: parse 200 reports and assert heap growth < 50 MB. Alert when heap exceeds 80% for 5 minutes.
+@@@ END

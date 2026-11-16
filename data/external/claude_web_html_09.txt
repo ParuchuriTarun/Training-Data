@@ -1,0 +1,554 @@
+@@@ USER
+Build me a responsive card grid in plain HTML and CSS. The number of columns should change with the screen width without media queries, and it should support dark mode automatically.
+@@@ ASSISTANT
+Two CSS features do the work:
+- `grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))` puts as many columns of at least 240px as fit, and shares the rest of the space. No media query is needed.
+- CSS variables for the colors, with a `prefers-color-scheme: dark` block that only replaces the variable values.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Course cards</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --text: #1b1f2a;
+      --muted: #5d6478;
+      --accent: #3b5bdb;
+      --border: #e3e6ef;
+      --radius: 14px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12141b;
+        --card: #1b1f2a;
+        --text: #eceef5;
+        --muted: #a3a9bd;
+        --accent: #8da2ff;
+        --border: #2c3142;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    }
+
+    .card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 16px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .card h2 { margin: 0; font-size: 1.1rem; }
+    .card p { margin: 0; color: var(--muted); }
+    .card a {
+      margin-top: auto;           /* pushes the link to the bottom of every card */
+      color: var(--accent);
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .card a:hover { text-decoration: underline; }
+    .card a:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Courses</h1>
+    <div class="grid">
+      <article class="card">
+        <h2>HTML basics</h2>
+        <p>Tags, links, forms and a clean page structure.</p>
+        <a href="#html">Start lesson</a>
+      </article>
+      <article class="card">
+        <h2>CSS layout</h2>
+        <p>Flexbox, grid and how to make a page responsive on any screen size.</p>
+        <a href="#css">Start lesson</a>
+      </article>
+      <article class="card">
+        <h2>JavaScript</h2>
+        <p>Variables, functions and the DOM.</p>
+        <a href="#js">Start lesson</a>
+      </article>
+      <article class="card">
+        <h2>Git</h2>
+        <p>Save your work and share it with a team.</p>
+        <a href="#git">Start lesson</a>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
+```
+
+How it behaves: on a 1000px wide window you get 3 columns (4 columns from about 1040px, because the content is limited to 1100px), on a phone 1 column, and the cards in one row always have the same height (grid stretches them). The `margin-top: auto` on the link works because the card is a column flexbox, so the free space goes above the link.
+
+Tips:
+- `auto-fill` keeps empty columns when there are few cards, `auto-fit` collapses them so the cards grow. Try both with 2 cards.
+- Use `min(240px, 100%)` inside `minmax` if the container can be narrower than 240px.
+- Use `:focus-visible` (not `:focus`) so keyboard users see an outline and mouse users do not get one on every click.
+@@@ END
+
+@@@ USER
+How do I make a confirm popup in HTML with the dialog element? It should block the page, close with Escape, and tell me which button was clicked.
+@@@ ASSISTANT
+Use `<dialog>` with `showModal()`. The browser then gives you the dark backdrop, traps the keyboard focus inside the dialog, closes it with Escape, and returns the focus to the button that opened it. A `<form method="dialog">` closes the dialog on submit and stores the clicked button's `value` in `dialog.returnValue`.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Confirm dialog</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 24px; }
+    dialog {
+      border: none;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 360px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+    dialog h2 { margin-top: 0; }
+    .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    button { padding: 8px 14px; border-radius: 8px; border: 1px solid #bbb; background: #fff; cursor: pointer; }
+    button.danger { background: #c92a2a; border-color: #c92a2a; color: #fff; }
+  </style>
+</head>
+<body>
+  <button id="open">Delete project</button>
+  <p id="result" role="status"></p>
+
+  <dialog id="confirm" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title">Delete this project?</h2>
+      <p>All files will be removed. This cannot be undone.</p>
+      <div class="actions">
+        <button value="cancel" autofocus>Cancel</button>
+        <button value="delete" class="danger">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const dialog = document.getElementById("confirm");
+    const result = document.getElementById("result");
+
+    document.getElementById("open").addEventListener("click", () => {
+      dialog.returnValue = ""; // forget the last answer
+      dialog.showModal();
+    });
+
+    dialog.addEventListener("close", () => {
+      result.textContent =
+        dialog.returnValue === "delete" ? "Project deleted." : "Nothing changed.";
+    });
+  </script>
+</body>
+</html>
+```
+
+What happens:
+- Click "Delete project": the page behind is dimmed and cannot be clicked.
+- Click "Delete": the `close` event fires with `returnValue === "delete"`, and the message appears.
+- Press Escape or click "Cancel": `returnValue` is empty or `"cancel"`, so the message says nothing changed.
+
+Details that matter:
+- `autofocus` on **Cancel** puts the focus on the safe choice. Never focus the destructive button by default.
+- Resetting `returnValue` before `showModal()` is needed: after an Escape press the old value would stay, and the next Escape would look like a delete.
+- Use `dialog.show()` (without Modal) only for a non-blocking panel. For a normal popup always use `showModal()`.
+- Add the real deletion in the `close` handler, and ask the server again if the action is dangerous. Hiding a button is not security.
+@@@ END
+
+@@@ USER
+Write a signup form in HTML and JavaScript with validation. Show the error under each field, tell screen readers about errors, and stop the user from clicking submit twice.
+@@@ ASSISTANT
+Use the browser's built-in validation rules (`required`, `type="email"`, `minlength`) and read the result from `input.validity`. Turn off the default bubbles with `novalidate` so you can show your own messages. Then:
+- write the message into an element with `aria-live="polite"`, so screen readers read it;
+- set `aria-invalid` on the field;
+- disable the button while the request runs.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign up</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 380px; margin: 40px auto; padding: 0 16px; }
+    label { display: block; margin-top: 16px; font-weight: 600; }
+    input { width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #999; border-radius: 8px; font: inherit; }
+    input[aria-invalid="true"] { border-color: #c92a2a; }
+    .error { color: #c92a2a; margin: 4px 0 0; min-height: 1.4em; font-size: 0.9rem; }
+    button { margin-top: 16px; padding: 10px 16px; font: inherit; border-radius: 8px; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: wait; }
+  </style>
+</head>
+<body>
+  <h1>Create account</h1>
+  <form id="signup" novalidate>
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required autocomplete="email" aria-describedby="email-error">
+    <p class="error" id="email-error" aria-live="polite"></p>
+
+    <label for="pw">Password (at least 8 characters)</label>
+    <input id="pw" name="pw" type="password" required minlength="8" autocomplete="new-password" aria-describedby="pw-error">
+    <p class="error" id="pw-error" aria-live="polite"></p>
+
+    <button type="submit">Create account</button>
+    <p id="status" role="status"></p>
+  </form>
+
+  <script>
+    const form = document.getElementById("signup");
+    const statusLine = document.getElementById("status");
+    const inputs = [...form.querySelectorAll("input")];
+
+    function messageFor(input) {
+      const v = input.validity;
+      if (v.valueMissing) return "Please fill in this field.";
+      if (v.typeMismatch) return "That does not look like a valid email address.";
+      // compared by hand: v.tooShort is only set for text the user typed, not for autofilled values
+      if (input.value.length > 0 && input.value.length < input.minLength) {
+        return `Use at least ${input.minLength} characters.`;
+      }
+      return "";
+    }
+
+    function check(input) {
+      const message = messageFor(input);
+      document.getElementById(input.id + "-error").textContent = message;
+      input.setAttribute("aria-invalid", message ? "true" : "false");
+      return message === "";
+    }
+
+    // check a field when the user leaves it, and again while typing if it was wrong
+    inputs.forEach((input) => {
+      input.addEventListener("blur", () => check(input));
+      input.addEventListener("input", () => {
+        if (input.getAttribute("aria-invalid") === "true") check(input);
+      });
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const results = inputs.map(check); // run all checks so every message is shown
+      if (results.includes(false)) {
+        inputs[results.indexOf(false)].focus(); // first wrong field
+        return;
+      }
+
+      const button = form.querySelector("button");
+      button.disabled = true;
+      statusLine.textContent = "Creating your account...";
+
+      // replace this pause with: await fetch("/api/signup", { method: "POST", body: new FormData(form) })
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      statusLine.textContent = "Account created.";
+      button.disabled = false;
+    });
+  </script>
+</body>
+</html>
+```
+
+Why each part is there:
+- `aria-describedby` connects the field to its error text, so a screen reader reads the message together with the field.
+- Moving the focus to the first wrong field saves the user from hunting for it.
+- Disabling the button stops double submits; also make the server safe against duplicates (a unique email constraint), because a user can still send the request twice some other way.
+- The browser flags `tooShort` only for text typed by the user, so the code compares the length itself. That also covers values filled in by a password manager.
+- Client validation is for comfort only. The server must check everything again.
+@@@ END
+
+@@@ USER
+Show me a page layout with header, sidebar, main content and footer using CSS grid. On phones the sidebar should go above the content, and the footer must stay at the bottom even when the content is short.
+@@@ ASSISTANT
+Name the areas with `grid-template-areas` and place every element with `grid-area`. The layout is then visible in the CSS like a drawing. For a phone, one media query redraws the same areas in one column.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Layout</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;                  /* at least the height of the window */
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      grid-template-rows: auto 1fr auto;  /* the middle row takes the free space */
+      grid-template-areas:
+        "header header"
+        "nav    main"
+        "footer footer";
+      font-family: system-ui, sans-serif;
+    }
+
+    header { grid-area: header; background: #1f2937; color: #fff; padding: 12px 16px; }
+    nav    { grid-area: nav;    background: #e5e7eb; padding: 16px; }
+    main   { grid-area: main;   padding: 16px; }
+    footer { grid-area: footer; background: #1f2937; color: #fff; padding: 12px 16px; }
+
+    nav ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+
+    @media (max-width: 600px) {
+      body {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "header"
+          "nav"
+          "main"
+          "footer";
+      }
+    }
+  </style>
+</head>
+<body>
+  <header><strong>My site</strong></header>
+  <nav>
+    <ul>
+      <li><a href="#home">Home</a></li>
+      <li><a href="#docs">Docs</a></li>
+      <li><a href="#about">About</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>Welcome</h1>
+    <p>Short content. The footer still sits at the bottom of the window.</p>
+  </main>
+  <footer>2026 My site</footer>
+</body>
+</html>
+```
+
+Why it works:
+- `min-height: 100vh` plus `grid-template-rows: auto 1fr auto` makes the middle row stretch, so the footer is pushed down on a short page and simply follows the content on a long page.
+- Moving the nav to the top on small screens needs no change in the HTML, only a new `grid-template-areas`.
+- Use grid for the **page** (two directions) and flexbox for a **row** of items (one direction, for example the nav links or a toolbar). They work well together.
+- On some phones `100vh` includes the browser bar. `min-height: 100dvh` (dynamic viewport height) is more exact in modern browsers.
+@@@ END
+
+@@@ USER
+How do I build accessible tabs in plain JavaScript? They should work with the mouse and the keyboard (arrow keys, Home, End).
+@@@ ASSISTANT
+Follow the ARIA tabs pattern:
+- the container has `role="tablist"`, each button `role="tab"`, each content `role="tabpanel"`;
+- only the selected tab is in the Tab order (`tabindex="0"`), the others have `tabindex="-1"` and are reached with the **arrow keys**;
+- `aria-selected` says which tab is active, `aria-controls` and `aria-labelledby` connect tab and panel.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tabs</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 40px auto; padding: 0 16px; }
+    [role="tablist"] { display: flex; gap: 4px; border-bottom: 2px solid #ccc; }
+    [role="tab"] {
+      padding: 10px 16px; border: none; background: none; font: inherit; cursor: pointer;
+      border-bottom: 3px solid transparent; margin-bottom: -2px;
+    }
+    [role="tab"][aria-selected="true"] { border-bottom-color: #3b5bdb; font-weight: 700; }
+    [role="tab"]:focus-visible { outline: 3px solid #3b5bdb; outline-offset: -3px; }
+    [role="tabpanel"] { padding: 16px 4px; }
+  </style>
+</head>
+<body>
+  <div role="tablist" aria-label="Project sections">
+    <button role="tab" id="tab-1" aria-controls="panel-1" aria-selected="true">Overview</button>
+    <button role="tab" id="tab-2" aria-controls="panel-2" aria-selected="false" tabindex="-1">Files</button>
+    <button role="tab" id="tab-3" aria-controls="panel-3" aria-selected="false" tabindex="-1">Settings</button>
+  </div>
+
+  <div role="tabpanel" id="panel-1" aria-labelledby="tab-1" tabindex="0">Overview: a short description of the project.</div>
+  <div role="tabpanel" id="panel-2" aria-labelledby="tab-2" tabindex="0" hidden>Files: 12 files, 3 folders.</div>
+  <div role="tabpanel" id="panel-3" aria-labelledby="tab-3" tabindex="0" hidden>Settings: name, visibility, members.</div>
+
+  <script>
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+
+    function select(tab) {
+      for (const t of tabs) {
+        const on = t === tab;
+        t.setAttribute("aria-selected", String(on));
+        t.tabIndex = on ? 0 : -1;
+        document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+      }
+      tab.focus();
+    }
+
+    tabs.forEach((tab, i) => {
+      tab.addEventListener("click", () => select(tab));
+      tab.addEventListener("keydown", (event) => {
+        let target = null;
+        if (event.key === "ArrowRight") target = (i + 1) % tabs.length;
+        if (event.key === "ArrowLeft") target = (i - 1 + tabs.length) % tabs.length;
+        if (event.key === "Home") target = 0;
+        if (event.key === "End") target = tabs.length - 1;
+        if (target !== null) {
+          event.preventDefault();
+          select(tabs[target]);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
+```
+
+Behavior:
+- Tab key: moves into the tab list (to the selected tab), then out of it to the panel. The arrow keys move between the tabs.
+- Right arrow on the last tab goes back to the first one (`% tabs.length`).
+- The `hidden` attribute removes the inactive panels from the page and from the accessibility tree.
+
+If the content is only a short list of links, normal links are simpler and more robust than tabs. Use tabs when the panels really are views of the same thing.
+@@@ END
+
+@@@ USER
+My flex row has a title with text-overflow ellipsis and a badge, but a long title pushes the badge out of the box instead of showing "...". What is wrong?
+
+```html
+<style>
+  .row { display: flex; align-items: center; gap: 8px; width: 260px; border: 1px solid #ccc; padding: 8px; }
+  .text { flex: 1; }
+  .name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { flex: none; }
+</style>
+<div class="row">
+  <div class="text"><strong class="name">A very long file name that does not fit in the box.pdf</strong></div>
+  <span class="badge">3 MB</span>
+</div>
+```
+@@@ ASSISTANT
+A flex item has `min-width: auto` by default. That means it **will not shrink below the width of its content**. The text is `nowrap`, so its content is very wide, and `.text` refuses to get narrower than that. The ellipsis never appears, because `.name` is never too wide for `.text`, and the whole row overflows.
+
+(If `.name` itself were the flex item with `overflow: hidden`, it would work, because a scroll container's automatic minimum width is 0. In your code the item is the wrapper `.text`, which has `overflow: visible`.)
+
+The fix is one line: allow the flex item to shrink with `min-width: 0`.
+
+```html
+<style>
+  .row { display: flex; align-items: center; gap: 8px; width: 260px; border: 1px solid #ccc; padding: 8px; }
+  .text { flex: 1; min-width: 0; }
+  .name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { flex: none; }
+</style>
+<div class="row">
+  <div class="text"><strong class="name">A very long file name that does not fit in the box.pdf</strong></div>
+  <span class="badge">3 MB</span>
+</div>
+```
+
+Result: the title is cut with "..." and the badge `3 MB` stays inside the box on the right.
+
+Changes made:
+- Added `min-width: 0` to `.text`.
+
+Good to know:
+- The same problem appears in grid: use `minmax(0, 1fr)` instead of `1fr` when a column contains long unbreakable content (long words, `pre` blocks, wide images).
+- For two lines of text with ellipsis use `-webkit-line-clamp: 2` with `display: -webkit-box` and `-webkit-box-orient: vertical`.
+- `flex: none` on the badge (same as `flex: 0 0 auto`) stops it from shrinking.
+@@@ END
+
+@@@ USER
+How do I add a light/dark theme toggle to a website? It should remember the choice, follow the system setting on the first visit, and not flash the wrong color while the page loads.
+@@@ ASSISTANT
+Three pieces:
+1. Colors as CSS variables, with a second set for `[data-theme="dark"]` on the `<html>` element.
+2. A tiny script **in the `<head>`**, before the page is painted, that reads the saved choice (or the system setting) and sets `data-theme`. This prevents the flash of the wrong theme.
+3. A button that flips the attribute and saves the choice in `localStorage`.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Theme toggle</title>
+  <script>
+    // runs before the first paint
+    (function () {
+      var theme = null;
+      try { theme = localStorage.getItem("theme"); } catch (e) {}
+      if (theme !== "light" && theme !== "dark") {
+        theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
+  <style>
+    :root { --bg: #ffffff; --text: #151823; color-scheme: light; }
+    :root[data-theme="dark"] { --bg: #151823; --text: #eceef5; color-scheme: dark; }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; padding: 24px; }
+    button { padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Hello</h1>
+  <button id="toggle" aria-pressed="false">Dark mode</button>
+
+  <script>
+    const root = document.documentElement;
+    const button = document.getElementById("toggle");
+
+    const sync = () => button.setAttribute("aria-pressed", String(root.dataset.theme === "dark"));
+    sync();
+
+    button.addEventListener("click", () => {
+      const next = root.dataset.theme === "dark" ? "light" : "dark";
+      root.dataset.theme = next;
+      try { localStorage.setItem("theme", next); } catch (e) {}
+      sync();
+    });
+  </script>
+</body>
+</html>
+```
+
+Why it is built this way:
+- The first script is small and blocking **on purpose**. If you set the theme in a script at the end of the body, the browser shows the light page first and flips it a moment later.
+- `try/catch` around `localStorage` is needed because it can be blocked (private mode, strict browser settings). The page must still work, only without memory.
+- `color-scheme` makes built-in parts (scrollbars, form controls, default text color) match the theme.
+- `aria-pressed` tells screen reader users that this is a toggle and whether it is on.
+- If you also want to follow the system when the user changes it at night, listen to `matchMedia("(prefers-color-scheme: dark)")` for `change` events, but only when the user has not chosen a theme by hand.
+@@@ END

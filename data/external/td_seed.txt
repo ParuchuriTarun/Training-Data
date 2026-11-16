@@ -1,0 +1,1100 @@
+@@@ USER
+Why does this print B before A? I expected the timeout to run first.
+
+```js
+setTimeout(() => console.log("A"), 0);
+Promise.resolve().then(() => console.log("B"));
+console.log("C");
+```
+@@@ ASSISTANT
+It prints `C`, `B`, `A`. The timeout callback is a macrotask; the promise callback is a microtask. After the current script finishes, the engine drains the entire microtask queue before it runs the next macrotask, even when the timer delay is 0.
+
+Step by step:
+
+1. `setTimeout` registers a macrotask and returns immediately.
+2. `Promise.resolve().then(...)` queues a microtask.
+3. `console.log("C")` runs as part of the current synchronous script.
+4. The call stack is empty, so the engine drains microtasks: `B`.
+5. Only then does the event loop pick the next macrotask: `A`.
+
+`queueMicrotask(fn)` and `await` schedule the same kind of work as `.then`, so this ordering holds inside async functions too:
+
+```js
+async function run() {
+  console.log("1");
+  await null;          // continuation becomes a microtask
+  console.log("3");
+}
+run();
+console.log("2");      // 1, 2, 3
+```
+
+In Node.js there is one extra queue: `process.nextTick` callbacks run before promise microtasks, so `process.nextTick(() => console.log("N"))` beats a `.then` queued in the same tick. Browser code does not have that distinction.
+
+Practical consequences:
+
+- Starving the microtask queue blocks rendering. A recursive `Promise.resolve().then(loop)` never yields to the browser; use `setTimeout(loop, 0)` or `requestAnimationFrame` to give the renderer a turn.
+- Do not rely on `setTimeout(..., 0)` for ordering; the minimum delay is clamped (often to 4 ms after nested timers) and other macrotasks may already be queued.
+- If you need work after the DOM has been painted, use `requestAnimationFrame` followed by `setTimeout(..., 0)` or `requestIdleCallback` where available.
+
+You can verify the order in any browser console or with `node -e` using the snippet above.
+@@@ END
+
+@@@ USER
+My web app needs to queue POST requests while offline and replay them in order when the connection returns. Should I use localStorage or IndexedDB? Show me a minimal implementation without a library.
+@@@ ASSISTANT
+Use IndexedDB. `localStorage` is synchronous, capped around 5 MB, stores only strings, and has no transactions, so two tabs can corrupt the queue. IndexedDB is asynchronous, transactional, and handles structured data.
+
+The design:
+
+- Store each pending request with an auto-incrementing key so replay preserves creation order.
+- Give every request an idempotency key so a retry after an ambiguous network failure cannot create a duplicate on the server.
+- Delete the entry only after the server acknowledges it.
+- Retry with exponential backoff and stop on 4xx responses that will never succeed.
+
+```js
+const DB_NAME = "offline-queue";
+const STORE = "requests";
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(STORE, { keyPath: "id", autoIncrement: true });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function tx(mode, fn) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(STORE, mode);
+    const store = t.objectStore(STORE);
+    let result;
+    Promise.resolve(fn(store)).then((value) => { result = value; });
+    t.oncomplete = () => { db.close(); resolve(result); };
+    t.onerror = () => { db.close(); reject(t.error); };
+    t.onabort = () => { db.close(); reject(t.error); };
+  });
+}
+
+export async function enqueue(url, body) {
+  const record = {
+    url,
+    body,
+    idempotencyKey: crypto.randomUUID(),
+    attempts: 0,
+    createdAt: Date.now(),
+  };
+  await tx("readwrite", (store) => new Promise((resolve, reject) => {
+    const req = store.add(record);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }));
+}
+
+async function pending() {
+  return tx("readonly", (store) => new Promise((resolve, reject) => {
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }));
+}
+
+async function remove(id) {
+  await tx("readwrite", (store) => new Promise((resolve, reject) => {
+    const req = store.delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  }));
+}
+
+let flushing = false;
+
+export async function flush() {
+  if (flushing || !navigator.onLine) return;
+  flushing = true;
+  try {
+    for (const item of await pending()) {
+      try {
+        const res = await fetch(item.url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": item.idempotencyKey,
+          },
+          body: JSON.stringify(item.body),
+        });
+        if (res.ok) {
+          await remove(item.id);
+          continue;
+        }
+        if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+          await remove(item.id); // permanent failure: do not retry forever
+          continue;
+        }
+        throw new Error(`HTTP ${res.status}`);
+      } catch {
+        // Stop the loop to preserve ordering; retry later.
+        break;
+      }
+    }
+  } finally {
+    flushing = false;
+  }
+}
+
+window.addEventListener("online", flush);
+setInterval(flush, 30_000);
+```
+
+Server side, the idempotency key must be unique per user and stored with the response. On a duplicate key, return the original response instead of performing the write again.
+
+Two details that matter in production:
+
+1. Replay is sequential on purpose. Sending requests in parallel can reorder dependent writes.
+2. Register a service worker only if you also need to replay while the tab is closed. The code above flushes while the page is open; a Background Sync handler covers the closed-tab case.
+
+Test it in DevTools: set Network to Offline, submit the form, confirm one row in IndexedDB under Application, go online, and verify the request fires once and the row disappears.
+@@@ END
+
+@@@ USER
+We run a multi-tenant SaaS on Postgres and every table has a tenant_id. How do I guarantee tenant A can never read tenant B's rows, even if an endpoint forgets a WHERE clause?
+@@@ ASSISTANT
+Use Postgres row-level security (RLS) with a per-request tenant setting, and connect as a role that does not have `BYPASSRLS`. The database then enforces isolation regardless of what the query forgets.
+
+Schema:
+
+```sql
+CREATE TABLE invoices (
+  id          bigserial PRIMARY KEY,
+  tenant_id   uuid NOT NULL,
+  amount_cents integer NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX invoices_tenant_created_idx
+  ON invoices (tenant_id, created_at DESC);
+
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation ON invoices
+  USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+```
+
+`FORCE ROW LEVEL SECURITY` matters: without it, the table owner bypasses policies.
+
+The application role must not own the tables and must not have `BYPASSRLS`:
+
+```sql
+CREATE ROLE app_user LOGIN PASSWORD '...' NOBYPASSRLS;
+GRANT SELECT, INSERT, UPDATE, DELETE ON invoices TO app_user;
+GRANT USAGE ON SCHEMA public TO app_user;
+```
+
+Set the tenant inside the same transaction as the query, using a parameter, never string interpolation:
+
+```js
+async function withTenant(pool, tenantId, fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// usage
+const rows = await withTenant(pool, tenantId, (client) =>
+  client.query("SELECT * FROM invoices ORDER BY created_at DESC LIMIT 50")
+);
+```
+
+The `true` third argument to `set_config` makes the setting local to the transaction, so pooled connections cannot leak a tenant between requests. This is the most common RLS bug: using `SET` instead of `SET LOCAL` and poisoning a connection pool.
+
+For inserts, the `WITH CHECK` clause rejects a row whose `tenant_id` does not match, so an attacker cannot write into another tenant by supplying a different id.
+
+Testing:
+
+```sql
+BEGIN;
+SELECT set_config('app.tenant_id', '11111111-1111-1111-1111-111111111111', true);
+SELECT count(*) FROM invoices;  -- only tenant A
+INSERT INTO invoices (tenant_id, amount_cents)
+VALUES ('22222222-2222-2222-2222-222222222222', 100);  -- must fail
+ROLLBACK;
+```
+
+Operational notes:
+
+- Run migrations and background jobs under a separate owner role; do not reuse the app role with elevated rights.
+- Add `tenant_id` to every unique constraint and foreign key that is tenant-scoped.
+- Test the negative case in CI: connect as `app_user`, set tenant A, and assert that a query for tenant B's known id returns zero rows.
+- RLS adds a predicate to every query; the `(tenant_id, ...)` index keeps it cheap.
+@@@ END
+
+@@@ USER
+Next.js is throwing "Hydration failed because the server rendered HTML didn't match the client" and I cannot find it. It started when I added a clock to the header.
+@@@ ASSISTANT
+That symptom is expected: `new Date()` produces a different value on the server and in the browser, so the HTML text mismatches before React hydrates.
+
+Show me the component and I can pinpoint the exact line, but the usual fix is to render a stable placeholder on the server and fill in the time after mount:
+
+```tsx
+"use client";
+
+import { useEffect, useState } from "react";
+
+export function Clock() {
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (now === null) {
+    return <time suppressHydrationWarning>--:--:--</time>;
+  }
+
+  return <time dateTime={now.toISOString()}>{now.toLocaleTimeString()}</time>;
+}
+```
+
+The first client render must match the server exactly, which is why the initial state is `null` and not `new Date()`.
+
+Send me the header code if the mismatch remains; there are three other common sources I would check next: `localStorage` read during render, `Math.random()` in markup, and invalid HTML nesting such as a `<div>` inside `<p>` that the browser repairs differently than React expects.
+@@@ USER
+Here is the header. The clock is the only dynamic thing I can see.
+
+```tsx
+export default function Header() {
+  const [theme, setTheme] = useState(localStorage.getItem("theme") ?? "light");
+  return (
+    <header className={theme}>
+      <Clock />
+      <nav>...</nav>
+    </header>
+  );
+}
+```
+@@@ ASSISTANT
+There are two mismatches in this component, and the clock fix alone will not be enough.
+
+1. `localStorage` does not exist on the server, so the server renders `"light"` while a browser that previously chose `"dark"` renders `"dark"` on its first pass.
+2. The clock changes between server render and hydration.
+
+Fix the theme without a hydration mismatch by applying it before React runs, in a small blocking script in the document head, and keeping React's initial state constant:
+
+```tsx
+// app/layout.tsx
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                var t = localStorage.getItem("theme");
+                if (t === "dark" || (!t && matchMedia("(prefers-color-scheme: dark)").matches)) {
+                  document.documentElement.classList.add("dark");
+                }
+              } catch (e) {}
+            `,
+          }}
+        />
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+```tsx
+"use client";
+
+export function ThemeToggle() {
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    setDark(document.documentElement.classList.contains("dark"));
+  }, []);
+
+  function toggle() {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+  }
+
+  return (
+    <button onClick={toggle} aria-pressed={dark}>
+      {dark ? "Light mode" : "Dark mode"}
+    </button>
+  );
+}
+```
+
+The class is set on `<html>` by the blocking script before first paint, so there is no flash and no React mismatch. `suppressHydrationWarning` on `<html>` is appropriate here because the script deliberately mutates that element's class list before hydration; do not use it to silence mismatches elsewhere.
+
+Then apply the `Clock` pattern from the previous message. Run the app with a hard reload and check the console: the warning should be gone. To prevent regressions, add an ESLint rule that forbids `localStorage`, `window`, and `Date.now()` during render (for example `react-hooks` rules plus a custom `no-restricted-globals` entry scoped to components), and add a Playwright test that loads the page with a stored dark theme and asserts no console errors.
+@@@ USER
+Everything renders now, but how do I stop this class of bug from coming back across the team?
+@@@ ASSISTANT
+Make the unsafe patterns fail loudly instead of relying on review.
+
+1. Lint boundaries. Add `no-restricted-globals` for `window`, `document`, `localStorage`, and `navigator` in files that are not explicitly client-only, and require the `"use client"` directive for components that use hooks. In a Next.js App Router codebase, a common convention is a `use client` boundary at leaf components and a lint rule that flags browser globals in `app/**/page.tsx` and `layout.tsx`.
+
+2. Type-level separation. Keep server data fetching in `page.tsx` and pass plain serializable props to a client component. If a prop is a function, a `Date`, or a class instance, serialization fails at build time rather than producing a subtle mismatch.
+
+3. A single client-only primitive. Provide a `<ClientOnly>` component that renders `null` on the server and its children after mount. Use it for charts, maps, editors, and anything that reads browser state. This is safer than scattering `useEffect` guards.
+
+```tsx
+"use client";
+import { useEffect, useState } from "react";
+
+export function ClientOnly({ children, fallback = null }: {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  return mounted ? <>{children}</> : <>{fallback}</>;
+}
+```
+
+4. A Playwright smoke test in CI. Load the five most important routes with JavaScript enabled, fail on any console error containing "hydration", and run it against a production build (`next build && next start`). Development-only warnings hide production behavior differences.
+
+5. A tiny server/client contract test. For pages that render dates or prices, snapshot the server HTML and assert that the first client render matches. React's `hydrateRoot` error is the signal; do not suppress it globally.
+
+Finally, document the rule in the README: browser state is read only after mount, theme is applied by the head script, and no component reads `localStorage` during render. That is the invariant the lint rules and tests enforce.
+@@@ END
+
+@@@ USER
+Rewrite this incident update so it is clear and calm. Keep it honest about what we do not know yet.
+
+"So basically the DB kinda died and everything was down for like 40 mins, we think it was the migration but not sure, we're looking into it."
+@@@ ASSISTANT
+**Incident update — [Service] — [date, 14:05 UTC]**
+
+Between 13:20 and 14:00 UTC, [Service] was unavailable for all users. Requests to the API failed with 5xx errors, and the web app showed an error page.
+
+We have restored service and are monitoring. The trigger appears to be related to the database migration deployed at 13:15 UTC, but we have not confirmed the causal link yet. We are reviewing database logs and the migration diff now.
+
+Impact: all users, approximately 40 minutes, no data loss observed. Reads and writes were both unavailable during the window.
+
+Next update by 14:45 UTC, or sooner if we confirm the cause.
+
+**Why this version is better**
+
+- **Leads with impact and status.** Readers need to know whether they are affected and whether it is over before they read the cause.
+- **Separates facts from hypotheses.** "Appears to be related" is honest; "we think it was the migration" without qualification sounds like a conclusion.
+- **Puts a time on the next update.** A timestamped commitment reduces speculation.
+- **Uses neutral language.** "Unavailable" and "5xx errors" describe the event; "kinda died" and "everything was down" invite alarm and ambiguity.
+- **States what is not known.** Saying no data loss was observed is useful; claiming there was none before verification is not.
+
+Avoid: "basically", "we think" without a confidence level, vague durations, and promises such as "it will not happen again" before the postmortem exists.
+@@@ END
+
+@@@ USER
+Show me how to model async data in TypeScript so impossible states cannot happen. I keep ending up with isLoading and error as separate booleans that contradict each other.
+@@@ ASSISTANT
+Use one discriminated union where each state carries exactly the data it needs. The compiler then rejects access to `data` when the state is `loading` or `error`.
+
+```ts
+type AsyncState<T> =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: T }
+  | { status: "error"; error: Error };
+
+function isSuccess<T>(s: AsyncState<T>): s is { status: "success"; data: T } {
+  return s.status === "success";
+}
+```
+
+A reducer makes the transitions explicit:
+
+```ts
+type Action<T> =
+  | { type: "fetch" }
+  | { type: "resolve"; data: T }
+  | { type: "reject"; error: Error };
+
+function reducer<T>(state: AsyncState<T>, action: Action<T>): AsyncState<T> {
+  switch (action.type) {
+    case "fetch":
+      return { status: "loading" };
+    case "resolve":
+      return { status: "success", data: action.data };
+    case "reject":
+      return { status: "error", error: action.error };
+  }
+}
+```
+
+Consume it with an exhaustive switch. If a new status is added later, the `never` assignment makes the build fail until every branch is handled:
+
+```tsx
+function View({ state }: { state: AsyncState<User[]> }) {
+  switch (state.status) {
+    case "idle":
+      return <p>Press search to load users.</p>;
+    case "loading":
+      return <Spinner />;
+    case "error":
+      return <p role="alert">Could not load users: {state.error.message}</p>;
+    case "success":
+      return <ul>{state.data.map((u) => <li key={u.id}>{u.name}</li>)}</ul>;
+    default: {
+      const exhaustive: never = state;
+      return exhaustive;
+    }
+  }
+}
+```
+
+Why this is better than `{ data, isLoading, error }`:
+
+- `data` cannot be `undefined` while the UI claims success.
+- An error and a success payload cannot coexist.
+- Refreshing does not force you to clear previous data unless you add a `refreshing` state deliberately, for example `{ status: "success"; data: T; refreshing: true }`.
+- `switch` gives autocomplete and exhaustiveness checking.
+
+Two practical additions:
+
+1. Wrap the request in an async function that dispatches `resolve` or `reject`, and guard against out-of-order responses with an `AbortController`.
+2. If you use TanStack Query, you already get this model; keep the same union at component boundaries rather than destructuring `isLoading`, `isError`, and `data` into separate booleans.
+
+A quick test case proves the invariant: construct each variant and assert that rendering never reads `data` unless `status === "success"`. TypeScript enforces it at compile time, and the test documents the contract.
+@@@ END
+
+@@@ USER
+Why does animating `top` or `left` look janky, while `transform: translateY()` looks smooth? Is it just a browser quirk?
+@@@ ASSISTANT
+It is the rendering pipeline, not a quirk. Changing `top` or `left` invalidates **layout**: the browser must recompute geometry, which can cascade to siblings and ancestors, then repaint and composite. `transform` and `opacity` can be handled by the compositor on the GPU without layout or paint.
+
+The usual order is:
+
+1. **Style** — recompute which CSS rules apply.
+2. **Layout** — compute boxes and positions.
+3. **Paint** — fill pixels into layers.
+4. **Composite** — combine layers on the GPU.
+
+`top` forces steps 1–4. `transform: translateY()` on a promoted layer forces only step 4.
+
+```css
+.card {
+  will-change: transform;
+  transition: transform 200ms ease-out;
+}
+.card:hover {
+  transform: translateY(-4px);
+}
+```
+
+Do not put `will-change: transform` on hundreds of elements; each promoted layer consumes memory. Apply it to the element being animated, and remove it when the animation is done if the element is long-lived.
+
+Two related traps:
+
+- **Layout thrashing.** Reading `offsetHeight` after writing `style.top` forces a synchronous layout. Batch reads and writes:
+
+```js
+// bad: read, write, read, write
+for (const el of items) {
+  el.style.height = el.offsetHeight + 10 + "px";
+}
+
+// good: read all, then write all
+const heights = items.map((el) => el.offsetHeight);
+items.forEach((el, i) => {
+  el.style.height = heights[i] + 10 + "px";
+});
+```
+
+- **Animating layout properties by accident.** `width`, `height`, `margin`, `padding`, `top`, and `left` all trigger layout. For size or position changes, use the FLIP technique: measure `First`, apply the final state, measure `Last`, invert with a transform, then `Play` the transition.
+
+Verify with DevTools Performance: record the animation, then check whether frames contain Layout/Paint work or only Composite. If the purple "Composite" band dominates, the animation is cheap.
+@@@ END
+
+@@@ USER
+My React app ships a 1.8 MB JS bundle. How do I find what is actually large, and what is the correct way to split it?
+@@@ ASSISTANT
+Measure first, then split by route and by interaction.
+
+**1. Find the weight.** With Vite or webpack, generate a stats file and inspect it:
+
+```bash
+# Vite
+npx vite build --mode production
+npx source-map-explorer dist/assets/*.js
+
+# Next.js
+ANALYZE=true next build   # with @next/bundle-analyzer configured
+```
+
+Look for: a charting library imported at the top level, a date library with all locales, an icon package imported as a barrel (`import { FiSearch } from "react-icons/fi"` can pull the whole set in some setups), polyfills for modern browsers, and duplicated copies of the same dependency at different versions.
+
+**2. Split by route.** In React Router or Next.js, lazy-load entire routes:
+
+```tsx
+import { lazy, Suspense } from "react";
+
+const Reports = lazy(() => import("./routes/Reports"));
+
+export function App() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <Routes>
+        <Route path="/reports" element={<Reports />} />
+      </Routes>
+    </Suspense>
+  );
+}
+```
+
+In Next.js App Router this is automatic per route; use `next/dynamic` with `ssr: false` only for components that genuinely cannot render on the server, such as a chart that reads `window`.
+
+**3. Split by interaction.** A heavy editor, map, or PDF viewer should load when the user opens it, not on first paint:
+
+```tsx
+const Editor = lazy(() => import("./Editor"));
+
+function OpenEditorButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Edit document</button>
+      {open && (
+        <Suspense fallback={<Spinner />}>
+          <Editor />
+        </Suspense>
+      )}
+    </>
+  );
+}
+```
+
+**4. Fix the causes, not only the symptoms.**
+
+- Replace barrel-file imports with direct paths when the bundler cannot tree-shake them.
+- Import date-fns functions individually rather than the whole library.
+- Use `sideEffects: false` in your own package.json only if it is true; otherwise tree-shaking breaks.
+- Check that `process.env.NODE_ENV` is `production` and that source maps are not shipped to users.
+- Deduplicate dependencies with `npm ls <package>`; two versions of the same library is a common hidden cost.
+
+**5. Prefetch on intent.** Load the route chunk on hover or focus, not on page load:
+
+```tsx
+<Link
+  to="/reports"
+  onMouseEnter={() => import("./routes/Reports")}
+  onFocus={() => import("./routes/Reports")}
+>
+  Reports
+</Link>
+```
+
+Finally, set a budget in CI: fail the build if the initial route exceeds, for example, 250 KB gzipped. A budget prevents regressions; a one-time cleanup does not.
+@@@ END
+
+@@@ USER
+Our Kubernetes pods receive traffic before the app has finished booting, and during rolling deploys some requests fail. How should readiness, liveness, and startup probes be configured?
+@@@ ASSISTANT
+Use the three probes for three different questions, and add graceful shutdown.
+
+- **Startup probe**: "Has the process finished booting?" While it runs, liveness and readiness are disabled. Use it for apps with slow migrations or cache warmup.
+- **Readiness probe**: "Should this pod receive traffic right now?" Failing it removes the pod from Service endpoints but does not restart it.
+- **Liveness probe**: "Is this process wedged and unrecoverable?" Failing it restarts the container. It must not check dependencies such as the database; a brief database outage would then restart every pod and make the incident worse.
+
+A minimal, correct configuration:
+
+```yaml
+containers:
+  - name: api
+    image: registry.example.com/api:1.4.2
+    ports:
+      - containerPort: 3000
+    startupProbe:
+      httpGet: { path: /healthz, port: 3000 }
+      periodSeconds: 2
+      failureThreshold: 30      # up to 60s to boot
+    readinessProbe:
+      httpGet: { path: /readyz, port: 3000 }
+      periodSeconds: 5
+      timeoutSeconds: 2
+      failureThreshold: 2
+    livenessProbe:
+      httpGet: { path: /healthz, port: 3000 }
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    lifecycle:
+      preStop:
+        exec:
+          command: ["sleep", "5"]
+    terminationGracePeriodSeconds: 30
+```
+
+Endpoint semantics:
+
+```js
+// /healthz: process-level only. No database, no Redis.
+app.get("/healthz", (req, res) => res.status(200).send("ok"));
+
+// /readyz: can this instance serve traffic?
+app.get("/readyz", async (req, res) => {
+  if (!app.locals.acceptingRequests) return res.status(503).send("draining");
+  const dbOk = await pool.query("SELECT 1").then(() => true).catch(() => false);
+  res.status(dbOk ? 200 : 503).send(dbOk ? "ready" : "db unavailable");
+});
+```
+
+Graceful shutdown is the other half. On `SIGTERM`:
+
+1. Set `acceptingRequests = false` so `/readyz` returns 503.
+2. Wait a few seconds for the load balancer to stop sending new requests.
+3. Stop accepting new connections and let in-flight requests finish.
+4. Close the database pool and exit.
+
+```js
+let shuttingDown = false;
+
+process.on("SIGTERM", async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  app.locals.acceptingRequests = false;
+
+  await new Promise((r) => setTimeout(r, 5000)); // endpoint propagation
+  server.close(async () => {
+    await pool.end();
+    process.exit(0);
+  });
+
+  setTimeout(() => process.exit(1), 25_000).unref(); // hard deadline
+});
+```
+
+`preStop: sleep 5` gives the endpoint controller time to remove the pod before the process stops accepting connections; combined with the in-process drain, this removes most 502s during deploys.
+
+Anti-patterns to avoid: liveness checking the database, readiness returning 200 while migrations are still running, a startup probe with the same aggressive thresholds as liveness, and `terminationGracePeriodSeconds` shorter than the longest request. Test the whole path by rolling a deployment under load and watching the error rate; a configuration that looks correct can still fail if the app ignores `SIGTERM`.
+@@@ END
+
+@@@ USER
+How do I test a cart-total function with property-based tests instead of a handful of examples?
+@@@ ASSISTANT
+Property-based testing describes invariants that must hold for *all* inputs, then generates many inputs and shrinks failures to a minimal case. It finds edge cases that example tests miss: empty carts, zero quantities, duplicate SKUs, and discount stacking.
+
+Using `fast-check` with Vitest:
+
+```ts
+import fc from "fast-check";
+import { describe, expect, it } from "vitest";
+import { cartTotal } from "./cart";
+
+const lineItem = fc.record({
+  sku: fc.string({ minLength: 1, maxLength: 12 }),
+  unitCents: fc.integer({ min: 0, max: 500_000 }),
+  quantity: fc.integer({ min: 0, max: 100 }),
+});
+
+describe("cartTotal", () => {
+  it("equals the sum of line totals", () => {
+    fc.assert(
+      fc.property(fc.array(lineItem, { maxLength: 50 }), (items) => {
+        const expected = items.reduce((sum, i) => sum + i.unitCents * i.quantity, 0);
+        expect(cartTotal(items)).toBe(expected);
+      })
+    );
+  });
+
+  it("does not depend on item order", () => {
+    fc.assert(
+      fc.property(fc.array(lineItem, { maxLength: 50 }), (items) => {
+        const shuffled = [...items].sort(() => Math.random() - 0.5);
+        expect(cartTotal(shuffled)).toBe(cartTotal(items));
+      })
+    );
+  });
+
+  it("never returns a negative total", () => {
+    fc.assert(
+      fc.property(fc.array(lineItem, { maxLength: 50 }), (items) => {
+        expect(cartTotal(items)).toBeGreaterThanOrEqual(0);
+      })
+    );
+  });
+
+  it("applying a percentage discount twice is not the same as applying it once, unless it is 0%", () => {
+    fc.assert(
+      fc.property(
+        fc.array(lineItem, { maxLength: 20 }),
+        fc.integer({ min: 1, max: 90 }),
+        (items, percent) => {
+          const once = cartTotal(items, { percentOff: percent });
+          const twice = cartTotal(items, { percentOff: percent, applyTwice: true });
+          if (percent === 0) expect(twice).toBe(once);
+          else expect(twice).toBeLessThan(once);
+        }
+      )
+    );
+  });
+});
+```
+
+Properties worth encoding for money code:
+
+- **Additivity**: splitting a cart into two carts and summing the totals equals the original total.
+- **Order independence**: sorting or shuffling items does not change the total.
+- **Monotonicity**: adding an item never decreases the total.
+- **Bounds**: total is at least zero and at most the sum of unit price times quantity before discounts.
+- **Rounding**: totals are integers in cents; no floating-point currency.
+- **Idempotence** where applicable: recalculating an unchanged cart returns the same value.
+
+Use `fc.pre(condition)` to skip invalid generated cases (for example, a discount greater than the subtotal) rather than weakening the assertion. When a property fails, fast-check shrinks the input and prints the minimal counterexample, which is usually a zero quantity or duplicate SKU; promote that case into a normal example test for fast regression coverage.
+
+Do not replace example tests entirely. Keep a few readable examples for documentation, and use properties for the invariants that are tedious to enumerate.
+@@@ END
+
+@@@ USER
+I need to stream LLM tokens to a browser app. Server-Sent Events or WebSockets? And how do I handle the user pressing Stop?
+@@@ ASSISTANT
+For one-way token streaming, use SSE over a normal HTTP response. It survives proxies, reconnects automatically with `EventSource`, and needs no special server infrastructure. WebSockets are for bidirectional traffic (collaborative editing, presence); they add connection state and scaling work you do not need here.
+
+`EventSource` has two limitations: it only does GET and cannot send custom headers. If you need a POST body or an `Authorization` header, consume the same `text/event-stream` response with `fetch` and a stream reader.
+
+Server (Express, proxying an upstream model):
+
+```js
+app.post("/api/chat", async (req, res) => {
+  const controller = new AbortController();
+  req.on("close", () => controller.abort()); // client pressed Stop or navigated away
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const heartbeat = setInterval(() => res.write(": ping\n\n"), 15_000);
+
+  try {
+    const upstream = await fetch("https://api.example.com/v1/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.KEY}` },
+      body: JSON.stringify(req.body),
+      signal: controller.signal,
+    });
+
+    for await (const chunk of upstream.body) {
+      // Upstream may split SSE frames arbitrarily; forward bytes as-is.
+      res.write(chunk);
+    }
+  } catch (err) {
+    if (!controller.signal.aborted) {
+      res.write(`event: error\ndata: ${JSON.stringify({ message: "upstream failed" })}\n\n`);
+    }
+  } finally {
+    clearInterval(heartbeat);
+    res.end();
+  }
+});
+```
+
+Client:
+
+```js
+const controller = new AbortController();
+
+async function stream(prompt, onToken) {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+    signal: controller.signal,
+  });
+  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const line = frame.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      const payload = line.slice(6);
+      if (payload === "[DONE]") return;
+      onToken(JSON.parse(payload).token);
+    }
+  }
+}
+
+stopButton.onclick = () => controller.abort();
+```
+
+Details that matter:
+
+- **Do not parse per network chunk.** A chunk can end mid-JSON or mid-frame; keep a buffer and split on the SSE frame delimiter.
+- **Heartbeats** prevent idle proxies from closing the connection during long generations.
+- **Abort propagates.** The browser abort closes the request, `req.on("close")` fires, and the upstream fetch is cancelled, so you stop paying for tokens.
+- **Backpressure**: if you generate faster than the client reads, Node buffers in memory. For high-volume streaming, check `res.write()` return value and pause the upstream reader until `drain`. At normal token rates this is unnecessary.
+- **Compression**: disable gzip/br for `text/event-stream` (the `no-transform` header helps); buffering compression defeats streaming.
+@@@ END
+
+@@@ USER
+How do I build a RAG pipeline over our internal docs that actually retrieves the right passages, with citations? I want to avoid the usual toy demo.
+@@@ ASSISTANT
+The quality comes from four decisions: chunking, hybrid retrieval, reranking, and refusing to answer without evidence. Embeddings alone are the weakest part of most demos.
+
+**1. Chunk by structure, not by character count.** Split on headings, then pack paragraphs up to 400–700 tokens with 10–15% overlap. Keep the heading path in the chunk text so an isolated passage still has context:
+
+```
+[Handbook > Expenses > Travel]
+Employees may book economy fares for flights under six hours...
+```
+
+Store: `id`, `doc_id`, `heading_path`, `text`, `token_count`, `updated_at`, plus `tsvector` and `vector(1536)`.
+
+**2. Hybrid retrieval.** Dense vectors miss exact identifiers (error codes, policy numbers); BM25 misses paraphrase. Run both and fuse with Reciprocal Rank Fusion:
+
+```sql
+WITH dense AS (
+  SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> $1) AS rank
+  FROM chunks ORDER BY embedding <=> $1 LIMIT 50
+),
+sparse AS (
+  SELECT id, ROW_NUMBER() OVER (
+    ORDER BY ts_rank_cd(tsv, websearch_to_tsquery('english', $2)) DESC
+  ) AS rank
+  FROM chunks
+  WHERE tsv @@ websearch_to_tsquery('english', $2)
+  LIMIT 50
+)
+SELECT c.id, c.text, c.heading_path,
+       COALESCE(1.0 / (60 + d.rank), 0) + COALESCE(1.0 / (60 + s.rank), 0) AS score
+FROM chunks c
+LEFT JOIN dense d USING (id)
+LEFT JOIN sparse s USING (id)
+WHERE d.id IS NOT NULL OR s.id IS NOT NULL
+ORDER BY score DESC
+LIMIT 40;
+```
+
+**3. Rerank.** Take the top 40 fused candidates and run a cross-encoder or a rerank API; keep the top 6–8. This is usually the single largest quality gain after hybrid retrieval.
+
+**4. Answer with citations or refuse.** Number the passages in the prompt and require the model to cite the numbers it used. Validate that every cited number exists and that the answer is supported by that passage; if not, return "I could not find this in the documentation" and show the closest sources.
+
+```ts
+const context = passages
+  .map((p, i) => `[${i + 1}] ${p.heading_path}\n${p.text}`)
+  .join("\n\n");
+
+const system = `Answer only from the numbered sources below.
+Cite every claim like [2]. If the sources do not contain the answer, say so.
+Do not use outside knowledge.
+
+${context}`;
+```
+
+**5. Evaluate retrieval separately from generation.** Build 100–300 real questions with the correct `doc_id` marked. Measure recall@k and MRR for retrieval, and citation validity plus answer correctness for generation. Without this, every change is guesswork.
+
+Operational details: re-index on document updates with a stable `doc_id` and delete stale chunks; store the embedding model version and re-embed when it changes; cap context to the model window with the reranker deciding what fits; log retrieved ids and scores per request so failures are debuggable.
+
+Common failure modes: fixed 1,000-character chunks that cut sentences, no heading context, top-k=3 with no rerank, and letting the model answer from memory when retrieval returns nothing. Fix those before tuning the prompt.
+@@@ END
+
+@@@ USER
+How do I implement a tool-calling loop safely? The model can call functions, and I need validation, timeouts, and a hard stop on loops.
+@@@ ASSISTANT
+Treat the model as an untrusted planner: validate every argument, execute with a timeout, return structured errors, and cap the number of steps. Never let a tool name or argument reach a shell, filesystem, or SQL string without validation.
+
+```ts
+import { z } from "zod";
+
+const tools = {
+  get_weather: {
+    schema: z.object({ city: z.string().min(1).max(80) }),
+    run: async ({ city }: { city: string }, signal: AbortSignal) => {
+      const res = await fetch(`https://api.example.com/weather?q=${encodeURIComponent(city)}`, { signal });
+      if (!res.ok) throw new Error(`weather API ${res.status}`);
+      return res.json();
+    },
+  },
+  search_orders: {
+    schema: z.object({
+      email: z.string().email(),
+      limit: z.number().int().min(1).max(20).default(5),
+    }),
+    run: async ({ email, limit }: { email: string; limit: number }, signal: AbortSignal) => {
+      return db.query(
+        "SELECT id, status, total_cents FROM orders WHERE email = $1 ORDER BY created_at DESC LIMIT $2",
+        [email, limit],
+        { signal }
+      );
+    },
+  },
+} as const;
+
+const MAX_STEPS = 6;
+
+async function runAgent(messages: any[], model: any) {
+  for (let step = 0; step < MAX_STEPS; step++) {
+    const response = await model.chat({ messages, tools: toolSchemas });
+    messages.push(response.message);
+    if (!response.toolCalls?.length) return response.content;
+
+    for (const call of response.toolCalls) {
+      const tool = tools[call.name as keyof typeof tools];
+      if (!tool) {
+        messages.push(toolResult(call.id, { error: `unknown tool ${call.name}` }));
+        continue;
+      }
+
+      const parsed = tool.schema.safeParse(call.arguments);
+      if (!parsed.success) {
+        // Return the validation error to the model so it can correct itself.
+        messages.push(toolResult(call.id, {
+          error: "invalid arguments",
+          issues: parsed.error.issues.map((i) => ({ path: i.path, message: i.message })),
+        }));
+        continue;
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8_000);
+      try {
+        const data = await tool.run(parsed.data as any, controller.signal);
+        messages.push(toolResult(call.id, { ok: true, data: truncate(data, 4_000) }));
+      } catch (err: any) {
+        messages.push(toolResult(call.id, {
+          ok: false,
+          error: err.name === "AbortError" ? "tool timed out" : String(err.message ?? err),
+        }));
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+  return "I could not complete this within the allowed number of steps. Here is what I found so far: ...";
+}
+```
+
+Rules that prevent most incidents:
+
+- **Allowlist tools per user role.** A support agent should not inherit an admin tool because it was added to the registry.
+- **Validate types, ranges, and formats.** `limit: 100000` and `email: "'; DROP TABLE"` must fail before execution.
+- **Use parameterized queries.** Validation is not a substitute for bound parameters.
+- **Cap output size.** A tool returning a 10 MB JSON blob will blow the context window and the budget; truncate and summarize.
+- **Time out every call.** A hung dependency should become a tool error, not a hung request.
+- **Cap steps and wall-clock time.** `MAX_STEPS` plus a deadline; return partial progress instead of looping.
+- **Log arguments, latency, and errors** with a request id. Tool failures are the main source of agent regressions.
+- **Confirm destructive actions** with the user before execution; the model must not delete data on its own.
+
+Returning validation errors as tool results is important: the model can repair its own call in the next step, which is cheaper and more reliable than aborting the whole request.
+@@@ END
+
+@@@ USER
+What is the reliable way to get structured JSON out of an LLM? Parsing sometimes fails, and retries produce different shapes.
+@@@ ASSISTANT
+Use schema-constrained decoding when the provider supports it, validate locally, and keep a repair path for the cases that still fail. Never parse free text and hope.
+
+**1. Define one schema and derive everything from it.**
+
+```ts
+import { z } from "zod";
+
+const Invoice = z.object({
+  vendor: z.string().min(1),
+  invoice_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  currency: z.enum(["USD", "EUR", "GBP"]),
+  line_items: z.array(z.object({
+    description: z.string().min(1),
+    quantity: z.number().positive(),
+    unit_price_cents: z.number().int().nonnegative(),
+  })).min(1),
+  total_cents: z.number().int().nonnegative(),
+});
+```
+
+**2. Ask the model with the schema enforced.** With OpenAI-compatible APIs use `response_format: { type: "json_schema", json_schema: { name, schema, strict: true } }`; with Anthropic use a tool whose `input_schema` is the schema and force that tool. Set temperature to 0 for extraction.
+
+**3. Validate, then repair once with the error.**
+
+```ts
+async function extract(text: string) {
+  let messages = [
+    { role: "system", content: "Extract the invoice. Use only values present in the document." },
+    { role: "user", content: text },
+  ];
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const raw = await callModel({ messages, schema: Invoice });
+    const parsed = Invoice.safeParse(raw);
+    if (parsed.success) return parsed.data;
+
+    messages = [
+      ...messages,
+      { role: "assistant", content: JSON.stringify(raw) },
+      { role: "user", content:
+        `That response failed validation:\n${JSON.stringify(parsed.error.issues)}\n` +
+        "Return corrected JSON only. Do not invent values; use null where the document is silent." },
+    ];
+  }
+  throw new Error("extraction failed after repair");
+}
+```
+
+**4. Make absence explicit.** Add `.nullable()` for fields that may be missing instead of relying on the model to omit keys. "Use null when absent" is a rule the model can follow; "omit the key" is not.
+
+**5. Guard the semantics, not just the shape.** A schema can validate `total_cents: 1200` while the document says 2100. Add cross-field checks: line-item sum equals total, dates are plausible, currency matches the symbol. Reject and re-ask if they fail.
+
+**6. Keep the raw response.** Log the prompt version, model id, raw output, and validation result. When a provider changes decoding behavior, you need the raw text to diagnose it.
+
+Why retries sometimes produce different shapes: sampling, prompt drift, and providers that silently ignore `strict`. Set temperature 0, pin the model version, and enforce the schema locally regardless of what the API claims.
+
+For batch extraction, process items independently and record failures instead of failing the whole batch; one malformed invoice should not discard the other 999.
+@@@ END
+
+@@@ USER
+How should I evaluate an LLM feature before shipping? I want something better than "it looks good in the playground."
+@@@ ASSISTANT
+Build three layers: a golden set with known answers, task-specific automatic checks, and a small human review loop. Treat prompts and model versions like code: every change runs the suite, and regressions block the release.
+
+**1. Golden set from real usage.** Sample 150–300 real inputs, stratified by intent and difficulty, including adversarial and out-of-scope cases. Label the expected behavior, not just "good answer": exact fields for extraction, required citations for RAG, refusal for unsupported requests. Freeze it and version it.
+
+**2. Automatic checks per task.**
+
+- Extraction: field-level exact match or normalized match; report per-field precision/recall, not one aggregate.
+- RAG: retrieval recall@k, citation validity (does the cited passage exist and support the claim), and refusal rate on unanswerable questions.
+- Classification: confusion matrix and per-class F1; a 95% overall accuracy can hide a 40% F1 on a rare class.
+- Generation with rubrics: a checklist of required facts, forbidden claims, format constraints, and length bounds. Check those with code where possible.
+
+**3. LLM-as-judge, carefully.** Use pairwise comparisons rather than absolute 1–10 scores; judges are biased toward longer answers and toward the first option. Randomize order, hide model identity, and give a concrete rubric. Validate the judge against 50–100 human labels; if agreement is below roughly 80%, fix the rubric or do not trust the judge.
+
+**4. Report the right numbers.** Include sample size and confidence intervals. A 2-point difference on 100 examples is noise. Track cost and latency per request alongside quality; a better answer that triples latency may be a worse product.
+
+**5. Wire it into CI.** Run the suite on every prompt change and model upgrade. Store results in a table keyed by commit, prompt hash, and model id. Block merge if a critical slice regresses beyond a threshold, for example exact-match on currency fields dropping more than 1 point.
+
+**6. Keep a human loop for the tail.** Review a random 20–30 failures per week, plus every user thumbs-down. Add confirmed failures to the golden set. This is how the suite improves instead of fossilizing.
+
+Anti-patterns: evaluating on the same examples used to write the prompt, one aggregate score that hides slice regressions, judging with the same model that generated the answer without calibration, and shipping on vibe checks because "the demo looked great."
+@@@ END

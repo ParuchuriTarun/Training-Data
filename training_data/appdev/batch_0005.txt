@@ -1,0 +1,493 @@
+@@@ USER
+How do I implement a GraphQL API with DataLoader to avoid N+1?
+@@@ ASSISTANT
+Batch per-request lookups with DataLoader; cache within the request, never across requests.
+
+```ts
+import DataLoader from "dataloader";
+
+type BatchFn = (keys: readonly string[]) => Promise<(string | null)[]>;
+
+function userLoader(): DataLoader<string, unknown> {
+  return new DataLoader(async (ids) => {
+    const rows = await db.query(`SELECT id, name FROM users WHERE id = ANY($1)`, [ids]).then(r => r.rows);
+    const byId = new Map(rows.map((r: any) => [r.id, r]));
+    return ids.map((id) => byId.get(id) ?? null);
+  });
+}
+
+const resolvers = {
+  Query: {
+    orders: async (_: unknown, { userId }: { userId: string }, ctx: any) => {
+      return db.query(`SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`, [userId]).then(r => r.rows);
+    },
+  },
+  Order: {
+    user: (order: any, _: unknown, ctx: any) => ctx.loaders.user.load(order.user_id),
+    items: (order: any, _: unknown, ctx: any) => ctx.loaders.items.load(order.id),
+  },
+};
+
+// per-request context
+async function contextFactory() {
+  return { loaders: { user: userLoader(), items: itemLoader() } };
+}
+```
+
+Rules:
+- Create loaders per request. A shared loader leaks one user's data into another's response.
+- Batch keys are deduplicated by DataLoader automatically.
+- Cache is per-request; do not cache across requests without a TTL.
+- Keep resolvers thin; all SQL in the loader or a repository.
+- Test: resolve 50 orders with users and assert exactly 2 SQL queries total.
+@@@ END
+
+@@@ USER
+How do I implement gRPC vs REST and evolve a protobuf schema?
+@@@ ASSISTANT
+gRPC for internal service-to-service with typed contracts; REST for public APIs and browsers. Evolve with reserved field numbers.
+
+```proto
+syntax = "proto3";
+package orders.v1;
+
+message GetOrderRequest { string order_id = 1; }
+message Order {
+  string id = 1;
+  string customer_id = 2;
+  int64 total_cents = 3;
+  reserved 4;
+  reserved "legacy_status";
+}
+service Orders { rpc GetOrder(GetOrderRequest) returns (Order); }
+```
+
+Rules:
+1. Never reuse a field number. Reserve removed numbers and names: `reserved 4; reserved "legacy_status";`
+2. Add fields as optional with defaults; missing fields must deserialize safely in old clients.
+3. gRPC gives you streaming, deadlines, and codegen. Add `deadline` on every call and propagate it.
+4. REST for browsers: CORS, caching, and human-debuggable URLs favor REST for public APIs.
+5. Breaking change = new package version (`orders.v1` alongside `orders.v2`).
+6. Test: deserialize an old payload with the new schema and vice versa. Both directions must succeed.
+@@@ END
+
+@@@ USER
+How do I implement feature flags with safe rollouts?
+@@@ ASSISTANT
+Flag evaluation must be fast, cached, and fail safe. Never gate money movement on a flag without a server check.
+
+```ts
+import { createClient } from "redis";
+const redis = createClient({ url: process.env.REDIS_URL });
+await redis.connect();
+
+const FLAG_TTL = 30; // seconds
+
+export async function isEnabled(flag: string, userId: string): Promise<boolean> {
+  const cached = await redis.get(`flag:${flag}:${userId}`);
+  if (cached) return cached === "1";
+
+  const value = await db.query(`SELECT enabled, rollout_pct FROM feature_flags WHERE key = $1`, [flag]).then(r => r.rows[0]);
+  if (!value) return false;
+
+  // Deterministic bucketing: the same user always lands in the same bucket.
+  // eslint-disable-next-line no-bitwise
+  const bucket = parseInt(hash(`${flag}:${userId}`), 16) % 100;
+  const enabled = value.enabled && bucket < value.rollout_pct;
+
+  await redis.set(`flag:${flag}:${userId}`, enabled ? "1" : "0", { EX: FLAG_TTL });
+  return enabled;
+}
+```
+
+Rollout checklist:
+1. Percentage rollout by user hash; 1% → 10% → 50% → 100%, with a pause at each step.
+2. Kill switch: a boolean that overrides everything, evaluated first.
+3. Every flag has an owner, an expiry date, and a cleanup ticket. Flags without owners live forever.
+4. Code paths read the flag at request time, never at module load.
+5. Test both branches in CI for every gated feature.
+6. Audit log: who changed the flag, when, and from what to what.
+@@@ END
+
+@@@ USER
+How do I design blue-green vs canary deploys?
+@@@ ASSISTANT
+Canary for risky changes with metrics; blue-green for instant rollback of complete releases.
+
+Canary:
+- Route 1% → 10% → 50% → 100% of traffic to the new version.
+- Compare error rate, p95 latency, and business metrics against the control.
+- Automatic rollback if error rate exceeds the control by a threshold.
+
+Blue-green:
+- Two complete environments, one serving traffic.
+- Switch at the load balancer; rollback is a switch back.
+- Requires database compatibility: the old and new code must both work with the same schema.
+
+Code sketch for a canary gate:
+
+```ts
+async function handleRequest(req: any, res: any) {
+  const bucket = parseInt(hash(req.headers["x-user-id"] ?? req.ip), 16) % 100;
+  const version = bucket < CANARY_PCT ? "new" : "stable";
+  if (version === "new") return handleNew(req, res);
+  return handleStable(req, res);
+}
+```
+
+Rules:
+1. Database migrations must be backward compatible during the rollout. Expand → migrate → contract.
+2. Metrics must be per-version. A blended error rate hides a canary failure.
+3. Rollback is a config change, not a deploy. Practice it.
+4. Test: run a canary at 10% for an hour under load; assert the error-rate comparison fires on an injected failure.
+@@@ END
+
+@@@ USER
+How do I manage secrets and rotate them safely?
+@@@ ASSISTANT
+Vault for storage, short-lived credentials where possible, rotation without downtime.
+
+```ts
+// App reads from a mounted secret; rotation updates the file and the app reloads.
+process.on("SIGUSR1", async () => {
+  const newDbPassword = await readFile("/run/secrets/db_password", "utf8");
+  await pool.setPassword(newDbPassword); // pooled; new connections use the new secret
+});
+```
+
+Rules:
+1. Secrets in a vault, injected as files or env at deploy time. Never in code, images, or logs.
+2. Scope each secret to one service. A leaked web-server secret must not unlock the database admin.
+3. Rotate on a schedule (90 days) and immediately on suspicion of a leak.
+4. Rotation without downtime: add the new credential, switch reads, wait one max lifetime, remove the old.
+5. Audit access. Every secret read is logged with identity and time.
+6. Test: rotate the database password in staging with zero failed connections.
+@@@ END
+
+@@@ USER
+How do I implement transactional outbox for reliable events?
+@@@ ASSISTANT
+Event row in the same transaction as the state change; a publisher sends it at-least-once; consumers are idempotent.
+
+```sql
+CREATE TABLE outbox (
+  id bigserial PRIMARY KEY,
+  aggregate text NOT NULL,
+  aggregate_id bigint NOT NULL,
+  type text NOT NULL,
+  payload jsonb NOT NULL,
+  published_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX outbox_unpublished_idx ON outbox (created_at) WHERE published_at IS NULL;
+```
+
+```ts
+async function createOrder(userId: string) {
+  return db.transaction(async (tx) => {
+    const order = await tx.query(`INSERT INTO orders (user_id, status) VALUES ($1, 'created') RETURNING *`, [userId]).then(r => r.rows[0]);
+    await tx.query(`INSERT INTO outbox (aggregate, aggregate_id, type, payload) VALUES ('order', $1, 'order.created', $2)`, [order.id, JSON.stringify({ userId })]);
+    return order;
+  });
+}
+```
+
+- Poll with `FOR UPDATE SKIP LOCKED` if multiple publishers run.
+- Consumer deduplicates by `aggregate_id`.
+- Test: create an order with the publisher stopped; start it; assert exactly one downstream effect.
+@@@ END
+
+@@@ USER
+How do I implement CSV import at scale with a resumable session?
+@@@ ASSISTANT
+Upload to storage, stream from storage, batch inserts, per-row errors, resume by offset.
+
+```ts
+async function importCsv(fileId: string, userId: string) {
+  let processed = 0, succeeded = 0;
+  const errors: { line: number; message: string }[] = [];
+
+  await db.query(`UPDATE imports SET status = 'processing' WHERE id = $1`, [fileId]);
+
+  const stream = getObjectStream(fileId);
+  let batch: Row[] = [];
+  let line = 1;
+
+  for await (const row of parseCsv(stream)) {
+    line++;
+    const parsed = RowSchema.safeParse(row);
+    if (!parsed.success) { errors.push({ line, message: parsed.error.issues[0].message }); continue; }
+    batch.push(parsed.data);
+    if (batch.length >= 500) {
+      await db.query(`INSERT INTO imported_rows ... ON CONFLICT DO NOTHING`, [batch]);
+      succeeded += batch.length;
+      processed += batch.length;
+      batch = [];
+      await db.query(`UPDATE imports SET processed_rows = $2, succeeded_rows = $3 WHERE id = $1`, [fileId, processed, succeeded]);
+    }
+  }
+  if (batch.length) await db.query(`INSERT INTO imported_rows ... ON CONFLICT DO NOTHING`, [batch]);
+  await db.query(`UPDATE imports SET status = 'done', error_report = $2 WHERE id = $1`, [fileId, JSON.stringify(errors)]);
+}
+```
+
+- Cap file size and row count; a 2 GB import is a job, not a request.
+- Error report downloadable; never a 500 for bad rows.
+- Deduplicate on a natural key.
+- Test: 100 k rows with 1% bad; assert 99% imported and a retry does not duplicate.
+@@@ END
+
+@@@ USER
+How do I implement email deliverability with SPF, DKIM, and DMARC?
+@@@ ASSISTANT
+All three, aligned, or mail goes to spam.
+
+DNS records (example.com):
+
+```text
+; SPF (which servers may send)
+example.com. TXT "v=spf1 include:_spf.google.com include:sendgrid.net -all"
+
+; DKIM (cryptographic signature) — selector per provider
+s1._domainkey.example.com. TXT "v=DKIM1; k=rsa; p=MIIBIjANBgkqh..."
+
+; DMARC (policy)
+_dmarc.example.com. TXT "v=DMARC1; p=none; rua=mailto:dmarc@example.com; ruf=mailto:dmarc@example.com; fo=1"
+```
+
+Move DMARC from `p=none` to `p=quarantine` to `p=reject` after 2 weeks of clean reports.
+
+Application rules:
+1. Send from the same domain as the `From` header (SPF/DKIM alignment).
+2. Include `List-Unsubscribe` and a `List-Unsubscribe-Post` header for one-click unsubscribe.
+3. Warm new IPs gradually; a new IP sending 10k mails/day is flagged.
+4. Authenticate users' own mail with their own SPF/DKIM via subdomain delegation, or use a third-party sender.
+5. Monitor aggregate reports for failures; a failed DMARC check blacklists the domain silently.
+6. Test: send to Gmail and Outlook; check Authentication-Results shows `spf=pass dkim=pass dmarc=pass`.
+@@@ END
+
+@@@ USER
+How do I implement a scheduled job with a distributed lock?
+@@@ ASSISTANT
+One leader runs the job; other instances wait. Use a lock with a TTL longer than the job.
+
+```ts
+import crypto from "node:crypto";
+
+async function withJobLock<T>(jobName: string, fn: () => Promise<T>): Promise<T | null> {
+  const token = crypto.randomUUID();
+  const acquired = await redis.set(`job:${jobName}:lock`, token, { NX: true, PX: 15 * 60 * 1000 });
+  if (acquired !== "OK") return null; // another instance is running it
+
+  try { return await fn(); }
+  finally {
+    const script = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`;
+    await redis.eval(script, 1, `job:${jobName}:lock`, token);
+  }
+}
+
+// scheduler
+setInterval(async () => { await withJobLock("nightly-report", runNightlyReport); }, 60_000);
+```
+
+- TTL must exceed worst-case job time; heartbeat-extend for long jobs.
+- Scheduling is every minute; the lock ensures only one run at a time.
+- Log skipped runs. A job that never acquires the lock is a bug, not idle time.
+- Test: run 3 instances; assert the job body executes once per interval.
+@@@ END
+
+@@@ USER
+How do I enforce multi-tenancy with shared tables?
+@@@ ASSISTANT
+`tenant_id` on every row, in the primary key and every index, enforced by RLS.
+
+```sql
+CREATE TABLE orders (
+  id bigserial,
+  tenant_id uuid NOT NULL,
+  order_number text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, id),
+  UNIQUE (tenant_id, order_number)
+);
+CREATE INDEX orders_tenant_created_idx ON orders (tenant_id, created_at DESC);
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_select ON orders FOR SELECT USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+```
+
+Rules:
+1. `tenant_id` in the primary key and every unique constraint; cross-tenant foreign keys become impossible.
+2. Composite FKs: child rows reference `(tenant_id, parent_id)`.
+3. Every index starts with `tenant_id`.
+4. Background jobs set tenant context explicitly per job.
+5. Test: two tenants sharing an order number both succeed; tenant-scoped queries never return the other's rows.
+@@@ END
+
+@@@ USER
+How do I implement full-text search in Postgres?
+@@@ ASSISTANT
+`tsvector` + GIN index + `websearch_to_tsquery` for user input.
+
+```sql
+CREATE TABLE articles (
+  id bigserial PRIMARY KEY,
+  title text NOT NULL,
+  body text NOT NULL,
+  search_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', title || ' ' || body)) STORED
+);
+CREATE INDEX articles_search_idx ON articles USING GIN (search_tsv);
+
+SELECT id, title, ts_rank_cd(search_tsv, websearch_to_tsquery('english', $1)) AS rank
+FROM articles
+WHERE search_tsv @@ websearch_to_tsquery('english', $1)
+ORDER BY rank DESC
+LIMIT 20;
+```
+
+Rules:
+- Generated `tsvector` keeps the index in sync automatically.
+- `websearch_to_tsquery` parses user input safely; never use raw `plainto_tsquery` with interpolated strings.
+- Rank with `ts_rank_cd` and highlight with `ts_headline` for snippets.
+- For typo tolerance or fuzzy matching, add `pg_trgm` (`CREATE EXTENSION pg_trgm; CREATE INDEX ... USING GIN (title gin_trgm_ops)`).
+- For large corpora or faceted search, use a dedicated engine (Elasticsearch/OpenSearch) instead.
+@@@ END
+
+@@@ USER
+How do I choose a message broker: Kafka vs RabbitMQ vs SQS?
+@@@ ASSISTANT
+Match the broker to the delivery and ordering requirements.
+
+- **Kafka**: log-structured, replayable, ordered per partition. Best for event streaming, CDC, and audit logs where you need to reprocess history. Operational cost is the highest.
+- **RabbitMQ**: flexible routing (fanout, topics, headers), per-message ack, TTL, and DLQ. Best for task queues and complex routing.
+- **SQS**: managed, FIFO or standard queues, visibility timeout, DLQ. Best when you want zero broker operations and simple task queues.
+
+Decision rules:
+1. Need replay of history or multiple consumers of the same events → Kafka.
+2. Need complex routing, per-message TTL, or priority → RabbitMQ.
+3. Need managed, simple, serverless → SQS.
+4. Need exactly-once effects → any of them, with idempotent consumers. The broker does not give you exactly-once processing.
+5. Need ordering → Kafka partition key or SQS FIFO with content-based deduplication. Standard queues do not guarantee order.
+6. Test: publish, kill a consumer mid-processing, restart, assert the side effect happened once.
+@@@ END
+
+@@@ USER
+How do I implement PDF generation in a worker without blocking the API?
+@@@ ASSISTANT
+Render in a bounded worker pool, store to object storage, return a signed URL.
+
+```ts
+import { chromium } from "playwright";
+
+async function renderInvoicePdf(invoiceId: string): Promise<string> {
+  const browser = await chromium.launch({ args: ["--no-sandbox"] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 1600 } });
+    await page.goto(`http://internal/invoices/${invoiceId}/print`, { waitUntil: "networkidle" });
+    const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "10mm", bottom: "10mm" } });
+    const key = `invoices/${invoiceId}.pdf`;
+    await s3.send(new PutObjectCommand({ Bucket: process.env.BUCKET!, Key: key, Body: pdf, ContentType: "application/pdf" }));
+    return getSignedUrl(s3, new GetObjectCommand({ Bucket: process.env.BUCKET!, Key: key }), { expiresIn: 3600 });
+  } finally { await browser.close(); }
+}
+```
+
+Rules:
+- Pool browsers; launching Chromium per request is 300–800 ms of waste.
+- Cap concurrency (e.g., 4) so PDF renders cannot starve the API.
+- Timeout each render at 30 s; abort and return an error, never hang.
+- Store with a stable key per invoice id so re-renders overwrite, not accumulate.
+- Test: render 20 invoices concurrently; assert all complete and the API stays responsive.
+@@@ END
+
+@@@ USER
+How do I design API versioning and deprecation?
+@@@ ASSISTANT
+Additive changes, URL versioning for breaks, 12-month sunset with machine-readable headers.
+
+```http
+HTTP/1.1 200 OK
+Deprecation: true
+Sunset: Wed, 01 Oct 2027 00:00:00 GMT
+Link: <https://docs.example.com/v2>; rel="successor-version"
+```
+
+Rules:
+1. Additive first: new fields and endpoints never break clients.
+2. URL versioning (`/v1`, `/v2`) for breaking changes.
+3. Run both versions during the transition; old contracts stay served until sunset.
+4. Announce 12 months ahead: header + changelog + direct email to affected customers.
+5. At sunset return `410 Gone` with a pointer, not a generic 404.
+6. Track usage; contact the top 10 holders before sunset.
+7. Never reuse a removed field name for a different meaning.
+8. Contract tests per live version in CI.
+@@@ END
+
+@@@ USER
+How do I roll out a database migration with zero downtime?
+@@@ ASSISTANT
+Expand → migrate → contract. Never drop a column in the same migration that adds its replacement.
+
+1. **Expand**: add new columns, indexes, and constraints as nullable. Deploy code that writes both old and new.
+2. **Migrate**: backfill in batches with conditional updates (`WHERE new IS NULL`), concurrent indexes (`CREATE INDEX CONCURRENTLY`).
+3. **Contract**: switch reads to the new column. Ship one release. Then drop the old column in a separate migration.
+
+```sql
+-- backfill, resumable
+UPDATE orders SET status_v2 = status WHERE status_v2 IS NULL AND id IN (SELECT id FROM orders WHERE status_v2 IS NULL ORDER BY id LIMIT 10000);
+```
+
+Rules:
+- Every statement idempotent: `IF NOT EXISTS`, conditional updates.
+- Backfill until `count WHERE new IS NULL = 0` before indexing.
+- Dual-write in the app during the migration; verify with a mismatch count query.
+- Test the migration twice against a production-shaped backup; the second run is a no-op.
+@@@ END
+
+@@@ USER
+How do I run backups and point-in-time recovery for Postgres?
+@@@ ASSISTANT
+Base backup + WAL archiving, tested restores, off-site encryption.
+
+```bash
+pg_basebackup -D /backups/base-2026-11-07 -Ft -z -P
+```
+
+```ini
+wal_level = replica
+archive_mode = on
+archive_command = 'wal-g wal-push %p'
+restore_command = 'wal-g wal-fetch %f %p'
+```
+
+```bash
+wal-g backup-fetch /var/lib/postgresql/data LATEST
+# set restore_point_in_time, start postgres, it replays WAL then promotes
+```
+
+- Encrypt and copy off-site; daily for 14 days, monthly for 1 year.
+- Monthly restore drill; time it; alert if RTO exceeds target.
+- Monitor last successful backup age and WAL archive lag.
+- Test dropping a table on the restore and confirming PITR brings it back.
+@@@ END
+
+@@@ USER
+How do I structure an npm monorepo with workspace packages?
+@@@ ASSISTANT
+`packages/*` for shared code, `apps/*` for deployables, one-directional dependencies.
+
+```
+packages/
+  config/ types/ lib/ ui/ data/
+apps/
+  web/ api/
+```
+
+- `apps/*` may import `packages/*`; never the reverse.
+- Shared Zod schemas live in `packages/types` so frontend and backend validate identically.
+- `import/no-cycle` in CI.
+- Turborepo builds leaves first and caches by input hash.
+- Changesets for independent versioning.
+
+Test: add a temporary cycle; lint must fail, then remove it.
+@@@ END

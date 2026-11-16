@@ -1,0 +1,1870 @@
+@@@ USER
+I have three pricing cards in a row. The plan name, price, feature list, and CTA button need to line up horizontally across all cards, but the feature lists have different lengths so the buttons currently sit at different heights. I don't want to hard-code a min-height. How does CSS subgrid solve this?
+
+@@@ ASSISTANT
+Make the card grid own the rows and let each card subscribe to them. The parent defines four row tracks; each card spans those four tracks and declares `grid-template-rows: subgrid`, so all cards share the same row sizing and the CTA lands on one line.
+
+```html
+<section class="plans">
+  <article class="plan">
+    <h2>Starter</h2>
+    <p class="price">$9<span>/mo</span></p>
+    <ul>
+      <li>1 project</li>
+      <li>Community support</li>
+    </ul>
+    <a class="cta" href="/signup?plan=starter">Choose Starter</a>
+  </article>
+  <article class="plan">
+    <h2>Team</h2>
+    <p class="price">$29<span>/mo</span></p>
+    <ul>
+      <li>Unlimited projects</li>
+      <li>Priority support</li>
+      <li>Audit log</li>
+      <li>SSO</li>
+    </ul>
+    <a class="cta" href="/signup?plan=team">Choose Team</a>
+  </article>
+  <article class="plan">
+    <h2>Enterprise</h2>
+    <p class="price">Custom</p>
+    <ul>
+      <li>Everything in Team</li>
+      <li>Dedicated manager</li>
+    </ul>
+    <a class="cta" href="/contact">Talk to sales</a>
+  </article>
+</section>
+```
+
+```css
+.plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-rows: auto auto 1fr auto;
+  column-gap: 24px;
+  row-gap: 0;
+}
+
+.plan {
+  display: grid;
+  grid-row: span 4;
+  grid-template-rows: subgrid;
+  padding: 24px;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+}
+
+.plan > * {
+  margin: 0 0 16px;
+}
+
+.plan > :last-child {
+  margin-block-end: 0;
+}
+```
+
+The `grid-row: span 4` is not optional. A subgrid only inherits the tracks it spans, and without the span it covers one track, making the declaration a no-op. The parent's `1fr` row absorbs the height difference between feature lists, so the fourth row starts at the same y position in every card.
+
+Do not add `align-self: start` to the cards; they must stretch across all four tracks. If a card has a footer outside the four rows, it becomes a fifth row and breaks the alignment.
+
+Fallback for older engines:
+
+```css
+@supports not (grid-template-rows: subgrid) {
+  .plan {
+    grid-template-rows: auto auto 1fr auto;
+  }
+}
+```
+
+That fallback aligns rows only within each card, so CTAs may still differ; it is a graceful degradation, not an equivalent.
+
+Verification: in DevTools, enable the grid overlay on `.plans` and confirm one set of horizontal row lines crosses all three cards. In the console, compare the CTA positions:
+
+```js
+const tops = [...document.querySelectorAll('.plans .cta')]
+  .map(el => Math.round(el.getBoundingClientRect().top));
+console.log(new Set(tops).size === 1 ? 'aligned' : tops);
+```
+
+@@@ END
+
+@@@ USER
+I want error styling on a form field only after the user has interacted with it, and I want a card to change appearance when it contains a "Sale" badge. I've been toggling classes in JavaScript for both. Can `:has()` replace that, and what are the performance traps?
+
+@@@ ASSISTANT
+Yes for both, and it removes a class of state bugs because the style follows the DOM instead of a parallel flag. Use `:user-invalid` so the error only appears after interaction, not on page load.
+
+```html
+<form class="form" novalidate>
+  <div class="field">
+    <label for="email">Work email</label>
+    <input id="email" name="email" type="email" required
+           aria-describedby="email-error">
+    <p class="field__error" id="email-error">Enter a valid email address.</p>
+  </div>
+  <button type="submit">Create account</button>
+</form>
+
+<article class="card">
+  <span class="badge badge--sale">Sale</span>
+  <h2>Trail runner</h2>
+  <p>$84</p>
+</article>
+```
+
+```css
+.field__error {
+  display: none;
+  color: #b42318;
+}
+
+.field:has(input:user-invalid) {
+  border-color: #b42318;
+}
+
+.field:has(input:user-invalid) .field__error {
+  display: block;
+}
+
+.card {
+  border: 1px solid #d0d7de;
+}
+
+.card:has(.badge--sale) {
+  border-color: #b42318;
+  background: #fff5f4;
+}
+```
+
+Specificity is the maximum specificity among the `:has()` arguments, so `.field:has(input:user-invalid)` behaves like a two-class-plus-element selector. Keep overrides simple or you will be fighting it.
+
+The performance trap is invalidation scope. A selector such as `body:has(.menu-open)` makes every DOM mutation a candidate for restyling the whole page, because the subject is `body` and any descendant change can affect the match. Anchor `:has()` to a small, stable container:
+
+```css
+/* Good: only the card subtree can invalidate this */
+.card:has(.badge--sale) { /* ... */ }
+
+/* Bad: any DOM change anywhere can invalidate a page-wide selector */
+body:has(.badge--sale) .banner { /* ... */ }
+```
+
+Also avoid `:has()` inside a selector that is evaluated for thousands of siblings when a class would do. `:has()` is best for state that is genuinely structural: a checked input, a populated slot, a presence of an error, a selected row. It is not faster than a class; it is less code and less state to keep in sync.
+
+Feature detection:
+
+```js
+if (!CSS.supports('selector(:has(*))')) {
+  document.documentElement.classList.add('no-has');
+}
+```
+
+Then provide a class-based fallback only for the critical error state, since an unsupported selector invalidates the whole rule.
+
+Verification: load the form, tab into the email field, type `x`, then tab out. The border should turn red and the message appear only at that point. Check the card without JavaScript by editing the DOM in DevTools: removing the badge should immediately drop the sale styling. For invalidation cost, record a Performance trace while typing in a 2,000-row table and confirm style recalculation stays under a few milliseconds.
+
+@@@ END
+
+@@@ USER
+I want a reading-progress bar and sections that fade up as they enter the viewport, driven by scroll position rather than a scroll event listener. How do scroll-driven animations work, and how do I keep a usable fallback?
+
+@@@ ASSISTANT
+Use CSS scroll timelines: the animation's progress is tied to a scroll container or to an element's position in the viewport, and the browser can run it off the main thread. No `scroll` listener and no `IntersectionObserver` for the effect itself.
+
+```html
+<div class="progress" aria-hidden="true">
+  <div class="progress__bar"></div>
+</div>
+
+<main>
+  <section class="reveal">...</section>
+  <section class="reveal">...</section>
+</main>
+```
+
+```css
+.progress {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  height: 3px;
+  background: #e5e7eb;
+  z-index: 100;
+}
+
+@keyframes grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+.progress__bar {
+  height: 100%;
+  background: #2563eb;
+  transform-origin: 0 50%;
+  animation: grow linear both;
+  animation-timeline: scroll(root block);
+}
+```
+
+`scroll(root block)` follows the root scroller on the block axis. For a horizontal carousel, use `scroll(self inline)` on the scroller itself.
+
+The reveal uses a view timeline, which tracks the element's own journey through the viewport:
+
+```css
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    translate: 0 24px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+.reveal {
+  animation: fade-up linear both;
+  animation-timeline: view();
+  animation-range: entry 20% cover 40%;
+}
+```
+
+`entry 20%` means "start when the element has entered 20% of the entry range"; `cover 40%` ends when the element covers 40% of the viewport. Adjust the range so the animation completes before the section is centered.
+
+Respect reduced motion and provide a fallback for browsers without view timelines:
+
+```css
+@supports not (animation-timeline: view()) {
+  .reveal {
+    opacity: 1;
+    translate: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    animation: none;
+    opacity: 1;
+    translate: none;
+  }
+  .progress__bar {
+    animation: none;
+    transform: scaleX(0);
+  }
+}
+```
+
+The progress bar fallback is intentionally inert rather than a JavaScript listener; a missing progress indicator is better than shipping a scroll handler that competes with the main thread. If the indicator is a product requirement, add the listener only inside the `@supports not` branch with a `requestAnimationFrame` guard.
+
+Two gotchas: an ancestor with `overflow: hidden` can become the scroll container, so confirm which element is actually scrolling; and `animation-range` percentages are relative to the named range, not the whole page.
+
+Verification: in Chrome DevTools, open the Animations panel and confirm the animation shows a scroll timeline rather than a time timeline. Scroll slowly and check the bar tracks exactly with the document progress. Enable "Emulate CSS prefers-reduced-motion" and reload; sections must be fully visible with no transition. Finally test in a browser without support and confirm content is visible rather than stuck at `opacity: 0`.
+
+@@@ END
+
+@@@ USER
+I'm adding a thumbnail-to-detail view inside a single-page gallery. I'd like the image to morph between the grid and the detail panel. How do I use the View Transitions API correctly, including the fallback and the duplicate-name pitfalls?
+
+@@@ ASSISTANT
+Wrap the DOM update in `document.startViewTransition()`. The browser snapshots the old state, runs your callback synchronously, snapshots the new state, then animates matching `view-transition-name`s between the two.
+
+```html
+<ul id="gallery">
+  <li>
+    <button class="card" data-id="1" type="button">
+      <img src="/img/1-thumb.avif" alt="Dune at sunrise" width="320" height="200">
+      <span>Dune at sunrise</span>
+    </button>
+  </li>
+</ul>
+
+<section id="detail" hidden>
+  <button id="back" type="button">Back</button>
+  <img id="detail-image" alt="" width="960" height="600">
+  <h2 id="detail-title"></h2>
+</section>
+```
+
+```css
+.card img {
+  view-transition-name: cover;
+}
+
+#detail img {
+  view-transition-name: cover;
+}
+
+::view-transition-old(cover),
+::view-transition-new(cover) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+::view-transition-group(cover) {
+  animation-duration: 220ms;
+}
+```
+
+Only one rendered element may carry a given name at a time. The selectors above are safe because the gallery and detail are never both visible, but if you set `view-transition-name` on every card image, the browser logs "Unexpected duplicate view-transition-name" and skips the transition. Use a unique name per item, or name only the active one.
+
+```js
+const gallery = document.querySelector('#gallery');
+const detail = document.querySelector('#detail');
+const detailImage = document.querySelector('#detail-image');
+const detailTitle = document.querySelector('#detail-title');
+
+async function openItem(id) {
+  const response = await fetch(`/api/items/${id}`);
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  const item = await response.json();
+
+  const update = () => {
+    detailImage.src = item.image;
+    detailImage.alt = item.alt;
+    detailTitle.textContent = item.title;
+    gallery.hidden = true;
+    detail.hidden = false;
+  };
+
+  if (!document.startViewTransition) {
+    update();
+    return;
+  }
+
+  const transition = document.startViewTransition(update);
+  await transition.finished;
+}
+
+gallery.addEventListener('click', (event) => {
+  const card = event.target.closest('.card');
+  if (card) openItem(card.dataset.id);
+});
+```
+
+The callback must update the DOM synchronously. If you use React, call `flushSync` inside it; awaiting inside the callback captures the new state too late. Fetch data before starting the transition, as above.
+
+For a multi-page site, add this to both pages' CSS and let the browser handle same-origin navigations:
+
+```css
+@view-transition {
+  navigation: auto;
+}
+```
+
+That requires both documents to opt in, and it is skipped when the navigation is cross-origin or when either page disables bfcache incorrectly.
+
+Also handle reduced motion:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+```
+
+Verification: open DevTools, enable the Animations panel, set playback to 10%, and click a thumbnail. You should see the cover snapshot move and resize, not a cross-fade of the whole page. The console must have no duplicate-name warning. Test the back button and confirm the reverse morph works. Disable the API in the console by deleting `document.startViewTransition` and confirm the view still switches instantly.
+
+@@@ END
+
+@@@ USER
+I need a reusable copy-to-clipboard field that works in any page without leaking styles. Should I use a Web Component with shadow DOM? Show the complete component, including accessibility and events crossing the boundary.
+
+@@@ ASSISTANT
+Yes. Shadow DOM gives you style isolation, and a custom element gives you a real HTML API instead of a div plus three script hooks. Keep the shadow root `open` so debugging and testing remain possible.
+
+```js
+class CopyField extends HTMLElement {
+  static observedAttributes = ['value', 'label'];
+
+  #input;
+  #button;
+  #status;
+  #timer;
+
+  constructor() {
+    super();
+    const root = this.attachShadow({ mode: 'open' });
+    root.innerHTML = `
+      <style>
+        :host {
+          display: block;
+          font: inherit;
+        }
+        :host([hidden]) { display: none; }
+        .row {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+        label {
+          display: block;
+          margin-block-end: 4px;
+          font-weight: 600;
+        }
+        input {
+          flex: 1 1 auto;
+          min-width: 0;
+          padding: 8px 10px;
+          font: inherit;
+          border: 1px solid #8b949e;
+          border-radius: 6px;
+        }
+        button {
+          padding: 8px 14px;
+          font: inherit;
+          cursor: pointer;
+        }
+        .status {
+          min-height: 1.25em;
+          color: #1a7f37;
+          font-size: 0.875rem;
+        }
+      </style>
+      <label part="label" for="value"></label>
+      <div class="row">
+        <input id="value" part="input" readonly>
+        <button id="copy" part="button" type="button">Copy</button>
+      </div>
+      <span class="status" part="status" role="status" aria-live="polite"></span>
+    `;
+    this.#input = root.querySelector('#value');
+    this.#button = root.querySelector('#copy');
+    this.#status = root.querySelector('.status');
+    this.#button.addEventListener('click', () => this.#copy());
+  }
+
+  connectedCallback() {
+    if (!this.hasAttribute('role')) this.setAttribute('role', 'group');
+    if (!this.hasAttribute('aria-label') && this.label) {
+      this.setAttribute('aria-label', this.label);
+    }
+    this.#sync();
+  }
+
+  attributeChangedCallback() {
+    this.#sync();
+  }
+
+  get value() {
+    return this.getAttribute('value') ?? '';
+  }
+
+  set value(next) {
+    this.setAttribute('value', String(next));
+  }
+
+  get label() {
+    return this.getAttribute('label') ?? 'Value';
+  }
+
+  #sync() {
+    if (!this.#input) return;
+    this.#input.value = this.value;
+    this.shadowRoot.querySelector('label').textContent = this.label;
+  }
+
+  async #copy() {
+    try {
+      await navigator.clipboard.writeText(this.value);
+      this.#announce('Copied');
+      this.dispatchEvent(new CustomEvent('copied', {
+        detail: { value: this.value },
+        bubbles: true,
+        composed: true
+      }));
+    } catch {
+      this.#input.select();
+      this.#announce('Press Control+C to copy');
+    }
+  }
+
+  #announce(message) {
+    clearTimeout(this.#timer);
+    this.#status.textContent = message;
+    this.#timer = setTimeout(() => {
+      this.#status.textContent = '';
+    }, 4000);
+  }
+}
+
+customElements.define('copy-field', CopyField);
+```
+
+```html
+<copy-field label="API key" value="sk_live_4f9a2c"></copy-field>
+```
+
+Why the details matter:
+
+- `composed: true` lets `copied` escape the shadow boundary; without it, listeners on the host or document never see the event. `bubbles: true` makes delegation possible.
+- `:host` styles only the element itself. The page can still theme it with custom properties, for example `copy-field { --brand: #2563eb; }`, but page selectors cannot reach the internal input.
+- `part="..."` exposes intentional styling hooks: `copy-field::part(button) { ... }`.
+- The internal `<label for="value">` associates with the internal input even across the shadow boundary, and `role="status"` announces the result without moving focus.
+- Returning focus is preserved because the button stays focused; do not move focus to the status message.
+
+Verification: inspect the element in DevTools and confirm the input lives in `#shadow-root (open)`. Click Copy and check the button's event listener on `document` receives one `copied` event. Tab through with the keyboard: the input, then the button, with the label announced as "API key". Deny clipboard permission and confirm the fallback selects the text and announces the instruction.
+
+@@@ END
+
+@@@ USER
+My gallery loads every image on page load, including 60 below-the-fold photos. I want to load them as they approach the viewport, fade them in, and keep the page usable if JavaScript fails. How should I wire IntersectionObserver?
+
+@@@ ASSISTANT
+Use `IntersectionObserver` to swap a tiny placeholder for the real source when the image gets close, and keep a native fallback. Do not lazy-load the likely LCP image; give that one `fetchpriority="high"` and a normal `src`.
+
+```html
+<img
+  class="photo"
+  src="/img/placeholder.svg"
+  data-src="/img/coast-800.avif"
+  data-srcset="/img/coast-400.avif 400w, /img/coast-800.avif 800w, /img/coast-1600.avif 1600w"
+  sizes="(min-width: 900px) 33vw, 100vw"
+  alt="Waves breaking on a rocky coast"
+  width="800" height="600"
+  loading="lazy" decoding="async">
+```
+
+`loading="lazy"` already defers the request in modern browsers. The observer adds two things native lazy loading cannot: a controlled preload distance and a fade-in only after decode. If you do not need those, delete the script and keep the native attribute.
+
+```js
+const photos = document.querySelectorAll('img[data-src]');
+
+const load = (img) => {
+  img.addEventListener('load', () => {
+    img.classList.add('is-loaded');
+  }, { once: true });
+
+  img.addEventListener('error', () => {
+    img.classList.add('is-error');
+    img.alt = `${img.alt} (image failed to load)`;
+  }, { once: true });
+
+  img.src = img.dataset.src;
+  if (img.dataset.srcset) img.srcset = img.dataset.srcset;
+  delete img.dataset.src;
+  delete img.dataset.srcset;
+};
+
+if ('IntersectionObserver' in window) {
+  const observer = new IntersectionObserver((entries, obs) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      obs.unobserve(entry.target);
+      load(entry.target);
+    }
+  }, {
+    root: null,
+    rootMargin: '600px 0px',
+    threshold: 0.01
+  });
+
+  photos.forEach((img) => observer.observe(img));
+} else {
+  photos.forEach(load);
+}
+```
+
+```css
+.photo {
+  opacity: 0;
+  transition: opacity 200ms ease;
+  background: #f3f4f6;
+}
+
+.photo.is-loaded {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo { transition: none; }
+}
+```
+
+The 600px margin starts fetches roughly one screen early, which hides latency on a fast scroll. A huge margin defeats the purpose; tune it against your slowest connection. `threshold: 0.01` is enough because any intersection triggers the swap.
+
+Important details:
+
+- Set `width` and `height` (or `aspect-ratio`) so the placeholder reserves space and lazy loading does not cause layout shift.
+- `unobserve` before loading so one image cannot be queued twice.
+- Remove the data attributes after the swap, so a later observer or serialization does not treat it as pending.
+- For `<picture>` with art direction, set `srcset` on the matching `<source>` elements and keep the `<img>` as the fallback; do not replace `src` with a desktop-only asset.
+- Do not put the placeholder in `srcset`; an empty or 1x1 source may be chosen and never upgraded.
+
+Verification: in DevTools, enable "Disable cache", throttle to Fast 3G, and open the Network panel filtered to Img. On first load only above-the-fold and near-fold images should be requested. Scroll down and watch requests appear in batches, and confirm each image fades in exactly once. Disable JavaScript and reload: because `loading="lazy"` remains, images below the fold still load as the user scrolls, and no image is left blank.
+
+@@@ END
+
+@@@ USER
+I'm building a kanban board with native HTML drag and drop. Cards should move within and between columns, persist after reload, and remain usable with a keyboard. What is the correct event sequence, and where do people usually get it wrong?
+
+@@@ ASSISTANT
+The sequence is `dragstart` on the source (set data and `effectAllowed`), `dragenter`/`dragover` on a valid target (call `preventDefault()` to allow dropping), then `drop` (read data, reorder) and `dragend` on the source (cleanup). If you skip `preventDefault()` in `dragover`, the drop never fires. That is the most common failure.
+
+```html
+<div class="board">
+  <section class="column" data-list="todo" aria-labelledby="todo-h">
+    <h2 id="todo-h">To do</h2>
+    <article class="card" draggable="true" data-id="a1">
+      <span>Write release notes</span>
+      <button type="button" data-move="down" aria-label="Move Write release notes down">↓</button>
+      <button type="button" data-move="up" aria-label="Move Write release notes up">↑</button>
+    </article>
+  </section>
+  <section class="column" data-list="done" aria-labelledby="done-h">
+    <h2 id="done-h">Done</h2>
+  </section>
+</div>
+```
+
+```js
+const board = document.querySelector('.board');
+let dragged = null;
+
+board.addEventListener('dragstart', (event) => {
+  const card = event.target.closest('.card');
+  if (!card) return;
+  dragged = card;
+  card.classList.add('dragging');
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', card.dataset.id);
+});
+
+board.addEventListener('dragend', () => {
+  if (dragged) dragged.classList.remove('dragging');
+  dragged = null;
+  persist();
+});
+
+board.addEventListener('dragover', (event) => {
+  const list = event.target.closest('[data-list]');
+  if (!list || !dragged) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+
+  const after = afterElement(list, event.clientY);
+  if (after === dragged) return;
+  if (after) list.insertBefore(dragged, after);
+  else list.append(dragged);
+});
+
+board.addEventListener('drop', (event) => {
+  const list = event.target.closest('[data-list]');
+  if (!list || !dragged) return;
+  event.preventDefault();
+  dragged.classList.remove('dragging');
+  persist();
+});
+
+function afterElement(list, y) {
+  const cards = [...list.querySelectorAll('.card:not(.dragging)')];
+  return cards.reduce((closest, card) => {
+    const box = card.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) {
+      return { offset, element: card };
+    }
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+}
+
+function persist() {
+  const state = {};
+  for (const list of board.querySelectorAll('[data-list]')) {
+    state[list.dataset.list] = [...list.querySelectorAll('.card')]
+      .map((card) => card.dataset.id);
+  }
+  localStorage.setItem('board-state', JSON.stringify(state));
+}
+
+board.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-move]');
+  if (!button) return;
+  const card = button.closest('.card');
+  const direction = button.dataset.move;
+  const sibling = direction === 'up' ? card.previousElementSibling : card.nextElementSibling;
+  const list = card.closest('[data-list]');
+
+  if (sibling) {
+    if (direction === 'up') list.insertBefore(card, sibling);
+    else list.insertBefore(sibling, card);
+  } else if (direction === 'down') {
+    const nextList = list.nextElementSibling;
+    if (nextList?.matches('[data-list]')) nextList.prepend(card);
+  } else {
+    const prevList = list.previousElementSibling;
+    if (prevList?.matches('[data-list]')) prevList.append(card);
+  }
+  button.focus();
+  persist();
+});
+```
+
+Notes that save debugging time:
+
+- Move the card during `dragover` for live preview, but treat `drop` as the commit point for persistence.
+- Use `event.target.closest('[data-list]')`; the event target is often the column heading or a gap, not the list itself.
+- Set `dataTransfer.setData` even though you keep a variable. Some browsers cancel drags that carry no data.
+- Do not call `preventDefault()` on `dragstart`; that cancels the drag.
+- Native drag and drop does not work on touch. Keep the up/down buttons as the mobile and keyboard path, and do not mark them `aria-hidden`.
+
+Verification: drag a card to the middle of another column and confirm it lands at the cursor position, then reload and confirm the order persists. Tab to a card's arrow button, press Enter, and confirm the card moves and focus stays on the button. Finally, confirm the browser's default link/image drag does not interfere by dragging over the column headers.
+
+@@@ END
+
+@@@ USER
+I'm drawing a line chart on a canvas. It looks sharp on my laptop but blurry on a 2x phone, and sometimes the stroke widths look wrong after resizing. What is the correct devicePixelRatio setup?
+
+@@@ ASSISTANT
+A canvas has two sizes: its CSS box and its backing store. If you set only the CSS size, the browser scales a low-resolution bitmap. Set `canvas.width/height` to CSS pixels times `devicePixelRatio`, then scale the 2D context so your drawing code can keep using CSS pixel coordinates.
+
+```html
+<canvas id="chart" aria-label="Revenue by month" role="img"></canvas>
+```
+
+```css
+#chart {
+  display: block;
+  width: 100%;
+  height: 240px;
+}
+```
+
+```js
+const canvas = document.querySelector('#chart');
+const ctx = canvas.getContext('2d');
+
+const data = [12, 18, 15, 24, 21, 30, 27, 35];
+let dprMedia = null;
+
+function draw(width, height) {
+  ctx.clearRect(0, 0, width, height);
+
+  const pad = { top: 16, right: 16, bottom: 28, left: 40 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const max = Math.max(...data) * 1.1;
+
+  ctx.strokeStyle = '#d0d7de';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, pad.top + plotH);
+  ctx.lineTo(pad.left + plotW, pad.top + plotH);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#2563eb';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+
+  data.forEach((value, index) => {
+    const x = pad.left + (index / (data.length - 1)) * plotW;
+    const y = pad.top + plotH - (value / max) * plotH;
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+
+  ctx.stroke();
+
+  ctx.fillStyle = '#57606a';
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Jan – Aug', pad.left + plotW / 2, height - 6);
+}
+
+function resize() {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.round(rect.width * dpr);
+  const height = Math.round(rect.height * dpr);
+
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw(rect.width, rect.height);
+  watchDpr();
+}
+
+function watchDpr() {
+  dprMedia?.removeEventListener('change', resize);
+  dprMedia = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+  dprMedia.addEventListener('change', resize, { once: true });
+}
+
+new ResizeObserver(resize).observe(canvas);
+```
+
+Why each part is needed:
+
+- Setting `canvas.width` resets the context state, including the transform, `strokeStyle`, and `font`. Reapply them after every resize. The code above sets the transform and redraws, and `draw` sets its own styles.
+- `setTransform(dpr, 0, 0, dpr, 0, 0)` maps one drawing unit to one CSS pixel, so `lineWidth = 2` is two CSS pixels, not two device pixels.
+- `matchMedia` with the current DPR catches moving the window between monitors or zooming. The `{ once: true }` listener re-arms itself in `resize`.
+- `ResizeObserver` handles layout changes, including the sidebar collapsing, which `window.resize` alone would miss.
+- Use `Math.round` on backing-store dimensions to avoid fractional pixels and seams.
+
+For a canvas that also needs pointer interaction, convert client coordinates to CSS pixels with `getBoundingClientRect()`; the context transform handles the rest:
+
+```js
+canvas.addEventListener('pointerdown', (event) => {
+  const rect = canvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  console.log(x, y);
+});
+```
+
+Verification: in the console, `canvas.width / canvas.getBoundingClientRect().width` should equal `window.devicePixelRatio`. Zoom the page to 200% and confirm the line stays crisp and the axes remain inside the canvas. Resize the window and check that stroke widths do not become hairline or doubled. Take a device screenshot at DPR 2 and inspect the diagonal line for stair-stepping.
+
+@@@ END
+
+@@@ USER
+My product grid sends a 1600px JPEG to every phone because the CSS makes it 100vw, but the file is still huge. How should `srcset` and `sizes` be written so the browser picks the right file, including for high-DPR screens?
+
+@@@ ASSISTANT
+`srcset` lists candidate files with their intrinsic widths; `sizes` tells the browser how wide the image will be laid out at each breakpoint. The browser multiplies that layout width by the device pixel ratio and picks the smallest candidate that covers it. If `sizes` is wrong, the browser picks the wrong file even when the CSS is correct.
+
+```html
+<picture>
+  <source
+    type="image/avif"
+    srcset="/img/coast-400.avif 400w,
+            /img/coast-800.avif 800w,
+            /img/coast-1600.avif 1600w"
+    sizes="(min-width: 960px) 50vw, 100vw">
+  <img
+    src="/img/coast-800.jpg"
+    srcset="/img/coast-400.jpg 400w,
+            /img/coast-800.jpg 800w,
+            /img/coast-1600.jpg 1600w"
+    sizes="(min-width: 960px) 50vw, 100vw"
+    width="800"
+    height="600"
+    alt="A rocky coastline at dusk"
+    decoding="async"
+    loading="lazy">
+</picture>
+```
+
+The `sizes` value must describe the rendered width of the image, not the viewport. If the grid has 24px gaps and 32px side padding, a two-column layout at desktop is not `50vw`:
+
+```html
+sizes="(min-width: 960px) calc(50vw - 44px), calc(100vw - 32px)"
+```
+
+A 390px phone at DPR 3 needs roughly 1170 device pixels for a full-width image, so it selects the 1600w candidate; at DPR 2 it needs 780 and can take the 800w. That is exactly the decision you want the browser to make.
+
+Use `<picture>` only for art direction or format negotiation. If you need a different crop on mobile, use a `<source media="...">`:
+
+```html
+<picture>
+  <source media="(max-width: 600px)" srcset="/img/coast-square-600.avif 600w" sizes="100vw">
+  <img src="/img/coast-wide-1600.jpg" srcset="/img/coast-wide-800.jpg 800w, /img/coast-wide-1600.jpg 1600w"
+       sizes="(min-width: 960px) 50vw, 100vw" width="1600" height="900" alt="..." decoding="async">
+</picture>
+```
+
+Common mistakes:
+
+- Putting `sizes="100vw"` on a card that is 33vw wide. The browser over-downloads by roughly 3x.
+- Mixing formats in one `srcset` without `<source type>`. A browser may pick an AVIF it cannot decode.
+- Forgetting `width` and `height`. The browser cannot reserve space, and lazy loading causes layout shift.
+- Preloading the LCP image with only `href`. Use `imagesrcset` and `imagesizes` so the preload matches the `<img>` selection.
+
+If the hero is the LCP element:
+
+```html
+<link rel="preload" as="image"
+      href="/img/hero-800.avif"
+      imagesrcset="/img/hero-800.avif 800w, /img/hero-1600.avif 1600w"
+      imagesizes="100vw"
+      fetchpriority="high">
+```
+
+And give the hero `<img fetchpriority="high">` without `loading="lazy"`.
+
+Verification: in DevTools, set Network throttling and device emulation to a 390px-wide DPR 3 phone. Select the image in the Elements panel; the "Current source" tooltip shows which candidate was chosen. In the Network panel, confirm exactly one image request per element and that its intrinsic width is about 1170px, not 1600px. Resize to desktop and confirm the chosen file changes. Finally, disable JavaScript and confirm the `<img>` fallback still renders.
+
+@@@ END
+
+@@@ USER
+I have a folder of exported SVG icons that are 8–40 KB each and some are missing accessible names. How do I optimize them without breaking accessibility or scaling, and when should an icon be hidden from screen readers?
+
+@@@ ASSISTANT
+Optimize with SVGO, but keep `viewBox`, `<title>`, and `<desc>`. Most export bloat is editor metadata, comments, and unnecessary groups; removing those is safe. Removing `viewBox` is not, because it destroys scalability.
+
+```js
+// svgo.config.mjs
+export default {
+  multipass: true,
+  plugins: [
+    'preset-default',
+    { name: 'removeViewBox', active: false },
+    { name: 'removeTitle', active: false },
+    { name: 'removeDesc', active: false },
+    { name: 'removeDimensions', active: true }
+  ]
+};
+```
+
+`removeDimensions` strips fixed `width`/`height` attributes so CSS controls size; the `viewBox` remains and preserves the aspect ratio. Run it from the project root:
+
+```bash
+npx svgo -f src/icons -o public/icons --config svgo.config.mjs
+```
+
+Then check that the output still scales:
+
+```html
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+  <path d="M4 12h16M12 4v16" fill="none" stroke="currentColor" stroke-width="2"/>
+</svg>
+```
+
+A decorative icon that sits next to visible text must be hidden, or a screen reader announces "graphic" before every label. Use `aria-hidden="true"` and `focusable="false"` (the latter for old IE/Edge tab stops; harmless elsewhere).
+
+A meaningful standalone icon needs a name and a role:
+
+```html
+<svg class="icon" role="img" aria-labelledby="trash-title" viewBox="0 0 24 24">
+  <title id="trash-title">Delete project</title>
+  <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" fill="none"
+        stroke="currentColor" stroke-width="2"/>
+</svg>
+```
+
+If the icon is inside a button that already has an accessible name, hide the SVG and let the button's text or `aria-label` do the work:
+
+```html
+<button type="button" aria-label="Delete project">
+  <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">...</svg>
+</button>
+```
+
+Do not put both `aria-label` on the button and a `<title>` on the SVG; the name may be announced twice depending on the browser.
+
+For a sprite, inline the symbols once so `currentColor` works and no extra request is needed:
+
+```html
+<svg xmlns="http://www.w3.org/2000/svg" hidden>
+  <symbol id="i-search" viewBox="0 0 24 24">
+    <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M16 16l5 5" fill="none" stroke="currentColor" stroke-width="2"/>
+  </symbol>
+</svg>
+
+<button type="button" aria-label="Search">
+  <svg aria-hidden="true" focusable="false"><use href="#i-search"/></svg>
+</button>
+```
+
+`<use>` clones the symbol into the shadow tree, so a `<title>` inside the symbol is not reliably exposed as the button's name. Keep names on the interactive element instead.
+
+Inline SVG is also affected by page CSS. Set `svg { fill: currentColor; }` carefully; icons drawn with `fill="none"` and `stroke` need their own values, as above. Use `vector-effect="non-scaling-stroke"` only when a stroke must stay constant while the icon scales.
+
+Verification: run `npx svgo` and compare gzip sizes; a typical icon should drop 40–70%. Open the sprite in a browser and zoom to 400%: edges must stay sharp. Run axe or Lighthouse and confirm no "SVG images without accessible name" errors on meaningful icons. Navigate with a screen reader (NVDA or VoiceOver) and confirm decorative icons are silent while standalone icons announce exactly once. Toggle Windows High Contrast and check that `currentColor` still produces visible strokes.
+
+@@@ END
+
+@@@ USER
+My custom brand font causes a flash of invisible text on slow connections, and when it finally swaps the headline jumps. How should I load web fonts to control FOIT/FOUT and reduce layout shift?
+
+@@@ ASSISTANT
+FOIT is the browser hiding text while the font loads; FOUT is showing fallback text and swapping later. `font-display` chooses the behavior, and a metric-matched fallback reduces the jump when the swap happens.
+
+```css
+@font-face {
+  font-family: 'Inter var';
+  src: url('/fonts/inter-var.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+20AC;
+}
+
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial');
+  size-adjust: 107%;
+  ascent-override: 90%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+
+body {
+  font-family: 'Inter var', 'Inter Fallback', system-ui, sans-serif;
+}
+```
+
+`swap` shows fallback text immediately and swaps when the font arrives. It eliminates FOIT at the cost of a visible reflow. `block` hides text for up to about 3 seconds, then swaps: good only when the brand face is essential and the page is fast. `fallback` uses a very short block period and a short swap window. `optional` gives the browser a tiny block period and, on slow connections, keeps the fallback for that page load and caches the font for the next one. For a marketing headline, `swap` plus a matched fallback is the usual choice; for body text, `optional` avoids churn.
+
+Preload only the one font used above the fold, and include `crossorigin` even for a same-origin file, because font fetches are CORS requests:
+
+```html
+<link rel="preload" href="/fonts/inter-var.woff2" as="font"
+      type="font/woff2" crossorigin>
+```
+
+Do not preload every weight. With a variable font, one file covers the range; preloading four static weights delays the render.
+
+The fallback metrics matter. `size-adjust` scales the fallback's glyphs, while the ascent/descent overrides change the line box so the first line occupies the same height. Derive the values from the actual font metrics rather than guessing; tools such as Fontaine or `fontaine` generate the `@font-face` block. A mismatch of a few percent still produces a visible shift on a large headline.
+
+If you need to react in JavaScript, wait for the font set rather than a timer:
+
+```js
+document.fonts.ready.then(() => {
+  document.documentElement.classList.add('fonts-ready');
+});
+```
+
+To avoid a swap on a critical headline entirely, render it with the fallback stack and load the brand font for everything else, or use `font-display: optional` for that face.
+
+Subsetting is the other half of the fix. A 300 KB font with Cyrillic and Greek glyphs blocks the swap longer than a 40 KB Latin subset. Keep `unicode-range` so browsers only download the subsets they need, and self-host to avoid a third-party connection and privacy issues.
+
+Verification: in DevTools, throttle to Slow 3G and disable cache. Reload and confirm text is visible immediately with the fallback, then swaps once. Capture a Performance trace and check the Layout Shifts track; the headline should not move more than a pixel or two. Use the Rendering panel's "Disable local fonts" to force the fallback path. Finally, check `document.fonts.check('16px "Inter var"')` in the console and confirm the network request is `font/woff2` with a 200 status and the correct CORS headers.
+
+@@@ END
+
+@@@ USER
+My dashboard has a live "last updated" clock and a WebSocket. When users navigate away and press Back, the page fully reloads and they lose their filters. I suspect the page is not entering the back/forward cache. How do I diagnose and fix that?
+
+@@@ ASSISTANT
+The back/forward cache (bfcache) keeps the entire page in memory, including JS state, so Back is instant and filters survive. It is blocked by things like an `unload` listener, an open WebSocket, `Cache-Control: no-store`, or an in-flight IndexedDB transaction. Remove the blockers and use `pageshow`/`pagehide` to handle the frozen state.
+
+```js
+let socket = null;
+let clockTimer = null;
+
+function connect() {
+  socket = new WebSocket('wss://example.com/live');
+  socket.addEventListener('message', (event) => {
+    renderUpdate(JSON.parse(event.data));
+  });
+}
+
+function disconnect() {
+  socket?.close();
+  socket = null;
+}
+
+function startClock() {
+  stopClock();
+  const tick = () => {
+    document.querySelector('#updated').textContent =
+      new Intl.DateTimeFormat(undefined, { timeStyle: 'medium' }).format(new Date());
+  };
+  tick();
+  clockTimer = setInterval(tick, 1000);
+}
+
+function stopClock() {
+  clearInterval(clockTimer);
+  clockTimer = null;
+}
+
+window.addEventListener('pagehide', (event) => {
+  if (!event.persisted) return;
+  disconnect();
+  stopClock();
+});
+
+window.addEventListener('pageshow', (event) => {
+  if (!event.persisted) return;
+  connect();
+  startClock();
+  refreshFilters();
+  announce('Page restored from cache');
+});
+
+connect();
+startClock();
+```
+
+`pagehide` fires when the page is being frozen or unloaded; `event.persisted === true` means it is going into bfcache. `pageshow` fires on both initial load and restore; check `event.persisted` so you do not reconnect twice on first load.
+
+Remove `window.addEventListener('unload', ...)`. It is the single most common reason bfcache is disabled, and it is unnecessary for almost everything. If you must warn about unsaved changes, use `beforeunload` conditionally and remove the listener as soon as the form is clean:
+
+```js
+function setDirty(dirty) {
+  window.onbeforeunload = dirty ? () => true : null;
+}
+```
+
+`beforeunload` still blocks bfcache in some browsers while it is registered, so do not attach it globally.
+
+Also check response headers: `Cache-Control: no-store` prevents bfcache in Chrome. Use `no-cache` with revalidation instead if the data is sensitive. Do not hold a long-lived IndexedDB transaction or an active `fetch` during navigation; abort fetches in `pagehide`.
+
+Diagnosis in the field:
+
+```js
+const nav = performance.getEntriesByType('navigation')[0];
+console.log(nav.type); // 'back_forward' means a restore
+console.log(nav.notRestoredReasons); // Chrome 123+, why bfcache was skipped
+```
+
+`notRestoredReasons` lists the blocking frame and reason, for example an unload handler or an open connection.
+
+Verification: open DevTools, go to Application, and run the "Test back/forward cache" action. It reports whether the page qualifies and which reason blocked it. Then navigate to another page, press Back, and check in the console that `pageshow` fired with `persisted === true` and the filter state is intact. Confirm the clock resumes without duplicate intervals and the WebSocket opens exactly once.
+
+@@@ END
+
+@@@ USER
+In my SPA, opening a product from a long filtered list and pressing Back returns to the list, but the scroll position is at the top. The filters are also reset. How do I preserve and restore scroll position reliably?
+
+@@@ ASSISTANT
+Save the scroll position against the current URL plus state, then restore after the list has actually rendered. Restoring too early does nothing because the document is still short. Also set `history.scrollRestoration = 'manual'` so the browser does not fight your SPA router.
+
+```js
+history.scrollRestoration = 'manual';
+
+const keyFor = (url = location.href) => `scroll:${url}`;
+let frame = 0;
+
+function saveScroll() {
+  if (frame) return;
+  frame = requestAnimationFrame(() => {
+    frame = 0;
+    sessionStorage.setItem(keyFor(), String(window.scrollY));
+  });
+}
+
+window.addEventListener('scroll', saveScroll, { passive: true });
+
+window.addEventListener('pagehide', () => {
+  sessionStorage.setItem(keyFor(), String(window.scrollY));
+});
+```
+
+Restore only after the grid has rendered and its height is stable:
+
+```js
+async function restoreScroll() {
+  const target = Number(sessionStorage.getItem(keyFor()) ?? 0);
+  if (!target) return;
+
+  let attempts = 0;
+
+  const tryScroll = () => {
+    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+    if (maxScroll >= target || attempts >= 20) {
+      window.scrollTo({ top: Math.min(target, maxScroll), behavior: 'instant' });
+      return;
+    }
+    attempts += 1;
+    requestAnimationFrame(tryScroll);
+  };
+
+  tryScroll();
+}
+```
+
+Call it after data is in the DOM:
+
+```js
+async function showList() {
+  const params = new URLSearchParams(location.search);
+  await renderList({ category: params.get('category') ?? 'all' });
+  await restoreScroll();
+}
+```
+
+Details that determine whether this works:
+
+- Save the filter state in the URL (`?category=shoes&sort=price`), not only in memory. Back then restores both the URL and your saved scroll key, and a hard reload still works. If you keep filters in `sessionStorage`, key that state by history entry too.
+- Use `behavior: 'instant'`; `'auto'` can inherit `scroll-behavior: smooth` from CSS and animate the restore.
+- Images and lazy content change the document height after render. The retry loop above handles the common case; for virtualized lists, restore by item index instead of pixel offset.
+- Do not move focus to the top of the document after restoring; that scrolls the page. Use `main.focus({ preventScroll: true })`.
+- `pagehide` catches the case where the user navigates before a scroll event's `requestAnimationFrame` runs.
+
+If the list is virtualized, pixel offsets are meaningless. Save the first visible item's id and offset, then scroll it into view after render:
+
+```js
+const firstVisible = document.querySelector('[data-product]:not([hidden])');
+sessionStorage.setItem('anchor', firstVisible?.dataset.id ?? '');
+```
+
+Verification: filter to a subset, scroll to roughly 2,000px, open a product, then press Back. The list must return with the same filter and the same scroll offset, not a jump to top. Throttle the network to Fast 3G and repeat, so rendering completes after the restore attempt. Check `window.scrollY` in the console before and after; a difference of a few pixels is acceptable, a jump to zero is not. Test reload on the list URL and confirm the URL-carried filters restore even though session scroll storage is empty.
+
+@@@ END
+
+@@@ USER
+A marketing page loads analytics, a tag manager, and a chat widget immediately, and the chat widget alone is 300 KB. Legal also requires consent before non-essential scripts. How do I gate them without wrecking performance after consent?
+
+@@@ ASSISTANT
+Separate "consent" from "intent". Load nothing non-essential before consent, then load only what is needed. For chat, render a local facade button and load the vendor only when the user clicks it; that removes the widget from the critical path entirely and still satisfies consent because the click is an explicit action.
+
+```html
+<button id="chat-open" type="button">Chat with us</button>
+
+<script>
+  const consent = localStorage.getItem('consent'); // 'granted' | 'denied' | null
+</script>
+```
+
+Do not statically include the vendors' `<script>` tags with `async`; `async` still downloads and executes immediately. Inject them after the decision:
+
+```js
+function loadScript(src, attrs = {}) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    for (const [name, value] of Object.entries(attrs)) {
+      script.setAttribute(name, value);
+    }
+    script.onload = resolve;
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.append(script);
+  });
+}
+
+function enableAnalytics() {
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = function gtag() { window.dataLayer.push(arguments); };
+  gtag('js', new Date());
+  gtag('consent', 'update', { analytics_storage: 'granted' });
+  loadScript('https://www.googletagmanager.com/gtag/js?id=G-XXXXXXX');
+  gtag('config', 'G-XXXXXXX', { anonymize_ip: true });
+}
+
+function enableChat() {
+  loadScript('https://chat.example.com/widget.js', {
+    'data-account': 'acme',
+    crossorigin: 'anonymous'
+  }).then(() => window.ChatWidget?.open()).catch(() => {
+    location.href = 'mailto:support@example.com';
+  });
+}
+
+document.querySelector('#chat-open').addEventListener('click', (event) => {
+  event.currentTarget.disabled = true;
+  event.currentTarget.textContent = 'Opening chat…';
+  enableChat();
+});
+
+document.querySelector('#consent-accept').addEventListener('click', () => {
+  localStorage.setItem('consent', 'granted');
+  enableAnalytics();
+  location.reload();
+});
+
+document.querySelector('#consent-reject').addEventListener('click', () => {
+  localStorage.setItem('consent', 'denied');
+});
+</script>
+```
+
+Call `enableAnalytics()` on load only if `consent === 'granted'`. On rejection, do not load the tag manager at all, and do not preconnect to its origin. A preconnect leaks the user's IP before consent and shows up in the network panel as a third-party connection.
+
+To recover some performance after consent, warm the connection only at that point:
+
+```js
+function warmOrigins() {
+  for (const origin of ['https://chat.example.com', 'https://www.googletagmanager.com']) {
+    const link = document.createElement('link');
+    link.rel = 'preconnect';
+    link.href = origin;
+    link.crossOrigin = '';
+    document.head.append(link);
+  }
+}
+```
+
+For tag managers, prefer server-side tagging or a single first-party endpoint; every additional vendor adds DNS, TLS, and main-thread cost. Set `referrerpolicy="strict-origin-when-cross-origin"` on vendor scripts where supported, and use SRI if the vendor publishes stable hashes (most tag managers do not, which is a reason to minimize them).
+
+Verification: hard-reload with consent cleared and open the Network panel. There must be zero requests to third-party origins before interaction. Click "Accept" and confirm the analytics request appears; click the chat button and confirm the widget script loads only then. Check `document.cookie` before consent and confirm no non-essential cookies exist. Run Lighthouse's third-party summary and confirm the widget no longer contributes to blocking time on first load. Finally, reject consent, reload, and confirm no vendor request fires.
+
+@@@ END
+
+@@@ USER
+I'm shipping a dashboard in both English and Arabic. My CSS uses `margin-left`, `left`, and `text-align: left`, and the RTL version is subtly broken. How should I structure the layout and formatting so both directions work from one codebase?
+
+@@@ ASSISTANT
+Drive direction from the document, use logical properties instead of physical sides, and format numbers and dates with `Intl` rather than string concatenation. Set `dir` and `lang` on `<html>`, and let flexbox and grid mirror automatically.
+
+```html
+<html lang="ar" dir="rtl">
+```
+
+```css
+.card {
+  padding-inline: 16px;
+  padding-block: 12px;
+  border-inline-start: 3px solid #2563eb;
+  text-align: start;
+}
+
+.card__icon {
+  margin-inline-end: 8px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chevron {
+  /* points right in LTR, left in RTL */
+  transform: scaleX(1);
+}
+
+[dir="rtl"] .chevron {
+  transform: scaleX(-1);
+}
+```
+
+`margin-inline-start` maps to left in LTR and right in RTL. `inset-inline-start` replaces `left` for positioned elements. Flexbox `row` and grid column order follow the writing direction automatically, so a toolbar built with `display: flex` mirrors without extra rules. `text-align: start` replaces `left`.
+
+Physical properties are still correct when the direction is genuinely physical, for example a video scrubber or a map control; do not blindly convert those.
+
+For a directional glyph such as a chevron, mirror it explicitly. For a logo or a checkmark, do not mirror it: mirroring a brand mark looks broken. Use a class per icon rather than a global `svg { transform: ... }`.
+
+Bidirectional text needs isolation. A username like "Ahmed 123" inside an Arabic sentence can reorder punctuation unexpectedly:
+
+```html
+<p>تمت إضافة <bdi>Ahmed_123</bdi> إلى المشروع.</p>
+```
+
+`<bdi>` isolates the embedded run without guessing. For user-generated input, `dir="auto"` on the element lets the browser choose direction from the first strong character:
+
+```html
+<input type="text" name="name" dir="auto">
+```
+
+Numbers and dates are a separate layer:
+
+```js
+const locale = document.documentElement.lang || navigator.language;
+const currency = document.body.dataset.currency || 'AED';
+
+const price = new Intl.NumberFormat(locale, {
+  style: 'currency',
+  currency,
+  maximumFractionDigits: 2
+}).format(1299.5);
+
+const date = new Intl.DateTimeFormat(locale, {
+  dateStyle: 'medium',
+  timeStyle: 'short'
+}).format(new Date());
+
+document.querySelector('#price').textContent = price;
+document.querySelector('#date').textContent = date;
+```
+
+Do not hand-build plurals. Use `Intl.PluralRules` with a message table that has all the categories for the language:
+
+```js
+const plural = new Intl.PluralRules(locale);
+const forms = {
+  en: { one: 'item', other: 'items' },
+  ar: { zero: 'عناصر', one: 'عنصر', two: 'عنصران', few: 'عناصر', many: 'عنصرًا', other: 'عنصر' }
+};
+
+function itemLabel(count) {
+  return `${new Intl.NumberFormat(locale).format(count)} ${forms[locale.split('-')[0]][plural.select(count)]}`;
+}
+```
+
+Arabic has six plural categories; English has two. A ternary on `count === 1` is wrong before you even translate.
+
+Also localize the page title, meta description, and `lang` attributes on mixed-language sections. A screen reader switches pronunciation based on the nearest `lang`.
+
+Verification: load with `dir="rtl"` and check that padding, borders, and icons mirror while the logo does not. Test a mixed string containing Latin letters and digits inside Arabic text and confirm the punctuation stays attached correctly. Use Chrome's "Emulate CSS direction" or simply toggle the attribute in DevTools. Check `document.documentElement.scrollWidth <= window.innerWidth` at 320px. Confirm `Intl` output with a known date and price, and run a pseudo-localization pass to catch hard-coded strings.
+
+@@@ END
+
+@@@ USER
+My search page updates a results count and shows toast messages. Screen reader users report hearing nothing. What is the correct way to use ARIA live regions for async updates, and how do I avoid announcing every keystroke?
+
+@@@ ASSISTANT
+Live regions must exist in the DOM before the update. If you create an element already containing text and insert it, screen readers often miss the change. Put empty regions in the initial markup, then change their text content.
+
+```html
+<form role="search">
+  <label for="q">Search products</label>
+  <input id="q" name="q" type="search" autocomplete="off">
+</form>
+
+<p id="result-status" role="status" aria-live="polite" aria-atomic="true"></p>
+
+<div id="results"></div>
+
+<div id="toast-region" aria-live="assertive" aria-atomic="true"></div>
+```
+
+```js
+const input = document.querySelector('#q');
+const status = document.querySelector('#result-status');
+const results = document.querySelector('#results');
+const toastRegion = document.querySelector('#toast-region');
+
+let timer;
+let controller;
+
+input.addEventListener('input', () => {
+  clearTimeout(timer);
+  timer = setTimeout(() => search(input.value.trim()), 400);
+});
+
+async function search(query) {
+  controller?.abort();
+  controller = new AbortController();
+
+  results.setAttribute('aria-busy', 'true');
+  status.textContent = 'Searching…';
+
+  try {
+    const response = await fetch(`/api/products?q=${encodeURIComponent(query)}`, {
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const { items } = await response.json();
+
+    renderResults(items);
+    status.textContent = items.length === 1
+      ? '1 product found'
+      : `${items.length} products found`;
+  } catch (error) {
+    if (error.name === 'AbortError') return;
+    status.textContent = 'Search failed. Try again.';
+    showToast('Search failed. Check your connection.');
+  } finally {
+    results.removeAttribute('aria-busy');
+  }
+}
+
+function renderResults(items) {
+  results.replaceChildren(...items.map((item) => {
+    const article = document.createElement('article');
+    const heading = document.createElement('h2');
+    heading.textContent = item.name;
+    article.append(heading);
+    return article;
+  }));
+}
+
+function showToast(message) {
+  toastRegion.textContent = '';
+  requestAnimationFrame(() => {
+    toastRegion.textContent = message;
+  });
+  setTimeout(() => {
+    toastRegion.textContent = '';
+  }, 6000);
+}
+```
+
+Key decisions:
+
+- `role="status"` implies `aria-live="polite"` and `aria-atomic="true"`. Adding them is fine and documents intent.
+- Debounce the search so the region changes once after typing settles, not on every key. Announcing "3 results" for each of 12 keystrokes is worse than silence.
+- Set `aria-busy="true"` on the results container while fetching. Assistive technology waits for the update instead of reading half-rendered content. Remove it when rendering is complete.
+- Do not put `aria-live` on the results list itself if the list is replaced wholesale. Announce a concise count in a separate status region; let the user navigate to the list.
+- `role="alert"` is assertive and interrupts. Reserve it for errors that need immediate attention. Do not add `aria-live="assertive"` to a `role="alert"` element as well; it is redundant and can double-announce in some readers.
+- To re-announce identical text, clear the region and set it on the next frame, as `showToast` does. Setting the same string again may be ignored.
+- Toast messages should not steal focus. If the toast contains an action, keep it in the DOM long enough to reach with the keyboard, or provide a persistent notification center.
+
+For a chat or activity feed, use `role="log"` with `aria-live="polite"`; it appends messages and preserves order. For a countdown, do not use a live region at all.
+
+Verification: with NVDA on Windows or VoiceOver on macOS, type a query and confirm a single announcement after the debounce, not one per character. Trigger an error and confirm the assertive toast interrupts. In Chrome DevTools, inspect the Accessibility pane and confirm the live region's properties are `polite`/`atomic`. Disable the network and confirm the failure path announces once. Finally, check that clearing the query announces "0 products found" rather than silence.
+
+@@@ END
+
+@@@ USER
+When users navigate between routes in my React SPA, focus stays on the clicked link or falls back to `<body>`, so keyboard and screen reader users are lost. How should focus be managed on route changes, and how do I handle returning from a detail view?
+
+@@@ ASSISTANT
+On every route change, do three things: update the document title, move focus to the new page's main heading (or main container), and announce the route in a polite live region. Do not focus `<body>`; focus a programmatically focusable element with an accessible name.
+
+```html
+<a class="skip" href="#main">Skip to content</a>
+
+<div id="route-announcer" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<main id="main" tabindex="-1">
+  <h1 id="page-title" tabindex="-1"></h1>
+  <div id="view"></div>
+</main>
+```
+
+```js
+const main = document.querySelector('#main');
+const title = document.querySelector('#page-title');
+const view = document.querySelector('#view');
+const announcer = document.querySelector('#route-announcer');
+
+let firstRender = true;
+
+function commitRoute({ heading, documentTitle, trigger }) {
+  document.title = documentTitle;
+  title.textContent = heading;
+
+  if (firstRender) {
+    firstRender = false;
+    return; // don't steal focus on initial load
+  }
+
+  // Move focus after the new DOM is committed.
+  requestAnimationFrame(() => {
+    title.focus({ preventScroll: true });
+    announcer.textContent = `${documentTitle} loaded`;
+  });
+
+  if (trigger) {
+    // Keep a reference so Back can return focus to the card that opened the detail.
+    history.replaceState({ ...history.state, triggerId: trigger.id }, '');
+  }
+}
+
+function goBack() {
+  const triggerId = history.state?.triggerId;
+  history.back();
+
+  window.addEventListener('popstate', () => {
+    const trigger = triggerId && document.getElementById(triggerId);
+    if (trigger) trigger.focus({ preventScroll: true });
+  }, { once: true });
+}
+```
+
+The heading is the right focus target because it gives context without forcing the user through the navigation again. `tabindex="-1"` makes it focusable but not tabbable. `preventScroll: true` avoids a second scroll jump after your scroll restoration logic runs.
+
+For a modal or a detail overlay, trap focus inside it while open and return focus to the trigger on close:
+
+```js
+let opener = null;
+
+function openDialog(dialog) {
+  opener = document.activeElement;
+  dialog.showModal();
+  dialog.querySelector('[data-autofocus]')?.focus();
+}
+
+function closeDialog(dialog) {
+  dialog.close();
+  opener?.focus();
+  opener = null;
+}
+```
+
+Native `<dialog>` with `showModal()` handles the focus trap and `Escape`; do not reimplement it with a `keydown` listener unless you need to. Mark the rest of the page `inert` only if you are not using `showModal()`.
+
+For lists where the user opens an item, focus restoration matters more than focus placement. Save the trigger's id in history state before navigating. On `popstate`, focus it. If the item no longer exists because the list was filtered, focus the list heading instead.
+
+Announce route changes only; do not announce the entire page content. A short message like "Order details loaded" plus the focused heading is enough. Avoid `aria-live="assertive"` here; it interrupts whatever the user is reading.
+
+Verification: navigate using only Tab and Enter. After each route change, check `document.activeElement.id` in the console; it should be the new heading, not the link or body. Listen with a screen reader and confirm the heading is read once and the route announcer does not repeat it. Open an item, press Escape or Back, and confirm focus returns to the card that opened it. Reload directly on a detail URL and confirm focus is not stolen on first paint.
+
+@@@ END
+
+@@@ USER
+Lighthouse says my interaction to next paint is poor, but I don't know which interaction is slow. How do I measure INP in the field and find the long task behind it, then fix it?
+
+@@@ ASSISTANT
+INP is the latency from a user input to the next paint, and the reported value is the worst interaction (roughly the 98th percentile) for the page. Start with field attribution, then reproduce with a trace.
+
+```js
+import { onINP } from 'web-vitals/attribution';
+
+onINP((metric) => {
+  console.log({
+    value: metric.value,
+    rating: metric.rating,
+    target: metric.attribution.interactionTarget,
+    type: metric.attribution.interactionType,
+    time: metric.attribution.interactionTime,
+    processing: metric.attribution.processingDuration,
+    presentation: metric.attribution.presentationDelay
+  });
+}, { reportAllChanges: true });
+```
+
+That tells you whether the time is spent in input processing, queued work, or presentation. For a quick local measurement without the library:
+
+```js
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    if (entry.duration < 40) continue;
+    console.log(entry.name, {
+      duration: Math.round(entry.duration),
+      start: Math.round(entry.startTime),
+      processing: Math.round(entry.processingStart - entry.startTime),
+      delay: Math.round(entry.processingEnd - entry.processingStart)
+    });
+  }
+}).observe({ type: 'event', buffered: true, durationThreshold: 40 });
+```
+
+To find the actual long task, use the Long Animation Frames API:
+
+```js
+new PerformanceObserver((list) => {
+  for (const frame of list.getEntries()) {
+    if (frame.duration < 50) continue;
+    console.warn('Long frame', Math.round(frame.duration), {
+      blocking: Math.round(frame.blockingDuration),
+      scripts: frame.scripts.map((s) => ({
+        source: s.sourceURL,
+        invoker: s.invoker,
+        duration: Math.round(s.duration)
+      }))
+    });
+  }
+}).observe({ type: 'long-animation-frame', buffered: true });
+```
+
+A common cause in a data table is rendering thousands of rows synchronously in the click handler. Fix it by yielding between chunks and letting the browser paint:
+
+```js
+async function renderRows(tbody, rows) {
+  const CHUNK = 200;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const fragment = document.createDocumentFragment();
+    for (const row of rows.slice(i, i + CHUNK)) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${row.id}</td><td>${row.name}</td><td>${row.status}</td>`;
+      fragment.append(tr);
+    }
+    tbody.append(fragment);
+
+    if ('scheduler' in window && 'yield' in window.scheduler) {
+      await window.scheduler.yield();
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+}
+```
+
+`scheduler.yield()` returns to the event loop with higher priority than `setTimeout`, so the click's visual feedback can paint. This does not make the total render faster; it makes the page respond. If the list is large, also virtualize it so only visible rows exist, and use `content-visibility: auto` on off-screen sections:
+
+```css
+.section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 600px;
+}
+```
+
+Avoid `requestIdleCallback` for user-blocking work; it may run too late. Avoid `setTimeout(fn, 0)` for every small DOM change; each timer is a separate task and layout thrash adds up. Batch reads and writes, and do not read `offsetHeight` inside a loop that also writes styles.
+
+Verification: record a Performance trace, click the slow control, and inspect the Interactions track. The event should have a duration under 200ms, and the Long Animation Frames track should no longer show a frame over 50ms caused by your handler. In Chrome's Lighthouse "Timespan" mode, repeat the interaction three times and confirm the INP estimate drops. Ship the `web-vitals` attribution data to your analytics endpoint and segment by `interactionTarget` so regressions are visible per control.
+
+@@@ END
+
+@@@ USER
+I want CI to fail when a pull request bloats the bundle or hurts performance. How do I set up Lighthouse CI with budgets, and what should the thresholds actually be?
+
+@@@ ASSISTANT
+Run Lighthouse CI against the built static output, assert on median results from several runs, and add resource-size assertions as hard budgets. The size assertions are the ones that catch regressions deterministically; score thresholds catch the user-visible effect.
+
+```js
+// lighthouserc.js
+module.exports = {
+  ci: {
+    collect: {
+      staticDistDir: './dist',
+      numberOfRuns: 3,
+      url: ['/', '/pricing/', '/docs/'],
+      settings: {
+        preset: 'desktop',
+        throttlingMethod: 'simulate'
+      }
+    },
+    assert: {
+      assertions: {
+        'categories:performance': ['error', { minScore: 0.9 }],
+        'categories:accessibility': ['error', { minScore: 0.95 }],
+        'largest-contentful-paint': ['error', { maxNumericValue: 2500 }],
+        'cumulative-layout-shift': ['error', { maxNumericValue: 0.1 }],
+        'total-blocking-time': ['error', { maxNumericValue: 200 }],
+        'resource-summary:script:size': ['error', { maxNumericValue: 180000 }],
+        'resource-summary:total:size': ['warn', { maxNumericValue: 900000 }],
+        'uses-responsive-images': 'off'
+      }
+    },
+    upload: {
+      target: 'temporary-public-storage'
+    }
+  }
+};
+```
+
+```json
+{
+  "scripts": {
+    "build": "vite build",
+    "lhci": "lhci autorun"
+  },
+  "devDependencies": {
+    "@lhci/cli": "^0.14.0"
+  }
+}
+```
+
+The budgets are in bytes. Start from the current median, then ratchet down: for a content site, 180 KB of compressed JavaScript is a reasonable warning line and 250 KB is a hard stop. Total page weight around 900 KB is generous for a marketing page but may be impossible for an image-heavy catalogue; set budgets per route if the routes differ.
+
+Run it locally before adding CI:
+
+```bash
+npm run build
+npx lhci autorun
+```
+
+A GitHub Actions job:
+
+```yaml
+name: Lighthouse
+on: pull_request
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx lhci autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+```
+
+Practical rules:
+
+- Use `numberOfRuns: 3` (LHCI uses the median) to damp noise. One run on shared CI hardware will flake.
+- `staticDistDir` serves the build with a local static server; it will not run server-side redirects or API routes. Use `startServerCommand` plus `url` for an app that needs a server.
+- Keep score assertions slightly below current performance. A budget that fails on day one gets disabled.
+- Assert `resource-summary:script:size` rather than total bytes alone; a large hero image should be caught by LCP and image budgets, not by a vague total.
+- If the site is intentionally SPA-heavy, assert on `total-blocking-time` and script size rather than a perfect performance score.
+- Lighthouse's synthetic mobile preset is slower than desktop; do not compare the two numbers. Pick one and keep it stable.
+- For route-specific budgets, add a second `ci.assert` config or run LHCI once per URL group with different assertions.
+
+Verification: run `npx lhci autorun` on a clean build and confirm it passes. Add a 300 KB dummy module to the entry point, rebuild, and confirm the script-size assertion fails with the actual measured bytes. Remove it and confirm the run returns to green. Open the temporary public report link and check that the median run, not the best run, is the one that was asserted.
+
+@@@ END
+
+@@@ USER
+My offline notes app uses localStorage for notes and the Cache API for assets. Some users lose data, and some hit quota errors I never handle. What are the actual storage limits and eviction rules, and how should I design around them?
+
+@@@ ASSISTANT
+The limits are browser- and platform-dependent, so treat them as budgets, not guarantees. Approximate rules:
+
+- Cookies: about 4 KB per cookie and roughly 180 cookies per domain in Chrome; Safari is stricter. Cookies are sent on every request, so never store note content there.
+- `localStorage`/`sessionStorage`: about 5 MB per origin in most browsers (Chrome allows more in some cases), synchronous, string-only.
+- IndexedDB: the main quota is shared across IndexedDB, Cache API, and other origin storage, typically up to ~60% of disk in Chrome and much less in Safari.
+- Cache API: shares the same quota as IndexedDB.
+- Safari evicts data for sites the user has not visited in 7 days unless the site is installed to the home screen or storage is persisted. Chrome can evict under storage pressure.
+
+Use IndexedDB for notes, version your caches, and request persistence.
+
+```js
+async function requestPersistence() {
+  if (!navigator.storage?.persist) return false;
+  if (await navigator.storage.persisted()) return true;
+  return navigator.storage.persist();
+}
+
+async function storageReport() {
+  const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+  return {
+    usageMB: (usage / 1024 / 1024).toFixed(1),
+    quotaMB: (quota / 1024 / 1024).toFixed(1),
+    percent: quota ? ((usage / quota) * 100).toFixed(1) : 'unknown'
+  };
+}
+
+async function openNotes() {
+  const request = indexedDB.open('notes', 3);
+  request.onupgradeneeded = () => {
+    const db = request.result;
+    if (!db.objectStoreNames.contains('notes')) {
+      const store = db.createObjectStore('notes', { keyPath: 'id' });
+      store.createIndex('updatedAt', 'updatedAt');
+    }
+  };
+  return request;
+}
+
+async function saveNote(db, note) {
+  const write = () => new Promise((resolve, reject) => {
+    const tx = db.transaction('notes', 'readwrite');
+    tx.objectStore('notes').put({ ...note, updatedAt: Date.now() });
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+
+  try {
+    await write();
+  } catch (error) {
+    if (error?.name !== 'QuotaExceededError') throw error;
+    await evictOldest(db);
+    await write();
+  }
+}
+
+async function evictOldest(db, keep = 50) {
+  const tx = db.transaction('notes', 'readwrite');
+  const store = tx.objectStore('notes');
+  const index = store.index('updatedAt');
+  const count = await new Promise((resolve, reject) => {
+    const req = store.count();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  let toDelete = count - keep;
+  await new Promise((resolve, reject) => {
+    const cursorReq = index.openCursor();
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (!cursor || toDelete <= 0) { resolve(); return; }
+      cursor.delete();
+      toDelete -= 1;
+      cursor.continue();
+    };
+    cursorReq.onerror = () => reject(cursorReq.error);
+  });
+}
+```
+
+For the Cache API, version the name and delete old versions on activation:
+
+```js
+const CACHE = 'assets-v7';
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names.filter((name) => name !== CACHE).map((name) => caches.delete(name)));
+  })());
+});
+```
+
+Design rules:
+
+- Store structured notes in IndexedDB, not `localStorage`. `localStorage` blocks the main thread and will throw a `QuotaExceededError` that leaves the app in an unknown state if you write in a loop.
+- Always catch quota errors at the write boundary and surface a real message. Silent failure is why users "lose data".
+- Keep a separate metadata store with sizes; enforce your own cap (for example 50 MB) rather than waiting for the browser quota. Then eviction is predictable.
+- Never evict on read. Evict oldest notes only when writing, and never delete unsynced notes; queue those and ask the user to free space.
+- Call `navigator.storage.persist()` after a meaningful interaction, not on first load. Browsers may grant it silently based on engagement.
+- Do not rely on persistence to survive the user clearing site data. Keep a server copy or an export path.
+
+Verification: in Chrome DevTools, open Application > Storage and confirm the origin's usage. Run `await navigator.storage.estimate()` and `await navigator.storage.persisted()`. Fill a test database with large blobs until a quota error occurs, then confirm the app evicts the oldest notes and the save succeeds. In Safari, check the 7-day eviction behavior with a test device or WebKit's storage settings. Finally, block IndexedDB in DevTools and confirm the app shows a readable error instead of a blank screen.
+
+@@@ END

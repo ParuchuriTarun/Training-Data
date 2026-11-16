@@ -1,0 +1,418 @@
+@@@ USER
+How do I write UX copy for empty states and error messages?
+@@@ ASSISTANT
+Two rules: name the user's next step, and say what the system did.
+
+Empty state:
+
+- "No projects yet. Create your first project to start tracking work." [Create project]
+- "No notifications. You're all caught up."
+- "Your inbox is empty. Invite a teammate to get started." [Invite teammate]
+
+Error:
+
+- "We couldn't save your changes. Check your internet connection and try again."
+- "This email is already registered. Try signing in instead."
+- "The file is larger than 25 MB. Choose a smaller file or compress it."
+
+Rules:
+1. One action per screen.
+2. Verbs name outcomes: "Create project", "Delete 12 messages". Never "Click here" or "OK".
+3. Errors blame the system, not the user.
+4. Say what was saved: "Your draft is saved. The payment did not go through."
+5. Confirm destructive actions by repeating the object.
+6. Field errors inline, not in a disappearing toast.
+7. Calm tone for money and data-loss errors.
+8. Every error needs a next step.
+
+Exercise: rewrite "No data found.", "Error 400", "Submit".
+
+Answers: "No projects yet. Create your first project to start tracking work.", "We couldn't read that request. Check the fields and try again.", "Send message" or "Publish post".
+@@@ END
+
+@@@ USER
+How do I write console errors and API error messages for developers?
+@@@ ASSISTANT
+A stable code, a human sentence, and the request id.
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "The email field is invalid.",
+    "details": { "field": "email", "reason": "invalid_format" },
+    "requestId": "req_9fK2a"
+  }
+}
+```
+
+Rules:
+1. `code` is the machine contract; never change a published code's meaning.
+2. `message` can improve without breaking clients.
+3. `details` carries field + reason so a form can highlight the exact input.
+4. `requestId` matches the `X-Request-Id` header and the server log.
+5. Status codes: 400 validation, 401 unauthenticated, 403 forbidden, 404 not found, 409 conflict, 422 semantic, 429 rate limited, 5xx internal.
+6. Never expose SQL, stack traces, or internal URLs. Log them server-side.
+7. One error shape for the whole API.
+8. Log every 5xx with user id, route, and duration.
+
+Exercise: fix `500 { "error": "TypeError: Cannot read properties of undefined (reading 'email') at users.ts:42" }`. Answer: `500 { "error": { "code": "internal_error", "message": "Something went wrong.", "requestId": "req_9fK2a" } }` with the stack logged server-side.
+@@@ END
+
+@@@ USER
+How do I write a postmortem that is blameless and useful?
+@@@ ASSISTANT
+Facts first, causes with evidence, fixes with owners and dates.
+
+Structure:
+
+1. Summary (3 lines): what happened, when, how long, impact.
+2. Timeline: timestamped facts only.
+3. Root causes: verified, with evidence.
+4. What worked: detection, rollback, communication.
+5. What did not work: the missing guardrail.
+6. Action items: owner + deadline + measurable done criterion.
+
+Rules:
+- "Human error" is never a root cause. Replace it with the missing guardrail.
+- Blame the process, not the person.
+- Quantify: users affected, duration, error rate, confirmed data loss or none.
+- Publish within 48 hours. Review action items monthly. An action item without a date is a wish.
+
+Exercise: rewrite "The engineer made a typo." Answer: "The migration ran without a CI dry run and was not idempotent, so a retry left a partial state. Fixes: idempotent migrations, a CI dry-run step, and a tested rollback script."
+@@@ END
+
+@@@ USER
+How do I write a cover letter for a career change without apologizing?
+@@@ ASSISTANT
+Transfer evidence; your past work already required the target skills.
+
+Strong opening:
+
+"Over five years automating warehouse reporting in Python, I built data pipelines, scheduled jobs, and documented them for non-technical users. I want to bring that same practice to backend engineering, where the problems are the same and the stakes are higher."
+
+Structure:
+
+1. Hook: why this role, why now.
+2. Three transferable proofs, each with a number.
+3. Why this company: a real product, value, or engineering practice.
+4. Close with a low-friction ask: "I would welcome a 30-minute conversation about how I could contribute to [team]."
+
+Rules:
+- Never "passionate", "fast learner", or "hard worker" without evidence.
+- One page. Address by name.
+- Do not repeat the resume.
+- Quantify: time saved, errors reduced, users served, cost cut.
+- Acknowledge the switch in one sentence, then move on.
+@@@ END
+
+@@@ USER
+How do I answer behavioral interview questions with STAR?
+@@@ ASSISTANT
+Situation, Task, Action, Result, under 90 seconds, on your actions.
+
+- **Situation (2 sentences).** "We were designing the payments API and my teammate wanted to store card tokens in our database."
+- **Task (1 sentence).** "I needed to pick a storage model before the processor contract was signed."
+- **Action (the bulk).** "I asked for the compliance requirements, wrote a one-page comparison, and proposed a trial with the token vault."
+- **Result (1–2 sentences with numbers).** "We adopted the vault; card data never touches our servers, and the audit passed without findings."
+
+Rules:
+- Stay on your actions.
+- Admit what you learned.
+- No confidential details.
+- End with the outcome.
+@@@ END
+
+@@@ USER
+How do I write a privacy notice summary a normal person can understand?
+@@@ ASSISTANT
+Five questions in plain words, with numbers. Link the full legal notice; do not replace it.
+
+**What we collect**: account details to run your account; what you create to show it back; technical logs to keep it secure; payment details handled by our provider — we never see your card number.
+
+**Why**: to provide the service; for transactional emails; to improve with anonymized aggregates; marketing only with consent.
+
+**Who sees it**: only you unless you share; subprocessors under contract only to run the service; we never sell personal data.
+
+**How long**: while your account is active plus 30 days; backups purged within 90 days; invoices 7 years for tax law.
+
+**Your controls**: Export and Delete in Settings → Privacy; unsubscribe in every marketing email; privacy@example.com, reply within 30 days.
+
+Test: a 14-year-old should understand it. If not, simplify.
+@@@ END
+
+@@@ USER
+How do I write a bug report that gets fixed in days?
+@@@ ASSISTANT
+Environment, steps, expected vs. actual, evidence.
+
+```
+Title: Export to CSV fails with 500 for accounts with >10k rows
+Environment: Production, app 2.4.1, Chrome 130, account 48291, request id req_9fK2a
+Steps: Sign in as admin → Reports → Usage → date range 2026-01-01 to 2026-10-01 → Export CSV
+Expected: file downloads within 30 seconds.
+Actual: 500 Internal Server Error, request id req_9fK2a.
+Evidence: curl + response (token redacted), server log excerpt, screenshot of failed request, tried: 90-day range succeeds.
+Impact: blocks monthly billing. Workaround: split into 3 exports.
+```
+
+Rules:
+- Title = symptom + scope.
+- Steps runnable by someone who never saw the bug.
+- Expected vs. actual, one line each.
+- Evidence, not opinion.
+- One bug per report.
+@@@ END
+
+@@@ USER
+How do I write API documentation developers actually read?
+@@@ ASSISTANT
+When to use it, one minimal example, then errors, limits, and examples.
+
+```
+POST /v1/invoices
+Creates a draft invoice for a customer. Use this to prepare a bill before sending it.
+Requires the `invoices:write` scope.
+
+Request
+POST /v1/invoices
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+{ "customerId": "cus_123", "lines": [{ "description": "Consulting", "quantity": 2, "unitPriceCents": 15000 }], "currency": "USD" }
+
+Response 201
+{ "id": "inv_456", "status": "draft", "totalCents": 30000, "createdAt": "2026-11-07T12:00:00Z" }
+
+Errors
+- 400 validation_error · 401 unauthenticated · 403 forbidden (scope invoices:write required) · 409 duplicate_resource
+
+Limits: 100 requests/minute per account. Max 200 line items.
+Notes: Created as a draft. Call POST /v1/invoices/:id/send to issue it.
+```
+
+Rules:
+- First line = when to use it.
+- One minimal example per section with copy-pasteable `curl`.
+- Errors before parameters.
+- Idempotency, pagination, limits are mandatory fields.
+- Units and formats stated: `unitPriceCents`, ISO 8601 with timezone.
+@@@ END
+
+@@@ USER
+How do I write meeting agendas and follow-ups that get things done?
+@@@ ASSISTANT
+Agendas state decisions, not topics. Follow-ups list decisions, owners, and dates.
+
+Agenda:
+
+```
+Team sync — Nov 7, 10:00, 30 min
+Goal: decide the export architecture before Friday.
+1. (5 min) Context: export fails for >10k rows. (Priya)
+2. (10 min) Options: sync CSV vs async job.
+3. (10 min) Decision: pick one. Criteria: ship Nov 21, support 100k rows.
+4. (5 min) Owners and dates.
+Pre-read: 1 page on the failure.
+```
+
+Follow-up:
+
+```
+Decisions: Async job export. Owner Daniel. Ship Nov 21.
+Actions: [ ] Daniel: job table + worker Nov 10. [ ] Priya: load test Nov 14. [ ] Maya: billing docs Nov 18.
+Open: Who owns the DLQ alert? (next sync)
+```
+
+Rules:
+- Decisions, not topics.
+- Timebox each item; total under 30 minutes.
+- Owner per item in the agenda.
+- Follow-up within 24 hours.
+- Cancel if there is no decision.
+@@@ END
+
+@@@ USER
+How do I write a postmortem action item that actually ships?
+@@@ ASSISTANT
+Owner, deadline, and a measurable done criterion.
+
+Weak: "Improve monitoring."
+
+Strong: "Add an alert when the DLQ depth exceeds 0. Owner: Dana. Due: Dec 5. Done when the alert has fired in a staging drill."
+
+Rules:
+1. One owner. "The team" is no one.
+2. A date. "Soon" and "Q1" are not dates.
+3. A done criterion you can check without judgment.
+4. Effort estimate; split anything larger than a week.
+5. Review monthly.
+6. Publish the list with the postmortem.
+7. Close items publicly when done.
+@@@ END
+
+@@@ USER
+How do I write a support macro that is helpful and not robotic?
+@@@ ASSISTANT
+Placeholders for facts, tone for the person. Fill specifics every time.
+
+```
+Hi {first_name},
+Thanks for reaching out. I can see {specific_fact} on your account, and I understand that blocked {impact}.
+Here's what I've done so far: {action_1}; {action_2}.
+{Next step for the customer}
+I'll check back {timeframe}. If you need this sooner, reply here and I'll escalate.
+Best, {agent_name}
+```
+
+Filled: "Hi Maya, I can see your Tuesday export is stuck at 42%, and that blocked your billing run. I restarted the job and cleared the failed chunk. Please retry in Settings → Exports. I'll check back at 3 pm today."
+
+Rules:
+- At least two fields specific to the account. Zero = spam.
+- Delete any sentence true for every customer.
+- Short sign-off.
+- Review macros monthly; a macro repeating a workaround is a product bug.
+@@@ END
+
+@@@ USER
+How do I paraphrase a source without plagiarizing it?
+@@@ ASSISTANT
+Change structure and emphasis; cite ideas even in your own words.
+
+Original: "Primary keys should be immutable and unique. A surrogate integer key is simple, but it requires an extra lookup for business queries, so many teams prefer a natural key."
+
+Patchwriting (wrong): "Immutable and unique primary keys are recommended. Surrogate integer keys are simple, though they need an extra lookup..."
+
+Proper rewrite: "In our schema we use a database-generated UUID that never changes. Business identifiers like order numbers live in a separate unique column because lookups by order number are handled by an index."
+
+Rules:
+1. Read, close, write.
+2. Change structure, not synonyms.
+3. Cite anyway.
+4. Add your own content: a decision, a number, a tradeoff.
+5. Short quotes need quotation marks and a citation.
+6. Common knowledge needs no citation; specific claims do.
+@@@ END
+
+@@@ USER
+How do I describe a chart to an executive in one paragraph?
+@@@ ASSISTANT
+Takeaway first, evidence with numbers, then implication.
+
+"Revenue from the North region fell 12% in February while the South rose 5%. The decline is driven by three churned enterprise accounts. If churn stays at this rate, Q1 revenue will miss target by $180k; retaining those three accounts would close the gap."
+
+Rules:
+1. First sentence = the takeaway.
+2. Numbers, not adjectives.
+3. Implication: what to decide or watch.
+4. Time frame and comparison.
+5. Five sentences maximum.
+6. Caveats after the takeaway.
+@@@ END
+
+@@@ USER
+How do I write release notes for end users?
+@@@ ASSISTANT
+What the user can do now, not what changed in code. One line per change: action + benefit.
+
+- "Export any report to CSV in one click (Settings → Reports → Export)."
+- "Notifications now arrive within seconds instead of minutes."
+- "Fixed a bug where deleted projects reappeared in search results."
+
+Rules:
+1. User verb first.
+2. Where to find it. A feature the user cannot find does not exist.
+3. One line per item.
+4. Say who it helps.
+5. Name user-reported fixes.
+6. No internal codes or PR numbers.
+7. Breaking changes first, with a migration path.
+8. One screenshot for the headline change.
+@@@ END
+
+@@@ USER
+How do I write a changelog entry for developers?
+@@@ ASSISTANT
+Version, date, what changed, who is affected.
+
+```
+## 2.4.0 — 2026-11-07
+### Added
+- `POST /v1/invoices` creates a draft invoice. Requires `invoices:write`.
+### Fixed
+- Export to CSV now streams in chunks; accounts with >10k rows no longer time out.
+### Deprecated
+- `GET /v1/reports/csv` is deprecated. Use `POST /v1/reports/jobs`. Removal: 2027-11-07.
+```
+
+Rules:
+1. Keep-a-Changelog format: Added, Changed, Deprecated, Removed, Fixed, Security.
+2. Breaking changes first with a before/after example.
+3. Deprecation includes sunset date and replacement.
+4. No internal ticket numbers as the only reference.
+5. Date every release.
+6. Link each breaking entry to a migration guide.
+@@@ END
+
+@@@ USER
+How do I write a cold email that does not read as spam?
+@@@ ASSISTANT
+One specific observation, one relevant proof, one small ask.
+
+```
+Subject: Your Q3 report export time
+Hi Lena,
+I noticed your team exports the weekly usage report manually. Two similar finance teams cut that from two hours to five minutes a month by scheduling the export.
+Happy to send a two-minute demo. Would Tuesday at 10 am work?
+Best, Tom
+```
+
+Rules:
+- Personalize with a verifiable fact.
+- One proof point, a number.
+- One small ask.
+- Subject = the observation.
+- Under 100 words. Honest opt-out. Never fake a reply thread.
+@@@ END
+
+@@@ USER
+How do I write a conference talk abstract that an organizer will accept?
+@@@ ASSISTANT
+One outcome, one approach, one proof.
+
+Title: "Cutting p95 latency from 900 ms to 120 ms without rewriting the API"
+
+"Our orders API was timing out during peak hours. We profiled the hot path and found 70% of the time in three unindexed queries and a synchronous external call. We fixed it with two composite indexes, a read replica for reporting, and an async webhook.
+
+You will leave with the profiling workflow, the exact index definitions, and the load test we now run in CI."
+
+Rules:
+1. Title = result. Numbers win.
+2. First sentence = problem + stakes.
+3. One approach, three concrete steps.
+4. What the audience takes home.
+5. Under 250 words. No marketing.
+6. Speaker credibility in one line.
+@@@ END
+
+@@@ USER
+How do I write speaker notes that keep a talk on time?
+@@@ ASSISTANT
+One card per slide: claim, evidence, transition.
+
+```
+Slide 7 — "Indexes cut 70% of p95" (2 min)
+Claim: Two composite indexes took p95 from 900 ms to 280 ms.
+Evidence: trace before/after; point at the query plan.
+If asked: "The index is (user_id, status, created_at DESC)."
+Transition: "That fixed the database. The other 620 ms was an external call..."
+```
+
+Rules:
+1. One idea per card.
+2. Time each card with a running total.
+3. First sentence per card is the line to say.
+4. Include a fallback slide to skip.
+5. Include the demo contingency.
+6. Include the most likely question and answer.
+7. Memorize opening and closing verbatim.
+8. Bold transition sentences.
+@@@ END

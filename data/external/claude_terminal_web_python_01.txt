@@ -1,0 +1,589 @@
+@@@ USER
+How do I find the 10 biggest files in a folder on Windows using PowerShell?
+@@@ ASSISTANT
+Get every file recursively, sort by size, and keep the first ten. Converting bytes to megabytes makes the result readable.
+
+```powershell
+Get-ChildItem -Path C:\Projects -Recurse -File -ErrorAction SilentlyContinue |
+    Sort-Object Length -Descending |
+    Select-Object -First 10 FullName, @{Name = 'SizeMB'; Expression = { [math]::Round($_.Length / 1MB, 1) }}
+```
+
+What each part does:
+- `-Recurse -File` walks all subfolders and returns files only, not folders.
+- `-ErrorAction SilentlyContinue` hides "access denied" errors for folders you cannot open.
+- `Sort-Object Length -Descending` puts the largest first.
+- The `@{Name=...; Expression=...}` part is a calculated column. `1MB` is a built-in PowerShell constant (1048576).
+
+To see the total size of a folder instead:
+
+```powershell
+$bytes = (Get-ChildItem -Path C:\Projects -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+"{0:N2} GB" -f ($bytes / 1GB)
+```
+@@@ END
+
+@@@ USER
+My dev server says port 3000 is already in use. How do I find and kill what is using it on Windows?
+@@@ ASSISTANT
+First find which process owns the port, then stop that process.
+
+In PowerShell:
+
+```powershell
+Get-NetTCPConnection -LocalPort 3000 -State Listen |
+    Select-Object LocalAddress, LocalPort, OwningProcess
+
+# See the program name for that process id (use the number printed above)
+Get-Process -Id 12345
+
+# Stop it
+Stop-Process -Id 12345 -Force
+```
+
+One-line version that finds and stops it in a single step:
+
+```powershell
+Get-NetTCPConnection -LocalPort 3000 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+```
+
+In the old Command Prompt:
+
+```cmd
+netstat -ano | findstr :3000
+taskkill /PID 12345 /F
+```
+
+Notes:
+- Replace `12345` with the real process id from the output.
+- Check the program name with `Get-Process` before killing it. It may be your own earlier dev server, or it could be something you want to keep.
+- If nothing shows up, the port may be used by a different program on another interface, or the process needs an administrator terminal to be visible.
+@@@ END
+
+@@@ USER
+I committed to the wrong branch / made a bad commit in git. How do I undo it without losing my work?
+@@@ ASSISTANT
+Pick the command based on what you want to keep. Run `git log --oneline -5` first so you can see what you are undoing.
+
+```bash
+# Undo the last commit, keep all changes staged (best for "wrong message" or "forgot a file")
+git reset --soft HEAD~1
+
+# Undo the last commit, keep the changes but unstaged
+git reset HEAD~1
+
+# Undo the last commit AND throw the changes away (cannot be undone easily)
+git reset --hard HEAD~1
+
+# Undo a commit that is already pushed: make a new commit that reverses it
+git revert abc1234
+```
+
+Move a commit to the right branch:
+
+```bash
+git switch correct-branch
+git cherry-pick abc1234        # copy the commit here
+git switch wrong-branch
+git reset --hard HEAD~1        # remove it from the wrong branch
+```
+
+Safety nets:
+- `git reflog` lists where HEAD has been, so even after `reset --hard` you can recover with `git reset --hard HEAD@{1}`.
+- Never use `reset` on commits others have already pulled. Use `git revert`, which adds history instead of rewriting it.
+- To save unfinished work without committing, use `git stash` and bring it back later with `git stash pop`.
+@@@ END
+
+@@@ USER
+How do I search for a word inside all the files of a project from the terminal?
+@@@ ASSISTANT
+Use `Select-String` in PowerShell, or `grep` in a Linux/macOS/Git Bash terminal. If you have ripgrep (`rg`), it is the fastest.
+
+PowerShell:
+
+```powershell
+Get-ChildItem -Path .\src -Recurse -Filter *.rs |
+    Select-String -Pattern "TODO" |
+    Select-Object Path, LineNumber, Line
+```
+
+Git Bash / Linux / macOS:
+
+```bash
+grep -rn "TODO" --include="*.rs" src
+```
+
+ripgrep (works the same everywhere):
+
+```bash
+rg "TODO" -g "*.rs"
+rg -i "fixme" src            # case-insensitive
+rg -l "unwrap()" src         # only list file names
+```
+
+Useful options:
+- `-n` shows line numbers; `-i` ignores case; `-l` lists only matching files.
+- In `grep`, `-r` means search folders recursively and `--include` limits which file types.
+- Use `-F` (grep or rg) when the text has special characters like `(` or `.` and you want it matched literally.
+@@@ END
+
+@@@ USER
+How can I rename many files at once in PowerShell, for example IMG_0001.jpg to holiday_001.jpg?
+@@@ ASSISTANT
+Loop over the files and call `Rename-Item`. Add `-WhatIf` first, which only prints what would happen, so you can check before anything changes.
+
+```powershell
+$i = 1
+Get-ChildItem -Filter "IMG_*.jpg" | Sort-Object Name | ForEach-Object {
+    $newName = "holiday_{0:D3}.jpg" -f $i
+    Rename-Item -LiteralPath $_.FullName -NewName $newName -WhatIf
+    $i++
+}
+```
+
+When the preview looks right, delete `-WhatIf` and run it again.
+
+Other common renames:
+
+```powershell
+# Replace spaces with underscores in every .txt file name
+Get-ChildItem -Filter *.txt | Rename-Item -NewName { $_.Name -replace ' ', '_' }
+
+# Change an extension from .jpeg to .jpg
+Get-ChildItem -Filter *.jpeg | Rename-Item -NewName { [System.IO.Path]::ChangeExtension($_.Name, '.jpg') }
+```
+
+Notes:
+- `{0:D3}` pads the number to 3 digits (001, 002, ...), which keeps the files sorted correctly.
+- `-LiteralPath` avoids problems with square brackets in file names.
+- Sorting first makes the numbering follow the original order.
+@@@ END
+
+@@@ USER
+How do I check my NVIDIA GPU memory and whether PyTorch can see it, from the terminal?
+@@@ ASSISTANT
+Use `nvidia-smi` for the GPU itself, and a one-line Python command for PyTorch.
+
+```powershell
+# Overview: driver, GPU name, memory used/total, running processes
+nvidia-smi
+
+# Only the numbers you care about, refreshed every 2 seconds (Ctrl+C to stop)
+nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv -l 2
+
+# Does PyTorch see CUDA?
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+
+# How much memory PyTorch has reserved right now
+python -c "import torch; print(torch.cuda.memory_reserved() / 1e9, 'GB reserved')"
+```
+
+If `is_available()` prints `False`:
+- You may have the CPU-only build of PyTorch. Check with `python -c "import torch; print(torch.version.cuda)"`; `None` means CPU-only, so reinstall PyTorch using the CUDA command from pytorch.org.
+- Update the NVIDIA driver; `nvidia-smi` must work first.
+
+Also useful for training on a small laptop:
+
+```powershell
+# Free RAM and free disk space
+Get-CimInstance Win32_OperatingSystem | Select-Object @{n='FreeRAM_GB'; e={[math]::Round($_.FreePhysicalMemory / 1MB, 1)}}
+Get-PSDrive C | Select-Object @{n='FreeGB'; e={[math]::Round($_.Free / 1GB, 1)}}
+```
+@@@ END
+
+@@@ USER
+Write a safe bash script that prints the line count of every .txt file in a folder given as an argument.
+@@@ ASSISTANT
+Start with `set -euo pipefail` so the script stops on errors, quote every variable, and give the folder a default.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+dir="${1:-.}"
+
+if [ ! -d "$dir" ]; then
+    echo "error: '$dir' is not a folder" >&2
+    exit 1
+fi
+
+found=0
+for f in "$dir"/*.txt; do
+    [ -e "$f" ] || continue          # no .txt files: the glob stays literal, so skip it
+    lines=$(wc -l < "$f")
+    echo "$lines lines  $f"
+    found=$((found + 1))
+done
+
+echo "checked $found file(s)"
+```
+
+Run it with: `bash count.sh ./notes`
+
+Why each safety step matters:
+- `set -e` exits on the first failing command; `-u` treats an unset variable as an error; `pipefail` makes a pipeline fail if any part fails.
+- `"$f"` in quotes keeps file names with spaces working.
+- `${1:-.}` means "first argument, or the current folder if none was given".
+- Error messages go to stderr (`>&2`) and the script exits with a non-zero code, so other scripts can detect the failure.
+@@@ END
+
+@@@ USER
+How do I add a folder to PATH permanently in Windows PowerShell?
+@@@ ASSISTANT
+Changing `$env:Path` only affects the current window. To make it permanent, write it to the User environment variables.
+
+```powershell
+# Temporary: only this terminal session
+$env:Path += ";C:\Tools\bin"
+
+# Permanent for your user account
+$old = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($old -notlike "*C:\Tools\bin*") {
+    [Environment]::SetEnvironmentVariable("Path", "$old;C:\Tools\bin", "User")
+}
+```
+
+After running it, close the terminal and open a new one. Existing windows keep the old value.
+
+Check that it worked:
+
+```powershell
+$env:Path -split ';' | Select-String "Tools"
+Get-Command mytool
+```
+
+Notes:
+- The `-notlike` check stops the same folder from being added again every time you run the script.
+- Avoid `setx PATH "%PATH%;..."`: it can cut the value at 1024 characters and merges the system and user paths into one.
+- Use the "Machine" scope instead of "User" to change it for all users; that needs an administrator terminal.
+@@@ END
+
+@@@ USER
+Make a responsive card grid in plain HTML and CSS: 3 columns on desktop, 2 on tablet, 1 on phone, no JavaScript.
+@@@ ASSISTANT
+Use CSS Grid with `auto-fit` and `minmax`. The browser decides how many columns fit, so you do not even need breakpoints.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Card grid</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: system-ui, sans-serif;
+      background: #f4f5f7;
+      color: #1d2330;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    }
+    .card h2 { margin: 0 0 8px; font-size: 1.1rem; }
+    .card p { margin: 0; line-height: 1.5; color: #4a5468; }
+  </style>
+</head>
+<body>
+  <main class="grid">
+    <article class="card"><h2>Fast</h2><p>Loads quickly on slow connections.</p></article>
+    <article class="card"><h2>Simple</h2><p>No frameworks and no build step.</p></article>
+    <article class="card"><h2>Flexible</h2><p>Resizes itself to any screen width.</p></article>
+    <article class="card"><h2>Accessible</h2><p>Uses real headings and landmarks.</p></article>
+    <article class="card"><h2>Light</h2><p>About thirty lines of CSS.</p></article>
+    <article class="card"><h2>Readable</h2><p>Comfortable spacing and contrast.</p></article>
+  </main>
+</body>
+</html>
+```
+
+How the layout adapts:
+- `minmax(260px, 1fr)` means each column is at least 260px wide and shares the leftover space equally.
+- `auto-fit` adds as many columns as fit: about 3 on a 1000px container, 2 on a tablet, 1 on a phone.
+- The `viewport` meta tag is required, otherwise phones pretend to be a wide desktop screen and shrink everything.
+- To force exactly 3/2/1 columns instead, use `repeat(3, 1fr)` and add `@media (max-width: 900px)` (2 columns) and `@media (max-width: 600px)` (1 column).
+@@@ END
+
+@@@ USER
+Show me how to fetch JSON from an API in JavaScript with a loading state and proper error handling.
+@@@ ASSISTANT
+Use `async/await` with `try/catch/finally`. Note that `fetch` does not throw on HTTP errors like 404 or 500, so check `response.ok` yourself.
+
+```js
+async function loadUsers(url, listEl, statusEl) {
+  statusEl.textContent = "Loading...";
+  listEl.innerHTML = "";
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Server answered ${response.status} ${response.statusText}`);
+    }
+    const users = await response.json();
+    if (users.length === 0) {
+      statusEl.textContent = "No users found.";
+      return;
+    }
+    for (const user of users) {
+      const li = document.createElement("li");
+      li.textContent = `${user.name} (${user.email})`; // textContent is safe from HTML injection
+      listEl.appendChild(li);
+    }
+    statusEl.textContent = `Loaded ${users.length} users.`;
+  } catch (error) {
+    statusEl.textContent = `Could not load users: ${error.message}`;
+  } finally {
+    // runs on success AND failure: good place to re-enable a button
+    document.querySelector("#reload").disabled = false;
+  }
+}
+
+document.querySelector("#reload").addEventListener("click", (event) => {
+  event.target.disabled = true;
+  loadUsers(
+    "https://jsonplaceholder.typicode.com/users",
+    document.querySelector("#users"),
+    document.querySelector("#status")
+  );
+});
+```
+
+Matching HTML:
+
+```html
+<button id="reload">Load users</button>
+<p id="status"></p>
+<ul id="users"></ul>
+```
+
+Key points:
+- Without the `response.ok` check, a 404 page would be parsed as JSON and fail later with a confusing message.
+- A network failure (offline, DNS) makes `fetch` itself throw, and the same `catch` handles it.
+- Use `textContent`, not `innerHTML`, for data that comes from a server, to avoid cross-site scripting (XSS).
+@@@ END
+
+@@@ USER
+How do I make a search box that waits until I stop typing before it calls the API (debounce)?
+@@@ ASSISTANT
+A debounce function delays your function until a quiet period has passed. Every new keystroke cancels the previous timer.
+
+```js
+function debounce(fn, delay = 300) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
+
+let latestRequest = 0;
+
+async function search(query) {
+  const results = document.querySelector("#results");
+  if (query.trim() === "") {
+    results.textContent = "";
+    return;
+  }
+  const id = ++latestRequest;
+  const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+  const data = await response.json();
+  if (id !== latestRequest) return; // a newer search started; ignore this old answer
+  results.textContent = data.map((item) => item.title).join(", ");
+}
+
+document.querySelector("#box").addEventListener(
+  "input",
+  debounce((event) => search(event.target.value), 300)
+);
+```
+
+Why it is built this way:
+- Typing "hello" quickly makes 5 input events but only 1 request, sent 300 ms after the last key.
+- `encodeURIComponent` makes the text safe inside a URL (spaces, `&`, `#`).
+- The `latestRequest` counter handles a different problem: a slow earlier request finishing after a newer one and overwriting the newer results.
+- 250-400 ms is a comfortable delay; shorter feels jumpy, longer feels slow.
+@@@ END
+
+@@@ USER
+Why does this JavaScript print 3, 3, 3 instead of 0, 1, 2?
+
+```js
+for (var i = 0; i < 3; i++) {
+  setTimeout(function () {
+    console.log(i);
+  }, 100);
+}
+```
+@@@ ASSISTANT
+**Cause:** `var` has function scope, so the whole loop shares one `i`. The three timers run after the loop has finished, when `i` is already 3, so each one prints 3.
+
+**Fix:** use `let`. A `let` variable in a `for` loop header gets a fresh copy for each iteration, so every callback remembers its own value.
+
+```js
+for (let i = 0; i < 3; i++) {
+  setTimeout(function () {
+    console.log(i);
+  }, 100);
+}
+// prints 0, 1, 2
+```
+
+Changes made:
+- `var i` became `let i`. Nothing else needed to change.
+
+If you are stuck with old code that must keep `var`, pass the value in through a function so each call gets its own copy:
+
+```js
+for (var i = 0; i < 3; i++) {
+  (function (n) {
+    setTimeout(function () {
+      console.log(n);
+    }, 100);
+  })(i);
+}
+```
+
+Rule of thumb: use `const` by default, `let` when the value changes, and avoid `var` in new code.
+@@@ END
+
+@@@ USER
+fruits = ['apple', 'banana', 'cherry']
+tropical = ['mango', 'pineapple', 'papaya']
+tropical.fruits(join)
+
+Help me with this error.
+@@@ ASSISTANT
+There are two mistakes in the last line.
+
+1. `tropical.fruits(...)` means "call a method named `fruits` on the list `tropical`". Lists have no such method, so Python raises an `AttributeError`.
+2. `join` is not defined anywhere, so Python would next raise a `NameError`.
+
+It looks like you want to combine the two lists. Here are the correct ways:
+
+```python
+fruits = ['apple', 'banana', 'cherry']
+tropical = ['mango', 'pineapple', 'papaya']
+
+# 1. Make a new combined list (the originals stay unchanged)
+all_fruits = fruits + tropical
+print(all_fruits)  # ['apple', 'banana', 'cherry', 'mango', 'pineapple', 'papaya']
+
+# 2. Add the items of one list into the other (changes `fruits`)
+fruits.extend(tropical)
+print(fruits)
+```
+
+If you meant to join them into one piece of text, `join` is a string method, and the string goes first:
+
+```python
+tropical = ['mango', 'pineapple', 'papaya']
+print(", ".join(tropical))  # mango, pineapple, papaya
+```
+
+Changes made:
+- Removed `tropical.fruits(join)`.
+- Used `+` or `.extend()` to combine lists, or `", ".join(list)` to turn a list of strings into one string.
+
+Remember: `object.method(arguments)`. The thing after the dot must be a real method of that object.
+@@@ END
+
+@@@ USER
+i = 1
+while i =< 6;
+i=i+1
+
+What is wrong with this code?
+@@@ ASSISTANT
+Three things:
+
+1. **`=<` is not an operator.** "Less than or equal" is written `<=`.
+2. **A `while` line ends with a colon `:`, not a semicolon.**
+3. **The body must be indented.** Python uses indentation to know which lines belong to the loop.
+
+Corrected code (it also prints each value, so you can see it work):
+
+```python
+i = 1
+while i <= 6:
+    print(i)
+    i = i + 1
+```
+
+Output:
+
+```
+1
+2
+3
+4
+5
+6
+```
+
+Changes made:
+- `=<` became `<=`.
+- `;` became `:`.
+- `i = i + 1` is now indented by 4 spaces so it is inside the loop. Added `print(i)` to show progress.
+
+`i = i + 1` can be shortened to `i += 1`. Without that line the loop never ends, because `i` would stay 1 and `i <= 6` would always be true.
+@@@ END
+
+@@@ USER
+Write a Python program that reads a CSV of sales (category, amount) and prints the total and average per category, sorted by total.
+@@@ ASSISTANT
+Use the `csv` module to read rows and a dictionary to collect the amounts for each category. The example reads from a string so you can run it as is; replace it with `open("sales.csv", newline="")` for a real file.
+
+```python
+import csv
+import io
+from collections import defaultdict
+
+data = """category,amount
+books,12.50
+games,40
+books,7.25
+food,15.10
+games,19.99
+food,4.90
+"""
+
+amounts = defaultdict(list)
+reader = csv.DictReader(io.StringIO(data))
+for row in reader:
+    amounts[row["category"]].append(float(row["amount"]))
+
+rows = [(name, sum(values), sum(values) / len(values)) for name, values in amounts.items()]
+rows.sort(key=lambda r: r[1], reverse=True)
+
+print(f"{'category':<10}{'total':>10}{'average':>10}")
+for name, total, average in rows:
+    print(f"{name:<10}{total:>10.2f}{average:>10.2f}")
+```
+
+Output:
+
+```
+category       total   average
+games          59.99     29.99
+food           20.00     10.00
+books          19.75      9.88
+```
+
+How it works:
+- `DictReader` uses the first line as column names, so you can write `row["amount"]` instead of counting columns.
+- `defaultdict(list)` creates an empty list the first time a category appears, so there is no "key missing" check.
+- Values from a CSV are text; `float(...)` converts them before doing math.
+- `sort(key=..., reverse=True)` sorts by the total, largest first.
+- With a real file, open it with `newline=""` so the csv module handles line endings correctly.
+@@@ END

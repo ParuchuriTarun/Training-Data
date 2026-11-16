@@ -1,0 +1,723 @@
+@@@ USER
+Build a simple to-do list in plain HTML and JavaScript that remembers the tasks after a page reload. Add, toggle done and delete.
+@@@ ASSISTANT
+Keep the tasks in an array, save it to `localStorage` as JSON after every change, and redraw the list from the array. One click listener on the `<ul>` handles every button (event delegation), so new items need no extra listeners.
+
+`index.html`:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>To-do list</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 420px; margin: 40px auto; padding: 0 16px; }
+    li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid #ddd; cursor: pointer; }
+    li.done span { text-decoration: line-through; color: #888; }
+  </style>
+</head>
+<body>
+  <h1>To-do</h1>
+  <form id="form">
+    <input id="text" placeholder="New task" required>
+    <button>Add</button>
+  </form>
+  <ul id="list"></ul>
+  <script src="app.js"></script>
+</body>
+</html>
+```
+
+`app.js`:
+
+```js
+const form = document.querySelector("#form");
+const input = document.querySelector("#text");
+const list = document.querySelector("#list");
+const KEY = "todos";
+
+function load() {
+  try {
+    return JSON.parse(localStorage.getItem(KEY)) || [];
+  } catch {
+    return []; // corrupted or blocked storage: start empty instead of crashing
+  }
+}
+
+let todos = load();
+
+function save() {
+  localStorage.setItem(KEY, JSON.stringify(todos));
+}
+
+function render() {
+  list.innerHTML = "";
+  for (const todo of todos) {
+    const li = document.createElement("li");
+    li.dataset.id = todo.id;
+    li.className = todo.done ? "done" : "";
+
+    const label = document.createElement("span");
+    label.textContent = todo.text; // textContent, never innerHTML, for user text
+
+    const del = document.createElement("button");
+    del.textContent = "Delete";
+    del.dataset.action = "delete";
+
+    li.append(label, del);
+    list.appendChild(li);
+  }
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault(); // stop the page from reloading
+  const text = input.value.trim();
+  if (!text) return;
+  todos.push({ id: Date.now(), text, done: false });
+  save();
+  render();
+  form.reset();
+  input.focus();
+});
+
+list.addEventListener("click", (event) => {
+  const li = event.target.closest("li");
+  if (!li) return;
+  const id = Number(li.dataset.id);
+  if (event.target.dataset.action === "delete") {
+    todos = todos.filter((t) => t.id !== id);
+  } else {
+    const todo = todos.find((t) => t.id === id);
+    todo.done = !todo.done;
+  }
+  save();
+  render();
+});
+
+render();
+```
+
+Why it is built this way:
+- The array is the single source of truth. The page is always redrawn from it, so the screen and the saved data cannot disagree.
+- `closest("li")` finds the list item even if the click landed on the text inside it.
+- `localStorage` stores only strings, so use `JSON.stringify` to save and `JSON.parse` to load, and wrap loading in `try/catch`.
+- `localStorage` belongs to one browser on one device. For data shared across devices you need a server.
+@@@ END
+
+@@@ USER
+How do I add a dark mode toggle that follows the system setting and remembers my choice?
+@@@ ASSISTANT
+Define colors as CSS variables, override them for dark, and flip a `data-theme` attribute on `<html>`. Use the system preference as the default and `localStorage` for the user's choice.
+
+CSS:
+
+```css
+:root {
+  --bg: #ffffff;
+  --text: #1d2330;
+  --card: #f3f4f7;
+}
+
+/* Follow the system when the user has not chosen */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151c;
+    --text: #e8eaf0;
+    --card: #1d222d;
+  }
+}
+
+/* Explicit choice wins over the system setting */
+:root[data-theme="dark"] {
+  --bg: #12151c;
+  --text: #e8eaf0;
+  --card: #1d222d;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  transition: background 0.2s, color 0.2s;
+}
+
+.card {
+  background: var(--card);
+  padding: 16px;
+  border-radius: 12px;
+}
+```
+
+JavaScript:
+
+```js
+const root = document.documentElement;
+const button = document.querySelector("#theme-toggle");
+
+function systemTheme() {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function currentTheme() {
+  return root.dataset.theme || systemTheme();
+}
+
+function applyTheme(theme) {
+  root.dataset.theme = theme;
+  button.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+  button.setAttribute("aria-pressed", String(theme === "dark"));
+}
+
+try {
+  const saved = localStorage.getItem("theme");
+  if (saved === "dark" || saved === "light") root.dataset.theme = saved;
+} catch {}
+
+applyTheme(currentTheme());
+
+button.addEventListener("click", () => {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  applyTheme(next);
+  try {
+    localStorage.setItem("theme", next);
+  } catch {}
+});
+```
+
+Tips:
+- To avoid a white flash on load, put the small "read saved theme and set `data-theme`" part in an inline `<script>` in the `<head>`, before the page is drawn.
+- Add `<meta name="color-scheme" content="light dark">` so form controls and scrollbars match the theme.
+- Check contrast in both themes; light gray text on a dark background is a common accessibility mistake.
+@@@ END
+
+@@@ USER
+Give me the Flexbox patterns I will use most: center something, a navbar with the logo on the left and links on the right, and a footer that stays at the bottom.
+@@@ ASSISTANT
+Flexbox lays out items along one direction (the main axis). `justify-content` aligns along that axis, `align-items` across it.
+
+**1. Center anything, both ways:**
+
+```css
+.center {
+  display: flex;
+  justify-content: center; /* horizontal */
+  align-items: center;     /* vertical */
+  min-height: 100vh;
+}
+```
+
+**2. Navbar: logo on the left, links on the right:**
+
+```css
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+}
+.navbar ul {
+  display: flex;
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+```
+
+```html
+<nav class="navbar">
+  <a href="/" class="logo">MyApp</a>
+  <ul>
+    <li><a href="/docs">Docs</a></li>
+    <li><a href="/pricing">Pricing</a></li>
+    <li><a href="/login">Log in</a></li>
+  </ul>
+</nav>
+```
+
+**3. Sticky footer (footer at the bottom even on short pages):**
+
+```css
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+main {
+  flex: 1; /* takes all the leftover height, pushing the footer down */
+}
+```
+
+**4. Cards that wrap onto new lines:**
+
+```css
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.row > .card {
+  flex: 1 1 240px; /* grow, shrink, start at 240px */
+}
+```
+
+Quick guide:
+- `gap` spaces items without margin hacks.
+- `flex: 1` means "share the free space equally".
+- Use Flexbox for one row or column of items, and CSS Grid when you need rows and columns together.
+@@@ END
+
+@@@ USER
+How do I validate a signup form in JavaScript and send it to a server as JSON?
+@@@ ASSISTANT
+Let the browser do basic checks with HTML attributes (`required`, `type="email"`, `minlength`), then add your own rules in JavaScript, and send the data with `fetch` only when everything is valid.
+
+```html
+<form id="signup" novalidate>
+  <label>Email <input name="email" type="email" required></label>
+  <p class="error" data-for="email"></p>
+
+  <label>Password <input name="password" type="password" minlength="8" required></label>
+  <p class="error" data-for="password"></p>
+
+  <button type="submit">Create account</button>
+  <p id="result" role="status"></p>
+</form>
+```
+
+```js
+const form = document.querySelector("#signup");
+const result = document.querySelector("#result");
+
+function showError(name, message) {
+  document.querySelector(`.error[data-for="${name}"]`).textContent = message;
+}
+
+function validate(data) {
+  const errors = {};
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+    errors.email = "Enter a valid email address.";
+  }
+  if (data.password.length < 8) {
+    errors.password = "Use at least 8 characters.";
+  } else if (!/\d/.test(data.password)) {
+    errors.password = "Include at least one number.";
+  }
+  return errors;
+}
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(form));
+
+  showError("email", "");
+  showError("password", "");
+  const errors = validate(data);
+  if (Object.keys(errors).length > 0) {
+    for (const [name, message] of Object.entries(errors)) showError(name, message);
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error(`Server error ${response.status}`);
+    result.textContent = "Account created!";
+    form.reset();
+  } catch (error) {
+    result.textContent = `Could not sign up: ${error.message}`;
+  }
+});
+```
+
+Important points:
+- `novalidate` turns off the browser's own pop-ups so your messages are used; remove it if you prefer the built-in ones.
+- `new FormData(form)` reads every named field; `Object.fromEntries` turns it into a plain object.
+- **Client-side validation is for convenience only.** Anyone can skip it, so the server must validate again.
+- Never log or display passwords, and send them only over HTTPS.
+@@@ END
+
+@@@ USER
+What is the difference between Promise.all, allSettled, race and any in JavaScript? Show a timeout helper too.
+@@@ ASSISTANT
+- `Promise.all`: waits for all; if any one fails, the whole thing fails right away.
+- `Promise.allSettled`: waits for all and reports each result, whether it succeeded or failed; it never rejects.
+- `Promise.race`: finishes with whichever promise settles first (success or failure).
+- `Promise.any`: finishes with the first one that succeeds; fails only if all fail.
+
+```js
+const wait = (ms, value, fail = false) =>
+  new Promise((resolve, reject) =>
+    setTimeout(() => (fail ? reject(new Error(value)) : resolve(value)), ms)
+  );
+
+function withTimeout(promise, ms) {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
+async function main() {
+  console.log(await Promise.all([wait(30, "a"), wait(10, "b"), wait(20, "c")]));
+
+  try {
+    await Promise.all([wait(10, "ok"), wait(20, "boom", true)]);
+  } catch (error) {
+    console.log("all failed:", error.message);
+  }
+
+  const settled = await Promise.allSettled([wait(10, "ok"), wait(20, "boom", true)]);
+  console.log(settled.map((r) => r.status));
+
+  console.log(await Promise.race([wait(50, "slow"), wait(10, "fast")]));
+  console.log(await Promise.any([wait(10, "bad", true), wait(30, "good")]));
+
+  try {
+    await withTimeout(wait(200, "too late"), 50);
+  } catch (error) {
+    console.log(error.message);
+  }
+}
+
+main();
+```
+
+Output:
+
+```
+[ 'a', 'b', 'c' ]
+all failed: boom
+[ 'fulfilled', 'rejected' ]
+fast
+good
+timed out after 50 ms
+```
+
+When to use which:
+- Loading several independent pieces for one screen where all are required: `all`.
+- A dashboard where one broken widget must not break the others: `allSettled`.
+- A timeout, or "use the fastest server": `race`.
+- Results come in the same order as the input, not the order they finish.
+- Run independent requests together (`await Promise.all([...])`) instead of one after another with separate `await` lines; it can be several times faster.
+@@@ END
+
+@@@ USER
+Show the JavaScript array methods I need every day (map, filter, find, reduce, sort, some, every, includes) with a list of objects.
+@@@ ASSISTANT
+These methods return new values and do not change the original array (except `sort`, which sorts in place).
+
+```js
+const products = [
+  { name: "Keyboard", price: 45, category: "tech", stock: 12 },
+  { name: "Mouse", price: 20, category: "tech", stock: 0 },
+  { name: "Notebook", price: 5, category: "office", stock: 100 },
+  { name: "Monitor", price: 180, category: "tech", stock: 4 },
+  { name: "Pen", price: 2, category: "office", stock: 250 },
+];
+
+// map: one output per item
+console.log(products.map((p) => p.name));
+
+// filter: keep the items that pass the test
+const available = products.filter((p) => p.stock > 0);
+console.log(available.length);
+
+// find: the first match (or undefined)
+console.log(products.find((p) => p.price > 100)?.name);
+
+// reduce: combine into one value
+const inventoryValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
+console.log(inventoryValue);
+
+// sort: copy first so the original order is kept
+const cheapestFirst = [...products].sort((a, b) => a.price - b.price);
+console.log(cheapestFirst.map((p) => p.name));
+
+// some / every / includes
+console.log(products.some((p) => p.stock === 0));
+console.log(products.every((p) => p.price > 1));
+console.log(["tech", "office"].includes(products[0].category));
+
+// group by category with reduce
+const byCategory = products.reduce((groups, p) => {
+  (groups[p.category] ||= []).push(p.name);
+  return groups;
+}, {});
+console.log(byCategory);
+
+// chain them
+const report = products
+  .filter((p) => p.category === "tech" && p.stock > 0)
+  .map((p) => `${p.name}: $${p.price}`)
+  .join(", ");
+console.log(report);
+```
+
+Output:
+
+```
+[ 'Keyboard', 'Mouse', 'Notebook', 'Monitor', 'Pen' ]
+4
+Monitor
+2260
+[ 'Pen', 'Notebook', 'Mouse', 'Keyboard', 'Monitor' ]
+true
+true
+true
+{
+  tech: [ 'Keyboard', 'Mouse', 'Monitor' ],
+  office: [ 'Notebook', 'Pen' ]
+}
+Keyboard: $45, Monitor: $180
+```
+
+Mistakes to avoid:
+- `a.sort()` without a compare function sorts numbers as text (`[10, 9, 1].sort()` gives `[1, 10, 9]`). Always pass `(a, b) => a - b`.
+- Forgetting the initial value in `reduce` (`0` or `{}`) breaks on empty arrays.
+- `forEach` cannot be stopped with `break`; use a `for...of` loop or `some`/`find` when you need to stop early.
+@@@ END
+
+@@@ USER
+My JavaScript throws "Uncaught TypeError: Cannot read properties of null (reading 'addEventListener')". Why?
+
+```html
+<head>
+  <script src="app.js"></script>
+</head>
+<body>
+  <button id="save">Save</button>
+</body>
+```
+
+```js
+document.querySelector("#save").addEventListener("click", () => {
+  console.log("saved");
+});
+```
+@@@ ASSISTANT
+**Cause:** the script is in `<head>`, so it runs before the browser has created the button. `document.querySelector("#save")` finds nothing and returns `null`, and `null` has no `addEventListener`.
+
+**Fix 1 (best): add `defer`.** The script is downloaded early but runs only after the whole HTML has been parsed.
+
+```html
+<head>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <button id="save">Save</button>
+</body>
+```
+
+**Fix 2:** move the `<script>` tag to the end of `<body>`, just before `</body>`.
+
+**Fix 3:** wait for the page inside the JavaScript:
+
+```js
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelector("#save").addEventListener("click", () => {
+    console.log("saved");
+  });
+});
+```
+
+Changes made:
+- Fix 1 only adds the word `defer` to the script tag; `app.js` stays the same.
+
+If the error remains after that, check for a spelling difference: `id="save"` in the HTML must match `#save` in the JavaScript exactly, including capital letters. Also make sure the element is not created later by other code.
+@@@ END
+
+@@@ USER
+Why is `this` undefined inside my method when I pass it as a callback in JavaScript? How do I fix it?
+@@@ ASSISTANT
+In JavaScript, `this` depends on how a function is *called*, not where it is written. `obj.method()` sets `this` to `obj`. But when you hand the method over as a bare function (`setTimeout(obj.method)`, an event handler), it is called with no object, so `this` is lost.
+
+```js
+class Counter {
+  constructor() {
+    this.count = 0;
+  }
+
+  incrementBroken() {
+    this.count += 1;
+  }
+
+  // Fix 1: an arrow function property keeps `this` from where it was created
+  incrementArrow = () => {
+    this.count += 1;
+  };
+}
+
+const c = new Counter();
+
+const lost = c.incrementBroken;
+try {
+  lost();
+} catch (error) {
+  console.log("broken:", error.message);
+}
+
+// Fix 2: bind
+const bound = c.incrementBroken.bind(c);
+bound();
+console.log("bound:", c.count);
+
+// Fix 1 in use
+const arrow = c.incrementArrow;
+arrow();
+arrow();
+console.log("arrow:", c.count);
+
+// Fix 3: wrap it in an arrow function at the call site
+const wrapped = () => c.incrementBroken();
+wrapped();
+console.log("wrapped:", c.count);
+```
+
+Output:
+
+```
+broken: Cannot read properties of undefined (reading 'count')
+bound: 1
+arrow: 3
+wrapped: 4
+```
+
+Which fix to use:
+- Class methods used as event handlers (`button.addEventListener("click", this.handleClick)`): define them as arrow-function properties, or bind them once in the constructor.
+- A one-off callback: wrap it, `() => obj.method()`.
+- Arrow functions do not have their own `this`; they use the surrounding one. That is why they work here, and why you should not use them as object methods that need `this` to be the object.
+@@@ END
+
+@@@ USER
+I get a CORS error in the browser console: "blocked by CORS policy: No 'Access-Control-Allow-Origin' header". What is it and how do I fix it?
+@@@ ASSISTANT
+**What it is:** browsers only let a web page read a response from another origin (different domain, port or protocol) if that server says it is allowed. Your page on `http://localhost:5173` calling an API on `http://localhost:3000` is a different origin. The request may reach the server, but the browser hides the response from your JavaScript because the server did not send an `Access-Control-Allow-Origin` header.
+
+**The fix is on the server**, not in your front-end code. A minimal Node server using only the built-in `http` module:
+
+```js
+const http = require("http");
+
+const ALLOWED_ORIGIN = "http://localhost:5173";
+
+const server = http.createServer((req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  // Preflight: the browser asks permission first for POST with JSON, custom headers, etc.
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/hello") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "hello" }));
+    return;
+  }
+
+  res.writeHead(404, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "not found" }));
+});
+
+server.listen(3000, () => console.log("API on http://localhost:3000"));
+```
+
+With Express, the `cors` package does the same: `app.use(cors({ origin: "http://localhost:5173" }))`.
+
+Things to know:
+- Allow your real front-end origin, not `*`, if requests carry cookies or login tokens. `*` is fine only for public data.
+- If the preflight (`OPTIONS`) request fails, you will see the same error even though the real request would work. Check the Network tab for it.
+- During development, a proxy avoids CORS completely: Vite's `server.proxy` forwards `/api` to the backend, so the browser only talks to one origin.
+- CORS does not protect your server. It only controls what browsers let pages read. Authentication must still be checked on the server.
+@@@ END
+
+@@@ USER
+Give me a good mobile-first CSS starting point: fluid text sizes, comfortable line length, and a layout that changes at a tablet breakpoint.
+@@@ ASSISTANT
+Write the phone layout first (single column, no media queries), then use `min-width` media queries to add features on bigger screens. Use `clamp()` so text scales smoothly between a minimum and maximum.
+
+```css
+:root {
+  --space: 16px;
+  --radius: 12px;
+  --max-width: 1100px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  font-size: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+  line-height: 1.6;
+}
+
+h1 {
+  font-size: clamp(1.75rem, 1.2rem + 2.5vw, 3rem);
+  line-height: 1.15;
+}
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+.container {
+  width: min(100% - 2 * var(--space), var(--max-width));
+  margin-inline: auto;
+}
+
+/* Comfortable reading width: about 60-75 characters */
+.prose {
+  max-width: 65ch;
+}
+
+/* Phone: one column */
+.layout {
+  display: grid;
+  gap: var(--space);
+}
+
+/* Tablet and up: sidebar + content */
+@media (min-width: 768px) {
+  .layout {
+    grid-template-columns: 240px 1fr;
+  }
+}
+
+/* Large screens: more breathing room */
+@media (min-width: 1200px) {
+  .layout {
+    gap: calc(var(--space) * 2);
+  }
+}
+
+/* Respect users who ask for less motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+```
+
+Why these choices:
+- `clamp(min, preferred, max)` keeps text readable on a small phone and not oversized on a big monitor, with no breakpoints.
+- `max-width: 100%` on images stops them overflowing the screen, and `height: auto` keeps their proportions.
+- `65ch` is about 65 characters wide, the range where long text is easiest to read.
+- Test with the browser's device toolbar (F12, then the phone icon) and also by dragging the window narrow; the layout should never scroll sideways.
+@@@ END

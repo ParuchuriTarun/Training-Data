@@ -1,0 +1,532 @@
+@@@ USER
+Explain Python decorators and context managers with simple examples I can run.
+@@@ ASSISTANT
+A **decorator** is a function that wraps another function to add behavior (logging, retrying, timing) without changing the function's code. A **context manager** (`with ...`) makes sure setup and cleanup both happen, even if an error occurs in between.
+
+```python
+from contextlib import contextmanager
+from functools import wraps
+
+
+def logged(func):
+    @wraps(func)  # keeps the original name and docstring
+    def wrapper(*args, **kwargs):
+        print(f"calling {func.__name__}{args}")
+        result = func(*args, **kwargs)
+        print(f"{func.__name__} returned {result}")
+        return result
+    return wrapper
+
+
+def retry(times):
+    """A decorator with an argument: one more layer of functions."""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(1, times + 1):
+                try:
+                    return func(*args, **kwargs)
+                except ValueError as error:
+                    print(f"attempt {attempt} failed: {error}")
+            raise RuntimeError(f"{func.__name__} failed after {times} attempts")
+        return wrapper
+    return decorator
+
+
+@logged
+def add(a, b):
+    return a + b
+
+
+calls = {"n": 0}
+
+
+@retry(3)
+def flaky():
+    calls["n"] += 1
+    if calls["n"] < 3:
+        raise ValueError("not yet")
+    return "ok"
+
+
+@contextmanager
+def section(name):
+    print(f"start {name}")
+    try:
+        yield
+    finally:
+        print(f"end {name}")  # runs even when the body raises an error
+
+
+add(2, 3)
+print(flaky())
+
+try:
+    with section("demo"):
+        print("working")
+        raise KeyError("oops")
+except KeyError:
+    print("error was passed through")
+```
+
+Output:
+
+```
+calling add(2, 3)
+add returned 5
+attempt 1 failed: not yet
+attempt 2 failed: not yet
+ok
+start demo
+working
+end demo
+error was passed through
+```
+
+How to read it:
+- `@logged` above `def add` is the same as writing `add = logged(add)` after the function.
+- `*args, **kwargs` lets the wrapper accept whatever the original function accepts.
+- Always use `@wraps(func)`, otherwise every decorated function appears under the name `wrapper` in error messages.
+- The most common real use of `with` is files: `with open("a.txt") as f:` closes the file even if reading fails.
+@@@ END
+
+@@@ USER
+When should I use a dataclass in Python? Show me one with defaults, sorting and a method.
+@@@ ASSISTANT
+Use a `@dataclass` for classes that mostly just hold data. Python writes `__init__`, `__repr__` and `__eq__` for you from the field list.
+
+```python
+from dataclasses import dataclass, field, replace
+
+
+@dataclass(order=True)
+class Task:
+    priority: int
+    title: str = field(compare=False)
+    done: bool = field(default=False, compare=False)
+    tags: list[str] = field(default_factory=list, compare=False)
+
+    def label(self):
+        mark = "x" if self.done else " "
+        return f"[{mark}] {self.title} (p{self.priority})"
+
+
+tasks = [
+    Task(2, "Write report"),
+    Task(1, "Fix bug", tags=["urgent"]),
+    Task(3, "Lunch", done=True),
+]
+
+for task in sorted(tasks):  # order=True sorts by the fields that take part in comparison
+    print(task.label())
+
+print(tasks[1])
+print(Task(1, "a") == Task(1, "b"))  # only `priority` is compared
+
+finished = replace(tasks[0], done=True)  # a changed copy; the original stays the same
+print(tasks[0].done, finished.done)
+```
+
+Output:
+
+```
+[ ] Fix bug (p1)
+[ ] Write report (p2)
+[x] Lunch (p3)
+Task(priority=1, title='Fix bug', done=False, tags=['urgent'])
+True
+False True
+```
+
+Important details:
+- A list or dict default must use `field(default_factory=list)`. Writing `tags: list = []` is an error, because all objects would share the same list.
+- `compare=False` leaves a field out of `==` and sorting.
+- `@dataclass(frozen=True)` makes objects read-only and hashable, so they can be used as dictionary keys or put in sets.
+- Use a normal class when the object has a lot of behavior or needs complicated setup; use a dataclass for records.
+@@@ END
+
+@@@ USER
+Show me proper exception handling in Python with a custom exception, try/except/else/finally, and when each part runs.
+@@@ ASSISTANT
+- `try`: the code that might fail.
+- `except`: runs only if that kind of error happened.
+- `else`: runs only if there was **no** error.
+- `finally`: always runs, for cleanup.
+
+```python
+class InsufficientFunds(Exception):
+    def __init__(self, balance, needed):
+        super().__init__(f"balance {balance} is less than {needed}")
+        self.balance = balance
+        self.needed = needed
+
+
+def withdraw(balance, amount):
+    if amount <= 0:
+        raise ValueError("amount must be positive")
+    if amount > balance:
+        raise InsufficientFunds(balance, amount)
+    return balance - amount
+
+
+for amount in [30, 500, -5, "10"]:
+    try:
+        new_balance = withdraw(100, amount)
+    except InsufficientFunds as error:
+        print("refused:", error, "- short by", error.needed - error.balance)
+    except (ValueError, TypeError) as error:
+        print("bad input:", error)
+    else:
+        print("ok, new balance", new_balance)
+    finally:
+        print("done with", amount)
+```
+
+Output:
+
+```
+ok, new balance 70
+done with 30
+refused: balance 100 is less than 500 - short by 400
+done with 500
+bad input: amount must be positive
+done with -5
+bad input: '<=' not supported between instances of 'str' and 'int'
+done with 10
+```
+
+Good practice:
+- Catch specific exceptions. A bare `except:` or `except Exception:` hides real bugs (typos, wrong types) and makes them look like normal failures.
+- Put only the risky line in `try`, and the follow-up work in `else`. That way an error in the follow-up is not accidentally caught.
+- A custom exception class lets callers handle exactly your error and read useful attributes (`error.needed`).
+- To pass the error up after logging it, use a bare `raise` inside the `except` block. To add context, use `raise NewError("message") from error`.
+@@@ END
+
+@@@ USER
+How do I save and load settings as JSON in Python safely, with defaults and without corrupting the file if the program crashes while saving?
+@@@ ASSISTANT
+Use `pathlib` for paths and `json` for the data. Merge the loaded values over a copy of the defaults, and write to a temporary file first, then replace the real file in one step. A crash while writing then leaves the old file intact.
+
+```python
+import copy
+import json
+import tempfile
+from pathlib import Path
+
+DEFAULTS = {"theme": "dark", "font_size": 14, "recent": []}
+
+
+def load_settings(path):
+    if not path.exists():
+        return copy.deepcopy(DEFAULTS)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return copy.deepcopy(DEFAULTS)  # damaged file: fall back to defaults
+    return {**copy.deepcopy(DEFAULTS), **data}  # saved values win over defaults
+
+
+def save_settings(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    tmp.replace(path)  # atomic replace
+
+
+folder = Path(tempfile.mkdtemp())
+settings_file = folder / "settings.json"
+
+settings = load_settings(settings_file)
+print(settings)
+
+settings["font_size"] = 16
+settings["recent"].append("notes.txt")
+save_settings(settings_file, settings)
+print(settings_file.read_text(encoding="utf-8"))
+print(load_settings(settings_file)["font_size"])
+
+settings_file.write_text("{broken", encoding="utf-8")
+print(load_settings(settings_file)["theme"])
+print(sorted(p.name for p in folder.iterdir()))
+```
+
+Output:
+
+```
+{'theme': 'dark', 'font_size': 14, 'recent': []}
+{
+  "theme": "dark",
+  "font_size": 16,
+  "recent": [
+    "notes.txt"
+  ]
+}
+16
+dark
+['settings.json']
+```
+
+Why these details matter:
+- `copy.deepcopy` stops the nested list in `DEFAULTS` from being shared and changed by accident; a plain `dict(DEFAULTS)` copies only the top level.
+- Always pass `encoding="utf-8"`. On Windows the default encoding may be different and break non-English text.
+- `Path` objects work on every operating system: `folder / "file.json"` uses the correct slash.
+- Real programs keep user settings in a per-user folder (for example `%APPDATA%` on Windows), not next to the program.
+@@@ END
+
+@@@ USER
+Show me list comprehensions, dict comprehensions, zip, enumerate and sorted with a key in Python.
+@@@ ASSISTANT
+```python
+names = ["asha", "ravi", "meena", "kiran"]
+scores = [82, 91, 67, 74]
+
+print([n.title() for n in names])                        # list comprehension: transform
+print({n: s for n, s in zip(names, scores)})             # dict comprehension from two lists
+print([n for n, s in zip(names, scores) if s >= 75])     # comprehension with a filter
+
+for i, (n, s) in enumerate(zip(names, scores), start=1):  # counter + pairs
+    print(i, n, s)
+
+ranking = sorted(zip(names, scores), key=lambda pair: pair[1], reverse=True)
+print(ranking)
+
+print(sum(scores) / len(scores))      # average
+print(max(zip(scores, names)))        # the best score and who got it
+print({len(n) for n in names})        # set comprehension: unique name lengths
+```
+
+Output:
+
+```
+['Asha', 'Ravi', 'Meena', 'Kiran']
+{'asha': 82, 'ravi': 91, 'meena': 67, 'kiran': 74}
+['asha', 'ravi']
+1 asha 82
+2 ravi 91
+3 meena 67
+4 kiran 74
+[('ravi', 91), ('asha', 82), ('kiran', 74), ('meena', 67)]
+78.5
+(91, 'ravi')
+{4, 5}
+```
+
+Quick guide:
+- `[expression for item in items if condition]` replaces a loop that builds a list.
+- `zip(a, b)` pairs items up and stops at the shorter list.
+- `enumerate(items, start=1)` gives a counter without `i += 1`.
+- `sorted(items, key=...)` returns a new list; `key` is a function that picks what to sort by. `list.sort()` sorts in place and returns `None`, a common cause of the bug `x = x.sort()`.
+- If a comprehension gets longer than one line or needs nested conditions, write a normal loop; readability matters more.
+@@@ END
+
+@@@ USER
+Can you explain these common Python error messages: KeyError, IndexError, TypeError, NameError, ValueError, AttributeError, ZeroDivisionError?
+@@@ ASSISTANT
+This program triggers each one on purpose and prints the real message, so you can recognize them:
+
+```python
+def show(label, func):
+    try:
+        func()
+    except Exception as error:
+        print(f"{label}: {type(error).__name__}: {error}")
+
+
+data = {"a": 1}
+items = [1, 2, 3]
+
+show("missing key", lambda: data["b"])
+show("bad index", lambda: items[5])
+show("wrong type", lambda: "age: " + 30)
+show("undefined name", lambda: undefined_variable)
+show("not a number", lambda: int("12abc"))
+show("no attribute", lambda: items.push(4))
+show("divide", lambda: 1 / 0)
+show("None", lambda: None.upper())
+```
+
+Output:
+
+```
+missing key: KeyError: 'b'
+bad index: IndexError: list index out of range
+wrong type: TypeError: can only concatenate str (not "int") to str
+undefined name: NameError: name 'undefined_variable' is not defined
+not a number: ValueError: invalid literal for int() with base 10: '12abc'
+no attribute: AttributeError: 'list' object has no attribute 'push'
+divide: ZeroDivisionError: division by zero
+None: AttributeError: 'NoneType' object has no attribute 'upper'
+```
+
+What each means and the usual fix:
+- **KeyError**: the dictionary has no such key. Use `data.get("b", default)` or check `"b" in data`.
+- **IndexError**: the position does not exist. Valid positions are `0` to `len(items) - 1`.
+- **TypeError**: the wrong kind of value for an operation. Convert it: `"age: " + str(30)`.
+- **NameError**: the name was never defined: a typo, or used before it was assigned.
+- **ValueError**: the right type but an unusable value, such as `int("12abc")`. Validate the text first or catch the error.
+- **AttributeError**: the object has no such method. Check the spelling and the type: lists use `append`, not `push`. `'NoneType'` means a variable is `None`, usually because a function returned nothing.
+- **ZeroDivisionError**: check the divisor before dividing.
+
+When you see a traceback, read it from the bottom: the last line names the error, and the line above shows where it happened.
+@@@ END
+
+@@@ USER
+Teach me the SQL basics: create a table, insert rows, and use WHERE, ORDER BY, LIMIT, COUNT/AVG, UPDATE and LIKE. Use a products table.
+@@@ ASSISTANT
+These statements work in SQLite, PostgreSQL and MySQL (small details like `AUTOINCREMENT` differ).
+
+```sql
+CREATE TABLE products (
+    id       INTEGER PRIMARY KEY,
+    name     TEXT    NOT NULL,
+    category TEXT    NOT NULL,
+    price    REAL    NOT NULL CHECK (price >= 0),
+    stock    INTEGER NOT NULL DEFAULT 0
+);
+
+INSERT INTO products (name, category, price, stock) VALUES
+    ('Keyboard', 'tech',   45,  12),
+    ('Mouse',    'tech',   20,   0),
+    ('Notebook', 'office',  5, 100),
+    ('Monitor',  'tech',  180,   4),
+    ('Pen',      'office',  2, 250);
+
+-- Which tech items are in stock, most expensive first?
+SELECT name, price FROM products
+WHERE category = 'tech' AND stock > 0
+ORDER BY price DESC;
+-- Monitor | 180.0
+-- Keyboard | 45.0
+
+-- The 3 cheapest products
+SELECT name FROM products ORDER BY price LIMIT 3;
+-- Pen, Notebook, Mouse
+
+-- Summary numbers
+SELECT COUNT(*), AVG(price), MAX(price) FROM products;
+-- 5 | 50.4 | 180.0
+
+-- Names that start with M
+SELECT name FROM products WHERE name LIKE 'M%';
+-- Mouse, Monitor
+
+-- Restock the mouse
+UPDATE products SET stock = stock + 50 WHERE name = 'Mouse';
+SELECT name, stock FROM products WHERE name = 'Mouse';
+-- Mouse | 50
+```
+
+Key ideas:
+- `PRIMARY KEY` identifies each row; `NOT NULL`, `DEFAULT` and `CHECK` make the database refuse bad data, which is safer than checking only in your app.
+- `WHERE` filters rows; `ORDER BY` sorts (`DESC` = largest first); `LIMIT` keeps the first N.
+- `LIKE 'M%'` means "starts with M"; `%` matches any number of characters and `_` exactly one.
+- **Always write a `WHERE` on `UPDATE` and `DELETE`.** Without it, every row changes. Run it as a `SELECT` first to see which rows it will touch.
+@@@ END
+
+@@@ USER
+Explain SQL JOIN and GROUP BY with an example: customers and their orders, including customers who never ordered.
+@@@ ASSISTANT
+A `JOIN` combines rows from two tables where a column matches. `INNER JOIN` keeps only matches; `LEFT JOIN` keeps every row from the left table and fills the missing right side with `NULL`. `GROUP BY` collapses rows into one row per group so you can use `COUNT`, `SUM` and `AVG`.
+
+```sql
+CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE orders (
+    id          INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id),
+    total       REAL    NOT NULL
+);
+
+INSERT INTO customers (name) VALUES ('Asha'), ('Ravi'), ('Meena');
+INSERT INTO orders (customer_id, total) VALUES
+    (1, 120), (1, 80), (2, 45.5), (1, 30), (2, 200);
+
+-- INNER JOIN: each order with the customer's name
+SELECT c.name, o.total
+FROM customers AS c
+JOIN orders AS o ON o.customer_id = c.id
+ORDER BY o.id;
+-- Asha 120.0 | Asha 80.0 | Ravi 45.5 | Asha 30.0 | Ravi 200.0
+
+-- LEFT JOIN + GROUP BY: orders and money spent per customer, including zero
+SELECT c.name, COUNT(o.id) AS order_count, COALESCE(SUM(o.total), 0) AS spent
+FROM customers AS c
+LEFT JOIN orders AS o ON o.customer_id = c.id
+GROUP BY c.id
+ORDER BY spent DESC;
+-- Ravi 2 245.5 | Asha 3 230.0 | Meena 0 0
+
+-- HAVING filters groups (WHERE filters rows before grouping)
+SELECT c.name, SUM(o.total) AS spent
+FROM customers AS c
+JOIN orders AS o ON o.customer_id = c.id
+GROUP BY c.id
+HAVING SUM(o.total) > 240;
+-- Ravi 245.5
+
+-- Customers with no orders at all
+SELECT c.name
+FROM customers AS c
+LEFT JOIN orders AS o ON o.customer_id = c.id
+WHERE o.id IS NULL;
+-- Meena
+```
+
+Notes:
+- `COUNT(o.id)` counts only non-NULL values, so Meena gets 0. `COUNT(*)` would wrongly give her 1.
+- `COALESCE(x, 0)` replaces `NULL` with 0, because `SUM` of no rows is `NULL`.
+- `WHERE ... IS NULL` after a `LEFT JOIN` is the standard way to find "rows with no match".
+- Every selected column that is not inside `COUNT`/`SUM`/`AVG` must be in `GROUP BY` (SQLite is lenient about it, PostgreSQL is not).
+- Add an index on the join column (`CREATE INDEX idx_orders_customer ON orders(customer_id);`) when the tables get large.
+@@@ END
+
+@@@ USER
+How do I use SQLite from Python safely? I build queries with f-strings right now.
+@@@ ASSISTANT
+Stop building SQL with f-strings or `+`. Text that comes from a user can change the meaning of the query (SQL injection). Use `?` placeholders and pass the values separately; the database treats them as data only.
+
+```python
+import sqlite3
+
+con = sqlite3.connect(":memory:")  # use a file name like "app.db" for a real database
+con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, role TEXT)")
+con.executemany(
+    "INSERT INTO users (name, role) VALUES (?, ?)",
+    [("asha", "admin"), ("ravi", "user")],
+)
+
+name = "x' OR '1'='1"  # what an attacker might type
+
+# DANGEROUS: the input becomes part of the SQL
+unsafe = f"SELECT name FROM users WHERE name = '{name}'"
+print(unsafe)
+print(con.execute(unsafe).fetchall())
+
+# SAFE: the value is passed separately
+safe = con.execute("SELECT name FROM users WHERE name = ?", (name,)).fetchall()
+print(safe)
+
+# A transaction: all changes succeed together, or none are kept
+with con:
+    con.execute("UPDATE users SET role = ? WHERE name = ?", ("admin", "ravi"))
+
+print(con.execute("SELECT name, role FROM users ORDER BY id").fetchall())
+con.close()
+```
+
+Output:
+
+```
+SELECT name FROM users WHERE name = 'x' OR '1'='1'
+[('asha',), ('ravi',)]
+[]
+[('asha', 'admin'), ('ravi', 'admin')]
+```
+
+The unsafe query returned every user because the quote in the input ended the string and `OR '1'='1'` is always true. With the placeholder, the whole text is searched for as a name, and nothing matches.
+
+Rules:
+- Values go in placeholders (`?`). Table and column names cannot be placeholders; if they come from outside, check them against a fixed allowed list.
+- `with con:` commits when the block finishes normally and rolls back if an exception is raised.
+- Use `executemany` to insert many rows quickly.
+- Set `con.row_factory = sqlite3.Row` to read columns by name (`row["name"]`).
+@@@ END

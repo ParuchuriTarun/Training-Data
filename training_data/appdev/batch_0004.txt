@@ -1,0 +1,601 @@
+@@@ USER
+How do I implement idempotency keys for a payment endpoint?
+@@@ ASSISTANT
+Accept an `Idempotency-Key` header, store key + response per user, and replay the stored response on repeats.
+
+```ts
+app.post("/payments", requireAuth, async (req, res) => {
+  const key = req.headers["idempotency-key"];
+  if (!key) return res.status(400).json({ error: { code: "idempotency_key_required" } });
+
+  const existing = await db.query(
+    `SELECT response, status_code FROM idempotency_keys WHERE key = $1 AND user_id = $2`,
+    [key, req.user.id]
+  );
+  if (existing.rows.length) {
+    return res.status(existing.rows[0].status_code).json(existing.rows[0].response);
+  }
+
+  const charge = await processPayment(req.body);
+  const payload = { id: charge.id, status: charge.status };
+
+  await db.query(
+    `INSERT INTO idempotency_keys (key, user_id, response, status_code) VALUES ($1, $2, $3, 201)`,
+    [key, req.user.id, JSON.stringify(payload)]
+  );
+  res.status(201).json(payload);
+});
+```
+
+Rules:
+- Scope the key per user; the same key from another user is a different operation.
+- Also compare the request body hash: same key + different body = `409 conflict`.
+- Keep keys 24 hours. Process the payment exactly once; a retry returns the stored result, never a second charge.
+- Test: send the same POST twice with one key; assert one charge and identical 201 responses.
+@@@ END
+
+@@@ USER
+How do I add pagination that stays correct when rows are inserted?
+@@@ ASSISTANT
+Keyset pagination on `(created_at, id)`.
+
+```sql
+CREATE INDEX orders_created_id_idx ON orders (created_at DESC, id DESC);
+
+SELECT * FROM orders
+WHERE (created_at, id) < ($1, $2)
+ORDER BY created_at DESC, id DESC
+LIMIT 51;
+```
+
+```ts
+async function listOrders(cursor?: { createdAt: string; id: string }, limit = 50) {
+  const rows = cursor
+    ? await db.query(`SELECT * FROM orders WHERE (created_at, id) < ($1, $2) ORDER BY created_at DESC, id DESC LIMIT $3`, [cursor.createdAt, cursor.id, limit + 1]).then(r => r.rows)
+    : await db.query(`SELECT * FROM orders ORDER BY created_at DESC, id DESC LIMIT $1`, [limit + 1]).then(r => r.rows);
+  const hasMore = rows.length > limit;
+  const data = rows.slice(0, limit);
+  const last = data[data.length - 1];
+  return { data, pageInfo: { hasMore, nextCursor: hasMore ? Buffer.from(JSON.stringify({ createdAt: last.created_at, id: last.id })).toString("base64url") : null } };
+}
+```
+
+- Order by a unique pair; `created_at` alone has ties.
+- Fetch `limit + 1` to detect `hasMore` without a count.
+- Keep the cursor opaque and validated server-side.
+- Test: insert a row between page 1 and page 2; expect no duplicates or gaps.
+@@@ END
+
+@@@ USER
+How do I implement soft delete without leaking deleted rows?
+@@@ ASSISTANT
+`deleted_at` + partial unique index + filtered queries.
+
+```sql
+ALTER TABLE users ADD COLUMN deleted_at timestamptz;
+CREATE UNIQUE INDEX users_email_active_key ON users (email) WHERE deleted_at IS NULL;
+```
+
+```ts
+async function getUser(id: string) {
+  return db.query(`SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL`, [id]).then(r => r.rows[0] ?? null);
+}
+async function deleteUser(id: string) {
+  return db.query(`UPDATE users SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
+}
+```
+
+- Every read must filter `deleted_at IS NULL`. Missing one leaks deleted users into exports and emails.
+- Partial unique index lets an email be reused after deletion while blocking duplicates among active accounts.
+- Purge job after 30 days for privacy (hard-delete rows + files).
+- Test: create, delete, recreate the same email, attempt restore — expect a conflict.
+@@@ END
+
+@@@ USER
+How do I implement rate limiting with Redis that is atomic?
+@@@ ASSISTANT
+Fixed-window counter with `INCR` + `EXPIRE`, or a Lua sliding window. Return standard headers.
+
+```ts
+import { createClient } from "redis";
+const redis = createClient({ url: process.env.REDIS_URL });
+await redis.connect();
+
+export async function rateLimit(req: any, res: any, next: any) {
+  const key = `rl:${req.user?.id ?? req.ip}:${req.baseUrl}`;
+  const limit = 100, windowSec = 60;
+  const count = await redis.incr(key);
+  if (count === 1) await redis.expire(key, windowSec);
+  const ttl = await redis.ttl(key);
+  res.setHeader("X-RateLimit-Limit", String(limit));
+  res.setHeader("X-RateLimit-Remaining", String(Math.max(0, limit - count)));
+  res.setHeader("X-RateLimit-Reset", String(Math.floor(Date.now() / 1000) + ttl));
+  if (count > limit) {
+    res.status(429).setHeader("Retry-After", String(ttl)).json({ error: { code: "rate_limited", message: "Too many requests." } });
+    return;
+  }
+  next();
+}
+```
+
+- Keys scoped by user, then IP. Different limits per route (auth 10/min, reads 1000/min).
+- Fail open for reads, fail closed for auth and payments.
+- Test with 150 requests: expect 100 × 200 then 50 × 429 with headers.
+@@@ END
+
+@@@ USER
+How do I prevent N+1 queries when using an ORM?
+@@@ ASSISTANT
+Eager-load with `include`/`select`; assert query count in tests.
+
+```ts
+// Before: N queries for items.
+const orders = await prisma.order.findMany({ where: { userId } });
+for (const o of orders) {
+  o.items = await prisma.orderItem.findMany({ where: { orderId: o.id } });
+}
+
+// After: one joined query.
+const orders = await prisma.order.findMany({
+  where: { userId },
+  include: { items: { include: { product: true } } },
+  orderBy: { createdAt: "desc" },
+  take: 50,
+});
+```
+
+- Log SQL in dev; assert no repeated `WHERE id IN` patterns.
+- Integration test: seed 50 orders, assert query count constant as seed doubles.
+- For GraphQL, use DataLoader to batch per request.
+- Every filter column and foreign key needs an index.
+@@@ END
+
+@@@ USER
+How do I implement audit logging without slowing the hot path?
+@@@ ASSISTANT
+Append-only table, async writes, centralized helper.
+
+```sql
+CREATE TABLE audit_log (
+  id bigserial PRIMARY KEY,
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  actor_id uuid,
+  tenant_id uuid,
+  action text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id text NOT NULL,
+  before jsonb,
+  after jsonb,
+  request_id text
+);
+CREATE INDEX audit_log_entity_idx ON audit_log (entity_type, entity_id, occurred_at DESC);
+```
+
+```ts
+async function auditedUpdate(actorId: string, entity: string, id: string, run: () => Promise<unknown>, requestId: string) {
+  const before = await db.query(`SELECT * FROM ${entity} WHERE id = $1`, [id]).then(r => r.rows[0]);
+  const after = await run();
+  db.query(`INSERT INTO audit_log (actor_id, action, entity_type, entity_id, before, after, request_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [actorId, `${entity}.updated`, entity, id, JSON.stringify(before), JSON.stringify(after), requestId
+  ]).catch((err) => logError("audit_write_failed", err));
+  return after;
+}
+```
+
+- Log who/what/when/before/after on every mutation via one helper.
+- Revoke UPDATE/DELETE grants from the app role on `audit_log`.
+- Alert on insert failure; audit loss is a compliance incident.
+- Partition by month, archive to object storage after a year.
+@@@ END
+
+@@@ USER
+How do I design error responses and request IDs for debugging?
+@@@ ASSISTANT
+One error shape; request id created at the edge and propagated everywhere.
+
+```ts
+function requestIdMiddleware(req: any, res: any, next: any) {
+  req.requestId = req.headers["x-request-id"] ?? crypto.randomUUID();
+  res.setHeader("X-Request-Id", req.requestId);
+  next();
+}
+
+class HttpError extends Error {
+  constructor(public status: number, public code: string, message: string, public details?: unknown) { super(message); }
+}
+
+function errorHandler(err: any, req: any, res: any, _next: any) {
+  if (err instanceof HttpError) {
+    return res.status(err.status).json({ error: { code: err.code, message: err.message, details: err.details, requestId: req.requestId } });
+  }
+  if (err instanceof z.ZodError) {
+    return res.status(400).json({ error: { code: "validation_error", message: "Invalid request body.", details: err.issues.map((i: any) => ({ path: i.path, message: i.message })), requestId: req.requestId } });
+  }
+  console.error(`[${req.requestId}]`, err);
+  res.status(500).json({ error: { code: "internal_error", message: "Something went wrong.", requestId: req.requestId } });
+}
+```
+
+- Every response carries `X-Request-Id`.
+- Stable `code` enum; message is human text, code is what clients branch on.
+- Never leak stack traces or SQL errors.
+- Persist the request id into async jobs for end-to-end tracing.
+@@@ END
+
+@@@ USER
+How do I handle file uploads to S3 safely with presigned URLs?
+@@@ ASSISTANT
+Presigned URL for upload, server-side verification on complete, separate download domain.
+
+```ts
+import { S3Client, PutObjectCommand, HeadObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+const s3 = new S3Client({ region: "us-east-1" });
+
+app.post("/uploads/presign", requireAuth, async (req, res) => {
+  const { filename, contentType, sizeBytes } = req.body;
+  if (sizeBytes > 25 * 1024 * 1024) return res.status(413).json({ error: { code: "too_large" } });
+  if (!["image/png", "image/jpeg", "application/pdf"].includes(contentType)) return res.status(400).json({ error: { code: "unsupported_type" } });
+  const key = `uploads/${req.user.id}/${crypto.randomUUID()}-${filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const url = await getSignedUrl(s3, new PutObjectCommand({ Bucket: process.env.BUCKET!, Key: key, ContentType: contentType }), { expiresIn: 600 });
+  res.json({ url, key });
+});
+
+app.post("/uploads/complete", requireAuth, async (req, res) => {
+  const { key } = req.body;
+  if (!key.startsWith(`uploads/${req.user.id}/`)) return res.status(403).json({ error: { code: "forbidden" } });
+  const head = await s3.send(new HeadObjectCommand({ Bucket: process.env.BUCKET!, Key: key }));
+  if (!["image/png", "image/jpeg", "application/pdf"].includes(head.ContentType ?? "")) {
+    await s3.send(new DeleteObjectCommand({ Bucket: process.env.BUCKET!, Key: key }));
+    return res.status(400).json({ error: { code: "unsupported_type" } });
+  }
+  await db.query(`INSERT INTO files (id, owner_id, bucket_key, mime, size) VALUES (gen_random_uuid(), $1, $2, $3, $4)`, [req.user.id, key, head.ContentType, head.ContentLength]);
+  res.json({ ok: true, key });
+});
+```
+
+- URL expiry ≤ 10 min; key includes user id; verify ownership on complete.
+- Sniff magic bytes; check size after upload; malware-scan before serving.
+- Serve from a separate domain with `Content-Disposition: attachment` and `CSP: default-src 'none'`.
+@@@ END
+
+@@@ USER
+How do I implement graceful shutdown for a Node.js API?
+@@@ ASSISTANT
+Handle `SIGTERM`, stop accepting, drain, close, exit.
+
+```ts
+let shuttingDown = false;
+let server: http.Server;
+
+process.on("SIGTERM", async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log("SIGTERM received, draining");
+  server.close(async () => {
+    await pool.end();
+    await redis.quit();
+    process.exit(0);
+  });
+  setTimeout(() => { console.error("shutdown timed out"); process.exit(1); }, 25_000).unref();
+});
+
+process.on("SIGINT", () => process.exit(130));
+process.on("unhandledRejection", (err) => { console.error("unhandledRejection", err); process.exit(1); });
+```
+
+- `preStop: sleep 5` so the load balancer removes the endpoint first.
+- Readiness 503 while draining.
+- `terminationGracePeriodSeconds` above worst-case request time.
+- Test with a rolling restart under load; 5xx must stay at zero.
+@@@ END
+
+@@@ USER
+How do I back up Postgres with point-in-time recovery?
+@@@ ASSISTANT
+Base backup + WAL archiving, tested restores, off-site encryption.
+
+```bash
+pg_basebackup -D /backups/base-2026-11-07 -Ft -z -P
+```
+
+```ini
+# postgresql.conf
+wal_level = replica
+archive_mode = on
+archive_command = 'wal-g wal-push %p'
+restore_command = 'wal-g wal-fetch %f %p'
+```
+
+```bash
+wal-g backup-fetch /var/lib/postgresql/data LATEST
+# set restore_point_in_time, start postgres, it replays WAL then promotes
+```
+
+- Encrypt and copy off-site; same-disk backup does not survive disk failure.
+- Retention: daily 14 days, monthly 1 year; WAL for the full window.
+- Monthly restore drill; time it; alert if RTO exceeds target.
+- Monitor last successful backup age and WAL archive lag.
+- Test dropping a table on the restore and confirming PITR brings it back.
+@@@ END
+
+@@@ USER
+How do I design a Redis cache without stampedes and stale data?
+@@@ ASSISTANT
+Cache-aside with TTLs, request coalescing, invalidation on writes.
+
+```ts
+import { createClient } from "redis";
+const redis = createClient({ url: process.env.REDIS_URL });
+await redis.connect();
+
+const inflight = new Map<string, Promise<unknown>>();
+
+export async function getProduct(id: string) {
+  const key = `product:${id}:v1`;
+  const cached = await redis.get(key);
+  if (cached) return JSON.parse(cached);
+  let flight = inflight.get(key);
+  if (!flight) {
+    flight = (async () => {
+      const row = await db.query("SELECT * FROM products WHERE id = $1", [id]).then(r => r.rows[0]);
+      if (!row) return null;
+      await redis.set(key, JSON.stringify(row), { EX: 60 + Math.floor(Math.random() * 20) });
+      return row;
+    })();
+    inflight.set(key, flight);
+    flight.finally(() => inflight.delete(key));
+  }
+  return flight;
+}
+
+export async function updateProduct(id: string, patch: Partial<Product>) {
+  const row = await db.transaction(async (tx) => {
+    return tx.query("UPDATE products SET ... WHERE id = $1 RETURNING *", [id]).then(r => r.rows[0]);
+  });
+  await redis.del(`product:${id}:v1`);
+  return row;
+}
+```
+
+- Every key has a finite TTL. Jitter TTLs by ±20%.
+- Coalescing ensures one DB fetch serves all concurrent misses.
+- Invalidate by deleting after the write commits; version keys (`:v1`).
+- Short Redis timeout + circuit breaker; fall back to DB if Redis is down.
+@@@ END
+
+@@@ USER
+How do I run background jobs with retries and a dead-letter queue?
+@@@ ASSISTANT
+Idempotent handlers, exponential backoff, DLQ after max attempts.
+
+```ts
+await queue.add("process-invoice", { invoiceId: 123 }, { attempts: 5, backoff: { type: "exponential", delay: 2000 } });
+
+queue.process("process-invoice", async (job) => {
+  const { invoiceId } = job.data;
+  const already = await db.query("SELECT id FROM processed_jobs WHERE job_id = $1", [job.id]);
+  if (already.rows.length) return { skipped: true };
+  await processInvoice(invoiceId);
+  await db.query("INSERT INTO processed_jobs (job_id, invoice_id) VALUES ($1, $2)", [job.id, invoiceId]);
+  return { ok: true };
+});
+```
+
+- Idempotency via `processed_jobs`.
+- Retry only transient errors (network, 5xx, timeout). Never retry validation errors.
+- DLQ after 5 attempts; alert when DLQ depth > 0. Replay is manual.
+- Separate lanes for interactive vs. batch; cap concurrency to downstream capacity.
+- Graceful shutdown: stop pulling, let in-flight finish, then exit.
+- Test: kill the worker mid-job; restart; assert the side effect happens once.
+@@@ END
+
+@@@ USER
+How do I implement an idempotent Stripe webhook handler?
+@@@ ASSISTANT
+Verify signature, record event id, process at most once.
+
+```ts
+import Stripe from "stripe";
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+
+app.post("/webhooks/stripe", async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  if (!sig) return res.status(400).send("no signature");
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
+  } catch { return res.status(400).send("invalid signature"); }
+
+  const claimed = await db.query(
+    `INSERT INTO stripe_events (event_id, type, received_at) VALUES ($1, $2, now()) ON CONFLICT (event_id) DO NOTHING RETURNING event_id`,
+    [event.id, event.type]
+  );
+  if (claimed.rows.length === 0) return res.status(200).json({ received: true, duplicate: true });
+
+  try {
+    await handleStripeEvent(event);
+    await db.query("UPDATE stripe_events SET processed_at = now() WHERE event_id = $1", [event.id]);
+  } catch { return res.status(500).json({ error: "processing failed" }); }
+  res.status(200).json({ received: true });
+});
+```
+
+- Verify the raw body; never a re-serialized object.
+- Event id insert is the lock.
+- Return 200 after verification; 500 only for retryable processing failures.
+- Stripe does not guarantee order; ignore updates older than the stored timestamp for the same object.
+- Test with the Stripe CLI: resend an event; assert no duplicate side effects.
+@@@ END
+
+@@@ USER
+How do I structure a monorepo with shared packages?
+@@@ ASSISTANT
+Leaf packages have no internal imports; feature apps depend on shared packages; nothing depends on apps.
+
+```
+packages/
+  config/   # tsconfig, eslint, tailwind presets
+  ui/       # presentational components, no data fetching
+  types/    # shared types and Zod schemas, zero runtime deps
+  lib/      # pure utilities, no framework imports
+  data/     # API clients and server-only helpers
+apps/
+  web/      # Next.js app
+  api/      # backend
+```
+
+- `apps/*` may import `packages/*`; never the reverse.
+- Among packages: `data` depends on `lib` and `types`; `ui` depends only on `types` and `lib`.
+- Types before code: shared Zod schemas in `packages/types` so frontend and backend validate identically.
+- `import/no-cycle` in CI. Cycles cause `undefined` at runtime.
+- Turborepo/Nx builds leaves first; cache per package by input hash.
+- Changesets for independent versioning.
+
+Test: add a temporary circular import; lint must fail. Then remove it.
+@@@ END
+
+@@@ USER
+How do I handle inventory overselling under concurrency?
+@@@ ASSISTANT
+Atomic conditional decrement.
+
+```sql
+UPDATE inventory SET stock = stock - 1 WHERE product_id = $1 AND stock >= 1 RETURNING stock;
+```
+
+```ts
+async function createOrder(productId: string, qty: number) {
+  return db.transaction(async (tx) => {
+    const updated = await tx.query(`UPDATE inventory SET stock = stock - $2 WHERE product_id = $1 AND stock >= $2 RETURNING stock`, [productId, qty]);
+    if (updated.rows.length === 0) throw new Error("insufficient_stock");
+    return tx.query(`INSERT INTO orders (product_id, quantity) VALUES ($1, $2) RETURNING *`, [productId, qty]).then(r => r.rows[0]);
+  });
+}
+```
+
+Plus a backstop: `CHECK (stock >= 0)`. Reproduce with 50 concurrent orders against stock=1; expect exactly 1 success. For multi-item orders, sort line items by `product_id` before locking to prevent deadlocks, and retry on `40P01`.
+@@@ END
+
+@@@ USER
+How do I design REST API evolution without breaking clients?
+@@@ ASSISTANT
+Additive-only changes, URL versioning for breaks, machine-readable deprecation headers.
+
+```http
+GET /v1/products?status=active&cursor=eyJpZCI6NDJ9&limit=50
+Authorization: Bearer <token>
+
+200 OK
+{ "data": [{ "id": "123", "name": "Widget", "priceCents": 1299 }], "page": { "nextCursor": "...", "hasMore": true } }
+```
+
+- Cursor pagination for feeds; never offset for live data.
+- `Idempotency-Key` on every mutating POST.
+- Error shape: `{ error: { code, message, requestId, details? } }` with a stable code enum.
+- 400 validation, 401 unauthenticated, 403 forbidden, 404 not found, 409 conflict, 429 rate limited.
+- `/v1` in the path; run both versions during transitions; 12-month sunset window.
+- Contract tests per version in CI.
+@@@ END
+
+@@@ USER
+How do I implement refresh-token rotation with reuse detection?
+@@@ ASSISTANT
+Family-based rotation with hash storage and full-family revocation on reuse.
+
+```sql
+CREATE TABLE refresh_tokens (
+  id uuid PRIMARY KEY,
+  user_id uuid NOT NULL,
+  family_id uuid NOT NULL,
+  token_hash text NOT NULL UNIQUE,
+  replaced_by uuid,
+  revoked_at timestamptz,
+  expires_at timestamptz NOT NULL
+);
+```
+
+On each refresh: look up by hash, reject if revoked, reject if `replaced_by` is set (reuse — revoke the whole family), otherwise insert a new token and mark the old one replaced.
+
+- Refresh token in httpOnly Secure cookie scoped to `Path=/auth/refresh`.
+- Access tokens in memory only, 5–15 min.
+- Hash tokens at rest; rotate on every use; revoke on logout or password change.
+- `SameSite=Strict` plus origin check for CSRF.
+@@@ END
+
+@@@ USER
+How do I index Postgres tables for common queries?
+@@@ ASSISTANT
+Index the columns the query filters and orders by, in use order. Measure with `EXPLAIN ANALYZE`.
+
+```sql
+CREATE TABLE orders (
+  id bigserial PRIMARY KEY,
+  user_id uuid NOT NULL,
+  status text NOT NULL,
+  total_cents integer NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX orders_user_status_created_idx ON orders (user_id, status, created_at DESC);
+CREATE INDEX orders_status_created_idx ON orders (status, created_at DESC);
+CREATE UNIQUE INDEX orders_number_key ON orders (order_number);
+```
+
+- Equality first, range/sort last.
+- Partial indexes for hot subsets: `WHERE status = 'pending'`.
+- Covering `INCLUDE` indexes avoid heap access.
+- Every foreign key needs an index or deletes scan the child and take locks.
+- An index with zero scans in `pg_stat_user_indexes` is dead weight on every write.
+@@@ END
+
+@@@ USER
+Why does a query stay idle in transaction and lock everything?
+@@@ ASSISTANT
+Long transactions hold row locks. Shorten them and never hold one across network calls.
+
+```ts
+// Bad: holds locks across an external call.
+const client = await pool.connect();
+try {
+  await client.query("BEGIN");
+  const user = (await client.query("SELECT * FROM users WHERE id = $1", [id])).rows[0];
+  await fetch(`https://api.example.com/notify/${user.id}`); // seconds, locks held
+  await client.query("UPDATE users SET last_seen = now() WHERE id = $1", [id]);
+  await client.query("COMMIT");
+} finally { client.release(); }
+
+// Good: two short transactions.
+await pool.query("UPDATE users SET last_seen = now() WHERE id = $1", [id]);
+await fetch(`https://api.example.com/notify/${id}`);
+```
+
+- `SET LOCAL statement_timeout` and `lock_timeout` to bound waits.
+- `SELECT ... FOR UPDATE SKIP LOCKED` for queue processing.
+- Alert on `idle in transaction` older than 30 s in `pg_stat_activity`.
+- Batch large updates with short transactions per batch.
+@@@ END
+
+@@@ USER
+How do I use transactions correctly for money movement?
+@@@ ASSISTANT
+`SELECT ... FOR UPDATE` in ascending id order, balance check inside the transaction, double-entry ledger.
+
+```sql
+BEGIN;
+SELECT balance_cents FROM accounts WHERE id = 1 FOR UPDATE;
+SELECT balance_cents FROM accounts WHERE id = 2 FOR UPDATE;
+UPDATE accounts SET balance_cents = balance_cents - 1000 WHERE id = 1;
+UPDATE accounts SET balance_cents = balance_cents + 1000 WHERE id = 2;
+INSERT INTO ledger_entries (account_id, amount_cents, transfer_id) VALUES (1, -1000, 'tr_123');
+INSERT INTO ledger_entries (account_id, amount_cents, transfer_id) VALUES (2, 1000, 'tr_123');
+COMMIT;
+```
+
+- Lock in ascending id order to prevent deadlocks.
+- Sum of all ledger entries must always be zero.
+- Idempotency key per transfer; retries must not double-charge.
+- No external calls inside the transaction; reconcile with webhooks after commit.
+- Retry deadlocks with backoff; never retry validation errors.
+- Test with 100 concurrent transfers both directions; total must be unchanged.
+@@@ END

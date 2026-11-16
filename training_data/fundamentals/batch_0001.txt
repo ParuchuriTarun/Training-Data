@@ -1,0 +1,934 @@
+@@@ USER
+Explain the main binary search variants: lower_bound, upper_bound, first and last occurrence, and searching a rotated sorted array. Give Python implementations, state the loop invariant, and discuss what changes when duplicates are present.
+@@@ ASSISTANT
+The cleanest invariant uses a half-open interval `[lo, hi)`. The answer always lies in that interval, and each iteration removes at least one element, so the loop terminates. `lower_bound(x)` returns the first index whose value is `>= x`; `upper_bound(x)` returns the first index whose value is `> x`. Every value at an index below `lower_bound` is `< x`, and every value at an index at or above `upper_bound` is `> x`. The difference `upper_bound - lower_bound` is the count of `x`.
+
+```python
+def lower_bound(a, x):
+    lo, hi = 0, len(a)          # answer in [lo, hi]
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if a[mid] < x:
+            lo = mid + 1        # mid cannot be the answer
+        else:
+            hi = mid            # mid may be the answer
+    return lo
+
+def upper_bound(a, x):
+    lo, hi = 0, len(a)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if a[mid] <= x:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+def first_last(a, x):
+    left = lower_bound(a, x)
+    right = upper_bound(a, x)
+    return (left, right - 1) if left < right else (-1, -1)
+```
+
+For a rotated sorted array such as `[4,5,6,7,0,1,2]`, at least one half of `[lo, hi]` is sorted. If the target lies inside the sorted half, search there; otherwise search the other half. Duplicates break the ability to decide which half is sorted when `a[lo] == a[mid] == a[hi]`, because all three comparisons are uninformative. In that case we must shrink both ends by one, which makes the worst case `O(n)` even though the typical case is `O(log n)`.
+
+```python
+def rotated_contains(a, target):
+    lo, hi = 0, len(a) - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if a[mid] == target:
+            return True
+        if a[lo] == a[mid] == a[hi]:
+            lo += 1
+            hi -= 1
+        elif a[lo] <= a[mid]:               # left half sorted
+            if a[lo] <= target < a[mid]:
+                hi = mid - 1
+            else:
+                lo = mid + 1
+        else:                                # right half sorted
+            if a[mid] < target <= a[hi]:
+                lo = mid + 1
+            else:
+                hi = mid - 1
+    return False
+```
+
+Worked example: `a = [1,2,2,2,4,5]`, `x = 2`. `lower_bound` returns 1 and `upper_bound` returns 4, so the occurrences are indices 1 through 3 and the count is 3. For the rotated array `[4,5,6,7,0,1,2]` with target 0: the first midpoint is 7, the left half `[4,7]` is sorted but does not contain 0, so we move to `[0,1,2]`; the next midpoint is 1, the right half is sorted, and we finally find 0 at index 4. Binary search is `O(log n)` time and `O(1)` space; the duplicate-rotation variant degrades to `O(n)` in the worst case.
+@@@ END
+
+@@@ USER
+Compare separate chaining and open addressing for hash map collision handling. Implement a resizable hash map with chaining, and explain clustering, tombstones, and load factor.
+@@@ ASSISTANT
+Chaining stores colliding entries in a list or tree attached to each bucket. It tolerates load factors above 1 and makes deletion trivial, but each entry needs a pointer and cache locality is poor. Open addressing stores all entries in the table itself and probes forward on collision. It has better locality, but performance collapses as the table fills, deletion requires tombstones, and clustering appears: linear probing creates runs of occupied slots that lengthen future probes.
+
+The load factor `alpha = size / capacity` controls the tradeoff. Chaining averages `Theta(1 + alpha)` comparisons; open addressing averages roughly `1/(1-alpha)` for successful linear-probe lookups when alpha is small, which is why implementations resize around 0.5 to 0.75. Linear probing has primary clustering, quadratic probing reduces it, and double hashing nearly eliminates it at the cost of more expensive hash computation. Tombstones (a deleted marker distinct from empty) preserve probe sequences, but too many tombstones slow lookups and require rehashing.
+
+```python
+class HashMap:
+    def __init__(self, capacity=8):
+        self.capacity = capacity
+        self.size = 0
+        self.buckets = [[] for _ in range(capacity)]
+
+    def _index(self, key):
+        return hash(key) & (self.capacity - 1)  # capacity is a power of two
+
+    def _resize(self):
+        old = self.buckets
+        self.capacity *= 2
+        self.buckets = [[] for _ in range(self.capacity)]
+        self.size = 0
+        for bucket in old:
+            for key, value in bucket:
+                self.put(key, value)
+
+    def put(self, key, value):
+        bucket = self.buckets[self._index(key)]
+        for i, (k, _) in enumerate(bucket):
+            if k == key:
+                bucket[i] = (key, value)
+                return
+        bucket.append((key, value))
+        self.size += 1
+        if self.size > 0.75 * self.capacity:
+            self._resize()
+
+    def get(self, key, default=None):
+        for k, value in self.buckets[self._index(key)]:
+            if k == key:
+                return value
+        return default
+
+    def delete(self, key):
+        bucket = self.buckets[self._index(key)]
+        for i, (k, _) in enumerate(bucket):
+            if k == key:
+                bucket.pop(i)
+                self.size -= 1
+                return True
+        return False
+```
+
+Worked example: insert keys 1, 9, and 17 into a table with capacity 8. All three satisfy `key & 7 == 1`, so they land in bucket 1 and form a chain of length 3. Looking up 17 compares 1, then 9, then 17: three comparisons. If the table grows to capacity 16, their indices become 1, 9, and 1, so 1 and 17 still collide, but 9 moves to bucket 9, shortening the chain. Average lookup is `O(1)` and the worst case is `O(n)` when every key collides; resizing costs `O(n)` but is amortized `O(1)` per insertion. With a balanced tree in each bucket, the worst case improves to `O(log n)`.
+@@@ END
+
+@@@ USER
+Design an LRU cache with O(1) get and put. Implement it in Python using a hash map and a doubly linked list, explain why both structures are needed, and trace an example.
+@@@ ASSISTANT
+The hash map gives `O(1)` access to a node by key. The doubly linked list maintains recency order: the node just after a sentinel head is the most recently used, and the node just before a sentinel tail is the least recently used. A singly linked list would not let us unlink an arbitrary node in `O(1)` because we would need its predecessor; a doubly linked list stores that pointer. Sentinels remove the special cases for an empty list and for inserting at the head.
+
+On `get`, if the key exists we unlink its node and move it to the front, then return the value. On `put`, an existing key is updated and moved to the front; a new key is inserted at the front, and if the cache is over capacity we remove `tail.prev`, delete its key from the map, and insert the new node. Every operation touches a constant number of pointers, so both are `O(1)` time and the cache uses `O(capacity)` space.
+
+```python
+class Node:
+    __slots__ = ("key", "value", "prev", "next")
+
+    def __init__(self, key=0, value=0):
+        self.key = key
+        self.value = value
+        self.prev = None
+        self.next = None
+
+
+class LRUCache:
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.nodes = {}
+        self.head = Node()
+        self.tail = Node()
+        self.head.next = self.tail
+        self.tail.prev = self.head
+
+    def _unlink(self, node):
+        node.prev.next = node.next
+        node.next.prev = node.prev
+
+    def _push_front(self, node):
+        node.prev = self.head
+        node.next = self.head.next
+        self.head.next.prev = node
+        self.head.next = node
+
+    def get(self, key):
+        node = self.nodes.get(key)
+        if node is None:
+            return -1
+        self._unlink(node)
+        self._push_front(node)
+        return node.value
+
+    def put(self, key, value):
+        if self.capacity == 0:
+            return
+        node = self.nodes.get(key)
+        if node is not None:
+            node.value = value
+            self._unlink(node)
+            self._push_front(node)
+            return
+        if len(self.nodes) == self.capacity:
+            lru = self.tail.prev
+            self._unlink(lru)
+            del self.nodes[lru.key]
+        node = Node(key, value)
+        self.nodes[key] = node
+        self._push_front(node)
+```
+
+Worked example with capacity 2: `put(1,1)` and `put(2,2)` leave the list as `2,1`. `get(1)` returns 1 and makes the order `1,2`. `put(3,3)` evicts key 2, leaving `3,1`. `get(2)` returns -1. `put(4,4)` evicts key 1, leaving `4,3`. `get(1)` returns -1, `get(3)` returns 3, and `get(4)` returns 4. If multiple threads share the cache, wrap each public operation in a lock, or use a concurrent structure; the pointer updates are not atomic as a group.
+@@@ END
+
+@@@ USER
+Explain topological sorting with both Kahn's algorithm and DFS. How do you detect a cycle, and how do you produce the lexicographically smallest ordering? Give code and a worked example.
+@@@ ASSISTANT
+A topological order lists every vertex before all vertices that depend on it. It exists exactly when the directed graph is acyclic. Kahn's algorithm repeatedly removes a vertex with indegree zero. If the output contains fewer than `V` vertices, some vertices never reached indegree zero, which proves a cycle. The DFS variant marks vertices white (unvisited), gray (on the current recursion stack), and black (finished). An edge to a gray vertex is a back edge and therefore a cycle; postorder reversed gives a valid topological order.
+
+For the lexicographically smallest order, Kahn's algorithm should use a min-heap instead of an arbitrary queue. At each step, choosing the smallest currently available zero-indegree vertex is safe because any valid order must place some zero-indegree vertex next, and picking the smallest cannot make a later vertex unavailable. This greedy choice yields the smallest sequence.
+
+```python
+import heapq
+
+def topo_kahn(n, edges):
+    graph = [[] for _ in range(n)]
+    indegree = [0] * n
+    for u, v in edges:
+        graph[u].append(v)
+        indegree[v] += 1
+    ready = [u for u in range(n) if indegree[u] == 0]
+    heapq.heapify(ready)
+    order = []
+    while ready:
+        u = heapq.heappop(ready)
+        order.append(u)
+        for v in graph[u]:
+            indegree[v] -= 1
+            if indegree[v] == 0:
+                heapq.heappush(ready, v)
+    return order if len(order) == n else None
+
+def topo_dfs(n, edges):
+    graph = [[] for _ in range(n)]
+    for u, v in edges:
+        graph[u].append(v)
+    state = [0] * n          # 0 white, 1 gray, 2 black
+    order = []
+
+    def visit(u):
+        state[u] = 1
+        for v in graph[u]:
+            if state[v] == 1:
+                return False
+            if state[v] == 0 and not visit(v):
+                return False
+        state[u] = 2
+        order.append(u)
+        return True
+
+    for u in range(n):
+        if state[u] == 0 and not visit(u):
+            return None
+    return order[::-1]
+```
+
+Worked example: vertices `a,b,c,d` with edges `a->c`, `b->c`, `c->d`. Initially `a` and `b` have indegree zero, so the heap yields `a`, then `b`; processing them reduces `c` to zero, so `c` follows, then `d`. The result is `a,b,c,d`. If we add `d->b`, `a` is still a source, but after removing `a` the remaining graph `b->c->d->b` is a cycle: `b`, `c`, and `d` keep positive indegree, Kahn stalls, and it returns `None`. DFS would find the back edge when it revisits a gray vertex. If we instead add `d->a`, `b` is a source, but the cycle `a->c->d->a` remains, so Kahn also returns `None`.
+
+Kahn with a plain queue is `O(V+E)` time and `O(V+E)` space. With a heap it is `O((V+E) log V)` because each vertex enters and leaves the heap once. DFS is `O(V+E)` time and `O(V)` recursion space, plus the graph storage.
+@@@ END
+
+@@@ USER
+Compare Dijkstra's algorithm and A*. Explain admissibility and consistency, show how to implement both with one function, and analyze complexity.
+@@@ ASSISTANT
+Dijkstra settles vertices in increasing order of the true shortest distance from the source. It is correct for nonnegative edge weights because once the minimum tentative distance is popped, no future path can improve it. A* adds a heuristic `h(v)` that estimates the remaining distance to the goal and orders the priority queue by `f(v) = g(v) + h(v)`, where `g(v)` is the best known distance from the start. With `h(v) = 0`, A* is exactly Dijkstra.
+
+A heuristic is admissible if it never overestimates the true remaining cost; admissibility guarantees the first time the goal is popped, its cost is optimal. A heuristic is consistent (monotone) if `h(u) <= w(u,v) + h(v)` for every edge, which implies admissibility and guarantees that no vertex needs to be reopened. Manhattan distance is consistent on a four-direction grid with unit costs; straight-line distance is consistent for Euclidean graphs. A badly scaled or negative heuristic can make A* return a suboptimal path.
+
+```python
+import heapq
+
+def shortest_path(graph, start, goal, heuristic=lambda v: 0):
+    best = {start: 0}
+    pq = [(heuristic(start), 0, start)]   # (f, g, node)
+    while pq:
+        f, g, u = heapq.heappop(pq)
+        if g != best.get(u):
+            continue                       # stale queue entry
+        if u == goal:
+            return g
+        for v, weight in graph[u]:
+            candidate = g + weight
+            if candidate < best.get(v, float("inf")):
+                best[v] = candidate
+                heapq.heappush(pq, (candidate + heuristic(v), candidate, v))
+    return None
+```
+
+Worked example: `S->A` cost 1, `S->B` cost 4, `A->B` cost 2, `A->G` cost 7, `B->G` cost 1. Dijkstra starts with `(0,S)`, relaxes A to 1 and B to 4, pops A, improves B to 3, then pops B and relaxes G to 4, so the answer is 4 via `S,A,B,G`. A* with a heuristic that estimates 0 at S and 1 at A and B would pop S, then A with f=2, then B with f=4, then G with f=4; it still returns 4 but may expand fewer nodes on a larger graph. A heuristic that estimates 10 for A would be inadmissible if the true remaining cost is 3, and A* could commit to a worse path.
+
+With a binary heap, Dijkstra is `O((V+E) log V)` time and `O(V)` extra space. A* has the same worst-case bound, but its practical cost depends on heuristic quality; a perfect heuristic expands only the optimal path, while a zero heuristic degenerates to Dijkstra. Neither algorithm handles negative edge weights; use Bellman-Ford or Johnson's algorithm there.
+@@@ END
+
+@@@ USER
+Explain union-find with path compression and union by size. Implement it, discuss the inverse Ackermann complexity, and show how it detects a cycle in an undirected graph.
+@@@ ASSISTANT
+Union-find (disjoint-set union) maintains a partition of elements. Each set is a tree, and the root identifies the set. `find(x)` walks parent pointers to the root; `union(a,b)` links the two roots. Without optimizations, a chain of unions can make `find` linear. Union by size attaches the smaller tree under the larger one, keeping tree height `O(log n)`. Path compression makes every node on a `find` path point directly at the root, flattening future operations. Together they give amortized `O(alpha(n))` per operation, where `alpha` is the inverse Ackermann function and is at most 4 for any practical input size. Space is `O(n)`.
+
+```python
+class DSU:
+    def __init__(self, n):
+        self.parent = list(range(n))
+        self.size = [1] * n
+        self.components = n
+
+    def find(self, x):
+        root = x
+        while self.parent[root] != root:
+            root = self.parent[root]
+        while self.parent[x] != x:       # path compression
+            self.parent[x], x = root, self.parent[x]
+        return root
+
+    def union(self, a, b):
+        ra, rb = self.find(a), self.find(b)
+        if ra == rb:
+            return False                 # already connected
+        if self.size[ra] < self.size[rb]:
+            ra, rb = rb, ra
+        self.parent[rb] = ra
+        self.size[ra] += self.size[rb]
+        self.components -= 1
+        return True
+
+def has_cycle(n, edges):
+    dsu = DSU(n)
+    for u, v in edges:
+        if not dsu.union(u, v):
+            return True                  # edge joins two vertices already connected
+    return False
+```
+
+Worked example: `n = 4`, edges `(0,1)`, `(1,2)`, `(2,0)`. Union 0 and 1 makes one component. Union 1 and 2 adds 2. When processing edge `(2,0)`, both already have the same root, so `union` returns `False` and a cycle is detected. For a graph with edges `(0,1)`, `(2,3)`, the DSU ends with two components, and no cycle exists. The same structure can answer connectivity queries, count components, and build a minimum spanning tree with Kruskal's algorithm by sorting edges and accepting any edge whose endpoints are in different sets.
+
+The amortized bound is effectively constant. A naive `find` without compression is `O(log n)` with union by size, and `O(n)` worst case without either optimization. Path compression alone gives `O(log n)` amortized; the two together are what produce the inverse-Ackermann bound.
+@@@ END
+
+@@@ USER
+Explain dynamic programming on strings using edit distance and longest common subsequence. Give space-optimized Python implementations, analyze complexity, and work through an example.
+@@@ ASSISTANT
+Both problems have optimal substructure: the answer for prefixes `a[:i]` and `b[:j]` depends only on smaller prefixes. For edit distance, let `dp[i][j]` be the minimum insertions, deletions, and substitutions to turn `a[:i]` into `b[:j]`. The last characters either match, in which case `dp[i][j] = dp[i-1][j-1]`, or they differ, in which case we take the minimum of deleting from `a` (`dp[i-1][j] + 1`), inserting into `a` (`dp[i][j-1] + 1`), and substituting (`dp[i-1][j-1] + 1`). The base cases are `dp[i][0] = i` and `dp[0][j] = j`.
+
+For LCS, `dp[i][j]` is the length of the longest common subsequence of the two prefixes. If the last characters match, `dp[i][j] = dp[i-1][j-1] + 1`; otherwise `dp[i][j] = max(dp[i-1][j], dp[i][j-1])`. Only the previous row is needed in both cases, so space drops from `O(mn)` to `O(min(m,n))` after swapping the strings so the shorter one is the column dimension.
+
+```python
+def edit_distance(a, b):
+    if len(a) < len(b):
+        a, b = b, a
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i] + [0] * len(b)
+        for j, cb in enumerate(b, 1):
+            cur[j] = min(
+                prev[j] + 1,                 # delete ca
+                cur[j - 1] + 1,              # insert cb
+                prev[j - 1] + (ca != cb),    # substitute or match
+            )
+        prev = cur
+    return prev[-1]
+
+def lcs_length(a, b):
+    if len(a) < len(b):
+        a, b = b, a
+    prev = [0] * (len(b) + 1)
+    for ca in a:
+        cur = [0] * (len(b) + 1)
+        for j, cb in enumerate(b, 1):
+            if ca == cb:
+                cur[j] = prev[j - 1] + 1
+            else:
+                cur[j] = max(prev[j], cur[j - 1])
+        prev = cur
+    return prev[-1]
+```
+
+Worked example: `edit_distance("kitten", "sitting")` is 3. Align `k` with `s` (substitute), `e` with `i` (substitute), and insert `g` at the end; the other characters match. The DP row for the full strings ends at 3. For LCS, `"AGGTAB"` and `"GXTXAYB"` have LCS `"GTAB"`, length 4. The match `G` at positions 1 and 0, then `T`, then `A`, then `B` are chosen in order, though not contiguously.
+
+Time is `O(mn)` and space is `O(min(m,n))` for both. Reconstructing the actual edit script or subsequence needs either the full table or a divide-and-conquer Hirschberg approach, which keeps `O(min(m,n))` space while still allowing reconstruction in `O(mn)` time.
+@@@ END
+
+@@@ USER
+Explain sliding window techniques: fixed-size windows, variable-size windows, and monotonic deques. Give code for maximum sum of size k, longest substring without repeats, and sliding window maximum.
+@@@ ASSISTANT
+A sliding window maintains a contiguous range `[left, right]` and updates an aggregate incrementally instead of recomputing it. For a fixed size `k`, add `a[right]`, and once the window has `k` elements, subtract `a[right-k]` before moving on. Each element enters and leaves once, so the cost is `O(n)` rather than `O(nk)`.
+
+For a variable-size window, expand `right` and shrink `left` only while the window violates a constraint. The key invariant is that the window is always valid after the shrink loop. The longest substring without repeating characters uses a map from character to its last index; when a duplicate appears inside the current window, jump `left` to `last[ch] + 1`. A monotonic deque solves sliding-window maximum: indices are stored in decreasing order of value, stale indices are removed from the front, and smaller values are removed from the back before inserting a new index. The front is always the maximum of the current window.
+
+```python
+from collections import deque
+
+def max_sum_k(a, k):
+    window = sum(a[:k])
+    best = window
+    for right in range(k, len(a)):
+        window += a[right] - a[right - k]
+        best = max(best, window)
+    return best
+
+def longest_unique(s):
+    last = {}
+    left = best = 0
+    for right, ch in enumerate(s):
+        if ch in last and last[ch] >= left:
+            left = last[ch] + 1
+        last[ch] = right
+        best = max(best, right - left + 1)
+    return best
+
+def window_maximum(a, k):
+    dq = deque()                 # indices, values decreasing
+    result = []
+    for right, value in enumerate(a):
+        while dq and a[dq[-1]] <= value:
+            dq.pop()
+        dq.append(right)
+        if dq[0] <= right - k:
+            dq.popleft()
+        if right >= k - 1:
+            result.append(a[dq[0]])
+    return result
+```
+
+Worked example for the maximum sum with `a = [2,1,5,1,3,2]` and `k = 3`: windows are `[2,1,5] = 8`, `[1,5,1] = 7`, `[5,1,3] = 9`, and `[1,3,2] = 6`; the answer is 9. For `longest_unique("abcabcbb")`, the window grows to `"abc"` (length 3), then the second `a` forces `left` to 1, the second `b` forces it to 2, and the best remains 3. For `a = [1,3,-1,-3,5,3,6,7]` and `k = 3`, `window_maximum` returns `[3,3,5,5,6,7]`; when 5 enters, it pops 3 and -1 from the back because they can never be the maximum of a later window.
+
+All three algorithms run in `O(n)` time. The deque and the character map use `O(k)` and `O(alphabet)` extra space respectively. The variable-window pattern requires the constraint to be monotone under shrinking; if removing elements can invalidate the logic in both directions, a two-pointer window may not be correct.
+@@@ END
+
+@@@ USER
+Explain how to find the k-th largest element in an array and in a stream. Compare a min-heap and quickselect, give code, and analyze complexity.
+@@@ ASSISTANT
+For a static array, quickselect partitions around a pivot like quicksort but recurses only into the side containing the target rank. If `target = n - k` in ascending order, after a partition `[lo, j]` contains values at most the pivot and `[i, hi]` contains values at least the pivot. If the target is in the left side, recurse left; if it is in the right side, recurse right; otherwise the pivot index is the answer. Average time is `O(n)`, but adversarial pivots can degrade it to `O(n^2)`. Random pivots make the bad case unlikely; median-of-medians gives a deterministic `O(n)` worst case at the cost of a larger constant.
+
+For a stream, a min-heap of size `k` is the right structure. Push each value, and if the heap exceeds `k`, pop the smallest. The root is then the k-th largest seen so far. Each insertion costs `O(log k)`, so processing `n` values costs `O(n log k)` time and `O(k)` space. This is preferable when `k << n` or when the data cannot be stored.
+
+```python
+import heapq
+import random
+
+def kth_largest_heap(nums, k):
+    heap = []
+    for value in nums:
+        heapq.heappush(heap, value)
+        if len(heap) > k:
+            heapq.heappop(heap)
+    return heap[0]
+
+def kth_largest_quickselect(nums, k):
+    target = len(nums) - k
+    a = nums[:]
+
+    def select(lo, hi):
+        pivot = a[random.randint(lo, hi)]
+        i, j = lo, hi
+        while i <= j:
+            while a[i] < pivot:
+                i += 1
+            while a[j] > pivot:
+                j -= 1
+            if i <= j:
+                a[i], a[j] = a[j], a[i]
+                i += 1
+                j -= 1
+        if target <= j:
+            return select(lo, j)
+        if target >= i:
+            return select(i, hi)
+        return a[target]
+
+    return select(0, len(a) - 1)
+```
+
+Worked example: `nums = [3,2,1,5,6,4]`, `k = 2`. The heap processes 3, then keeps `[2,3]` after 2, replaces 2 with 1? Actually the heap keeps the two largest seen: after 3 and 2 it holds `[2,3]`; 1 is pushed and 1 is popped; 5 replaces 2; 6 replaces 3; 4 replaces 5? The final heap is `[5,6]`, whose root 5 is the second largest. Quickselect targets index 4 in ascending order; a partition might place 4 at index 3, so it recurses right and eventually returns 5. Both answers are 5.
+
+The heap approach is `O(n log k)` time and `O(k)` space; quickselect is `O(n)` average and `O(n^2)` worst case, with `O(1)` extra space if implemented in place (aside from recursion). For a stream with unknown length, only the heap approach is practical. If all values are known and `k` is small, the heap is also simpler and has predictable performance.
+@@@ END
+
+@@@ USER
+Explain tries (prefix trees). Implement insert, exact search, prefix search, and a wildcard search, then analyze time and memory.
+@@@ ASSISTANT
+A trie stores strings character by character along tree edges. Each node has a map from character to child plus a boolean marking the end of a word. The root represents the empty prefix. Insertion walks or creates one node per character and marks the final node as terminal. Exact search follows the characters and checks the terminal flag; prefix search only needs to reach the final prefix node, so every word below it shares that prefix. The cost of an operation is proportional to the query length `L`, independent of how many words are stored, which is the trie's main advantage over a hash set for prefix queries.
+
+A wildcard search where `.` matches any single character uses backtracking over the children at a dot. In the worst case, a pattern of all dots can visit many nodes, so the bound becomes `O(number of nodes)` rather than `O(L)`.
+
+```python
+class TrieNode:
+    __slots__ = ("children", "terminal")
+
+    def __init__(self):
+        self.children = {}
+        self.terminal = False
+
+
+class Trie:
+    def __init__(self):
+        self.root = TrieNode()
+
+    def insert(self, word):
+        node = self.root
+        for ch in word:
+            node = node.children.setdefault(ch, TrieNode())
+        node.terminal = True
+
+    def search(self, word):
+        node = self._walk(word)
+        return node is not None and node.terminal
+
+    def starts_with(self, prefix):
+        return self._walk(prefix) is not None
+
+    def _walk(self, text):
+        node = self.root
+        for ch in text:
+            node = node.children.get(ch)
+            if node is None:
+                return None
+        return node
+
+    def search_wildcard(self, pattern):
+        def match(node, i):
+            if i == len(pattern):
+                return node.terminal
+            ch = pattern[i]
+            if ch == ".":
+                return any(match(child, i + 1)
+                           for child in node.children.values())
+            child = node.children.get(ch)
+            return child is not None and match(child, i + 1)
+
+        return match(self.root, 0)
+```
+
+Worked example: insert `"apple"` and `"app"`. The path `a-p-p` exists once, and `"app"` marks the third node terminal; `"apple"` continues through `l-e` and marks the last node terminal. `search("app")` is true, `search("appl")` is false because that node is not terminal, `starts_with("appl")` is true, and `search_wildcard("a.p.e")` is true because each dot matches exactly one character.
+
+Time is `O(L)` per insert or exact/prefix query, and `O(L)` space per inserted word in the worst case, so total memory is `O(total characters)`. The constant is high because each node may hold a dictionary; a compressed radix tree or a ternary search tree reduces node overhead. In exchange, tries support ordered traversal and prefix enumeration, which a hash map cannot do efficiently. For a large alphabet, a fixed-size array per node wastes memory; a hash map or a sorted edge list is usually better.
+@@@ END
+
+@@@ USER
+Explain the difference between concurrency and parallelism, including the role of Python's GIL. Show when to use threads versus processes, with working code and an Amdahl's law example.
+@@@ ASSISTANT
+Concurrency is about structuring a program so multiple tasks can make progress during overlapping time periods; parallelism is about actually executing multiple tasks at the same instant on different cores. A single-core machine can be concurrent (interleaving I/O and computation) but not parallel. Parallelism implies concurrency, but concurrency does not imply parallelism. This distinction determines whether adding workers helps: I/O-bound work benefits from concurrency because threads or async tasks overlap waiting; CPU-bound work benefits from parallelism because only multiple cores reduce total compute time.
+
+CPython's global interpreter lock allows only one thread to execute Python bytecode at a time. Threads therefore help when they release the GIL during blocking I/O or inside C extensions (NumPy, hashing, some compression), but they do not speed up pure-Python CPU loops. `multiprocessing` or `ProcessPoolExecutor` sidesteps the GIL with separate interpreters and memory spaces, at the cost of process startup, serialization, and IPC. `asyncio` is cooperative concurrency on one thread and is excellent for many network connections, but a blocking call stalls the entire event loop.
+
+```python
+import time
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+def io_task(_):
+    time.sleep(0.2)
+    return 1
+
+def cpu_task(n):
+    total = 0
+    for i in range(2_000_000):
+        total += (i * i) % 7
+    return total + n
+
+if __name__ == "__main__":
+    jobs = list(range(8))
+
+    start = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(io_task, jobs))
+    print("threads, I/O:", time.perf_counter() - start)   # about 0.2 s
+
+    start = time.perf_counter()
+    with ProcessPoolExecutor(max_workers=8) as pool:
+        list(pool.map(cpu_task, jobs))
+    print("processes, CPU:", time.perf_counter() - start)
+```
+
+The I/O example finishes in roughly 0.2 seconds with threads because all eight sleeps overlap; a serial loop would take 1.6 seconds. The CPU example is the opposite: threads contend for the GIL and may be no faster than serial, while processes use multiple cores. If `cpu_task` called a NumPy operation that releases the GIL, threads could help.
+
+Amdahl's law quantifies the ceiling: if a fraction `p` of the work is parallelizable and `s = 1 - p` is serial, the maximum speedup with `N` workers is `1 / (s + p/N)`. With 90% parallelizable work and 8 cores, the speedup is `1 / (0.1 + 0.9/8) = 4.71`, not 8. With 50% parallelizable work, even infinite cores give only `2x`. The practical lesson is to measure the serial fraction and the communication overhead before adding workers; more workers can even reduce throughput through context switching, lock contention, or memory bandwidth saturation.
+@@@ END
+
+@@@ USER
+Explain race conditions and how locks address them. Then explain deadlock prevention, using a bank transfer that can deadlock as the example and showing the corrected code.
+@@@ ASSISTANT
+A race condition occurs when the result depends on the interleaving of operations that are not atomic. A classic example is `balance = balance + amount`: it compiles to a read, an add, and a write. Two threads can both read the old balance, both add, and both write, so one update is lost. A lock creates mutual exclusion around a critical section, forcing the read-modify-write sequence to execute as one unit with respect to other lock holders. The lock protects an invariant, not just individual variables, so every access that can violate the invariant must acquire the same lock.
+
+Deadlock requires four conditions simultaneously: mutual exclusion, hold-and-wait, no preemption, and circular wait. Breaking any one prevents it. The most practical technique is to impose a global lock ordering: every thread acquires locks in the same order, so a cycle cannot form. Alternatives include acquiring all locks at once with a single coarse lock, using `try_lock` with timeout and backoff (breaking hold-and-wait), or using lock-free compare-and-swap for simple counters. A timeout alone does not guarantee progress, but it converts a permanent hang into a retryable failure.
+
+```python
+import threading
+
+class Account:
+    def __init__(self, account_id, balance):
+        self.id = account_id
+        self.balance = balance
+        self.lock = threading.Lock()
+
+def transfer(source, target, amount):
+    if source is target:
+        raise ValueError("source and target must differ")
+    # Global order by account id breaks circular wait.
+    first, second = (source, target) if source.id < target.id else (target, source)
+    with first.lock:
+        with second.lock:
+            if source.balance < amount:
+                raise ValueError("insufficient funds")
+            source.balance -= amount
+            target.balance += amount
+
+a = Account(1, 100)
+b = Account(2, 50)
+t1 = threading.Thread(target=transfer, args=(a, b, 10))
+t2 = threading.Thread(target=transfer, args=(b, a, 20))
+t1.start(); t2.start(); t1.join(); t2.join()
+print(a.balance, b.balance)   # 90 and 70, in some order of execution
+```
+
+Without ordering, thread 1 could hold `a.lock` and wait for `b.lock` while thread 2 holds `b.lock` and waits for `a.lock`: a circular wait that never resolves. With ordering, both threads try to acquire account 1 first. One wins, performs the transfer, releases both locks, and the other proceeds; the second may then find insufficient funds if the first drained the source, which is a normal business outcome rather than a deadlock.
+
+Locks also introduce costs: contention serializes work, and a thread can be preempted while holding a lock. Keep critical sections short, avoid calling external code while holding a lock, and never acquire a second lock while holding one unless the global order is respected. A single lock around the entire transfer is simpler and correct, but coarser locks reduce concurrency. The ordered two-lock version preserves parallelism between unrelated accounts.
+@@@ END
+
+@@@ USER
+Design an idempotent payments API using idempotency keys. Explain the state machine, concurrency handling, and request fingerprinting, and give a working TypeScript implementation with SQL.
+@@@ ASSISTANT
+An idempotency key is a client-generated identifier for one logical operation, reused across retries of that same operation. The server stores the key together with a fingerprint of the request body, a status, and the response that was sent. A retry with the same key and same fingerprint returns the stored response instead of charging again. A retry with the same key but a different body is a client bug and must be rejected, usually with 422, because the key no longer identifies one operation.
+
+The state machine is `in_progress -> completed` or `in_progress -> failed`. The unique primary key on the idempotency key is the concurrency control: the first request inserts the row and proceeds; a concurrent duplicate blocks on the unique index until the first transaction commits, then reads the row. If the first request crashed while `in_progress`, a lease or timestamp allows recovery; without one, the key could remain stuck forever. Store enough of the response to replay it byte-for-byte, including the status code. Expire keys after a retention window, but only after the client can no longer legitimately retry.
+
+```ts
+import express from "express";
+import { Pool } from "pg";
+
+const pool = new Pool();
+const app = express();
+app.use(express.json());
+
+app.post("/payments", async (req, res) => {
+  const key = req.header("Idempotency-Key");
+  if (!key) return res.status(400).json({ error: "missing idempotency key" });
+  const fingerprint = JSON.stringify(req.body);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const inserted = await client.query(
+      `INSERT INTO idempotency (key, fingerprint, status, created_at)
+       VALUES ($1, $2, 'in_progress', now())
+       ON CONFLICT (key) DO NOTHING
+       RETURNING key`,
+      [key, fingerprint]
+    );
+
+    if (inserted.rowCount === 0) {
+      const existing = await client.query(
+        `SELECT fingerprint, status, response_status, response_body
+           FROM idempotency WHERE key = $1`,
+        [key]
+      );
+      const row = existing.rows[0];
+      await client.query("COMMIT");
+      if (row.fingerprint !== fingerprint) {
+        return res.status(422).json({ error: "key reused with different body" });
+      }
+      if (row.status === "in_progress") {
+        return res.status(409).json({ error: "request still in progress" });
+      }
+      return res.status(row.response_status).json(row.response_body);
+    }
+
+    const charge = await chargeCard(req.body);
+    const body = { id: charge.id, amount: req.body.amount };
+    await client.query(
+      `UPDATE idempotency
+          SET status = 'completed', response_status = 201, response_body = $2
+        WHERE key = $1`,
+      [key, JSON.stringify(body)]
+    );
+    await client.query("COMMIT");
+    return res.status(201).json(body);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+});
+```
+
+The schema needs `key text primary key`, `fingerprint text not null`, `status text not null`, `response_status int`, `response_body jsonb`, and `created_at timestamptz`. In practice the card charge is an external call and cannot be rolled back, so use a durable outbox or a provider-side idempotency key as well; the database transaction alone cannot atomically cover a remote charge.
+
+Worked example: a client sends key `pay-123` for a $50 charge, the server charges the card, but the response is lost. The client retries with the same key and body. The duplicate insert does nothing, the stored row says completed with the original charge id, and the server returns the same 201 response. The customer is charged once. If the retry changes the amount to $500, the fingerprint differs and the server returns 422 instead of silently charging a different amount. Keys should be random UUIDs scoped to the authenticated account.
+@@@ END
+
+@@@ USER
+Explain CAP and PACELC, then design a consistent hashing ring with virtual nodes. Give code, a worked example, and the tradeoffs.
+@@@ ASSISTANT
+CAP says that during a network partition a distributed system can guarantee at most two of consistency, availability, and partition tolerance. Since partitions are unavoidable, the real choice is between consistency and availability when a partition occurs. A CP system rejects or blocks some requests to avoid returning stale data; an AP system keeps serving and reconciles later, so reads may be stale. PACELC extends this: if there is a partition, choose Availability or Consistency; Else (no partition), choose Latency or Consistency. DynamoDB is commonly described as PA/EL: it favors availability and low latency, with strongly consistent reads available as an option. Spanner is PC/EC: it chooses consistency in both cases, paying with coordination latency.
+
+Consistent hashing distributes keys across nodes so that adding or removing a node moves only about `1/N` of the keys, rather than rehashing everything. Both keys and nodes are hashed onto a circular space. A key belongs to the first node at or after its position, wrapping around. Virtual nodes place each physical node at many positions on the ring, which smooths load and lets heterogeneous hardware receive proportional shares. With `V` virtual nodes per server, the expected fraction of keys moved when adding one server is `1/(N+1)`, and the variance of load shrinks roughly as `1/sqrt(V)`.
+
+```python
+import bisect
+import hashlib
+
+class ConsistentHashRing:
+    def __init__(self, nodes=(), vnodes=100):
+        self.vnodes = vnodes
+        self.positions = []
+        self.owners = {}
+        for node in nodes:
+            self.add_node(node)
+
+    @staticmethod
+    def _hash(text):
+        return int(hashlib.sha1(text.encode()).hexdigest(), 16)
+
+    def add_node(self, node):
+        for i in range(self.vnodes):
+            position = self._hash(f"{node}#{i}")
+            bisect.insort(self.positions, position)
+            self.owners[position] = node
+
+    def remove_node(self, node):
+        for i in range(self.vnodes):
+            position = self._hash(f"{node}#{i}")
+            index = bisect.bisect_left(self.positions, position)
+            if index < len(self.positions) and self.positions[index] == position:
+                self.positions.pop(index)
+                del self.owners[position]
+
+    def get_node(self, key):
+        if not self.positions:
+            return None
+        position = self._hash(key)
+        index = bisect.bisect_left(self.positions, position)
+        if index == len(self.positions):
+            index = 0
+        return self.owners[self.positions[index]]
+```
+
+Worked example: with nodes `A`, `B`, and `C` and 100 virtual nodes each, the ring has 300 positions. A key whose hash falls between a virtual node of `B` and the next virtual node of `C` is assigned to `C`. If we add `D`, only keys in the arcs owned by the virtual nodes of `D` move, which is about one quarter of the keys for four nodes. Removing `B` moves its arcs to the next clockwise owners, and the other keys stay put. A key's assignment is deterministic for all clients that share the same hash function and ring layout.
+
+The tradeoffs are memory for virtual nodes, rebalancing cost when membership changes, and the need to replicate each key to the next `R` distinct physical nodes for durability. A hotspot can still occur if one key is extremely popular; consistent hashing balances keys, not request rates. Hash quality matters, so use a stable hash such as SHA-1 or a seeded 128-bit hash rather than Python's randomized `hash()`. The ring is a placement mechanism, not a consistency model: it must be combined with replication, quorum reads and writes, and failure detection to build a real distributed store.
+@@@ END
+
+@@@ USER
+Compare load balancing algorithms: round robin, weighted round robin, least connections, power of two choices, and latency-aware balancing. Give working code for smooth weighted round robin and power of two choices.
+@@@ ASSISTANT
+Round robin sends requests to servers in sequence. It is simple and stateless, but it ignores capacity and request cost, so a slow server accumulates a queue. Weighted round robin gives each server a share proportional to a configured weight, which handles heterogeneous hardware. Naive weighted round robin emits bursts (`A,A,A,B` for weights 3:1); the smooth variant interleaves them (`A,A,B,A`). Least connections tracks active requests and sends to the server with the fewest, which adapts to variable request durations but requires shared state and can herd on a new server. Power of two choices samples two servers at random and picks the less loaded one; it needs only local or approximate load information and provably reduces maximum load from `O(log n / log log n)` to `O(log log n)` for random assignments.
+
+Latency-aware balancing uses observed response time, error rate, or queue depth, often with an exponentially weighted moving average. It reacts to degradation but risks feedback loops: a server that is briefly slow receives less traffic, recovers, and then may be overwhelmed again. Health checks and outlier ejection are essential. L4 balancers route by connection tuple without parsing HTTP; L7 balancers can route by path, header, or cookie, and can terminate TLS. Session affinity simplifies stateful sessions but undermines even balancing and complicates failover.
+
+```python
+import random
+
+class SmoothWeightedRoundRobin:
+    def __init__(self, servers):
+        # servers: list of (name, weight)
+        self.servers = [[name, weight, 0] for name, weight in servers]
+
+    def next(self):
+        total = sum(weight for _, weight, _ in self.servers)
+        for server in self.servers:
+            server[2] += server[1]
+        chosen = max(self.servers, key=lambda server: server[2])
+        chosen[2] -= total
+        return chosen[0]
+
+class Backend:
+    def __init__(self, name, weight=1):
+        self.name = name
+        self.weight = weight
+        self.active = 0
+
+def power_of_two(backends):
+    a, b = random.sample(backends, 2)
+    # Compare normalized load so weights still matter.
+    return a if a.active / a.weight <= b.active / b.weight else b
+```
+
+Worked example for weights `A:3, B:1`. Start with current values `[0,0]`. Add weights to get `[3,1]`, choose A, subtract total 4 from A: `[-1,1]`. Add again: `[2,2]`, choose A (first on a tie), subtract 4: `[-2,2]`. Add: `[1,3]`, choose B, subtract 4: `[1,-1]`. Add: `[4,0]`, choose A, subtract 4: `[0,0]`. The sequence is `A,A,B,A`, exactly 3:1 without a burst. For power of two, if A has 40 active requests and B has 2, B is chosen; if both have 5, the tie is broken randomly. Sampling two is enough to avoid the worst queue most of the time.
+
+Smooth weighted round robin costs `O(n)` per selection and `O(n)` memory; a heap can reduce selection to `O(log n)`. Least connections costs `O(n)` per request unless an approximate data structure is used. Power of two choices costs `O(1)` and needs no global coordinator, which is why it is popular in distributed load balancers. The right choice depends on request duration variance: round robin is fine for uniform, short requests; least connections or P2C is better when durations vary widely.
+@@@ END
+
+@@@ USER
+Explain cache invalidation strategies and how HTTP caching with ETags fits into them. Give an ETag middleware, discuss stampedes, and work through a conditional request.
+@@@ ASSISTANT
+A cache is a copy that can become stale, so invalidation defines when a copy stops being authoritative. TTL expiry is simple but allows staleness up to the TTL. Write-through updates the cache and the database in the same logical operation, giving fresher reads at the cost of write latency. Write-behind acknowledges the write before the database is updated and risks data loss. Cache-aside reads on a miss, populates the cache, and on writes usually deletes the key rather than updating it; deleting avoids writing a value that another concurrent writer will immediately overwrite. Versioned keys (`article:42:v7`) make old entries unreachable and expire naturally. Pub/sub or change-data-capture invalidation propagates deletes across nodes, but messages can be lost or reordered, so a TTL backstop is still needed.
+
+HTTP caching is a protocol-level version of the same idea. `Cache-Control: max-age` sets freshness lifetime; `s-maxage` applies to shared caches; `stale-while-revalidate` lets a cache serve stale content while refreshing in the background. An ETag is an opaque validator for a representation. A client that has a copy sends `If-None-Match`; if the ETag still matches, the server returns `304 Not Modified` with no body, saving bandwidth. A strong ETag changes whenever the bytes change; a weak ETag (`W/"..."`) permits semantically equivalent representations. `Vary` tells caches which request headers select a different representation.
+
+```ts
+import express from "express";
+import crypto from "crypto";
+
+const app = express();
+
+app.get("/article/:id", (req, res) => {
+  const article = getArticle(req.params.id);           // your data layer
+  const body = JSON.stringify(article);
+  const etag = `"${crypto.createHash("sha1").update(body).digest("base64")}"`;
+
+  res.set("ETag", etag);
+  res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=30");
+  res.set("Vary", "Accept-Encoding");
+
+  if (req.headers["if-none-match"] === etag) {
+    return res.status(304).end();
+  }
+  res.type("application/json").send(body);
+});
+```
+
+The equality check above is simplified; real clients may send a comma-separated list of validators, so parse the header before comparing. Worked example: the first request returns `200` with `ETag: "abc"` and the article body. The browser stores it for 60 seconds. After 60 seconds it sends a conditional request with `If-None-Match: "abc"`. If the article has not changed, the server recomputes the same ETag and returns `304`, so the browser reuses its copy; if the article changed, the server returns `200` with a new ETag and the new body.
+
+A cache stampede happens when a popular key expires and many requests simultaneously miss and hit the database. Mitigations are single-flight (only one request recomputes, others wait), probabilistic early expiration (refresh slightly before expiry), and serving stale content while one worker refreshes. A distributed lock can coordinate recomputation, but it adds failure modes; a short stale window plus a request coalescer is often enough.
+
+For invalidation correctness, delete the cache key after the database commit, not before, because a concurrent reader could repopulate the old value between the delete and the commit. Even then, a race remains: a reader may have fetched the old value before the commit and write it after the delete. Versioned keys or a short TTL close that window. Cache invalidation is not a single technique; it is a combination of freshness policy, write ordering, and a fallback that bounds how long a bad value can survive.
+@@@ END
+
+@@@ USER
+Explain SQL window functions: ranking, running totals, LAG/LEAD, frames, and deduplicating to the latest row per group. Use PostgreSQL and analyze performance.
+@@@ ASSISTANT
+A window function computes a value over a set of rows related to the current row without collapsing them into groups. `PARTITION BY` splits rows into independent windows; `ORDER BY` defines the sequence within each window; the frame clause defines which rows are visible to the current row. Unlike `GROUP BY`, every input row remains in the output, which makes window functions suitable for running totals, rankings, and comparisons with neighboring rows.
+
+`ROW_NUMBER` assigns 1,2,3 regardless of ties. `RANK` gives tied rows the same rank and then skips numbers (1,1,3). `DENSE_RANK` gives tied rows the same rank without skipping (1,1,2). `SUM(...) OVER (PARTITION BY ... ORDER BY ...)` is a running total when the default frame is `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`. The default `RANGE` frame includes all rows tied with the current `ORDER BY` value, while `ROWS` includes only physically preceding rows; this difference matters when the ordering column has duplicates.
+
+```sql
+CREATE TABLE orders (
+  id bigserial PRIMARY KEY,
+  user_id int NOT NULL,
+  amount numeric(12,2) NOT NULL,
+  created_at timestamptz NOT NULL
+);
+
+-- Rank each user's orders by amount, keeping ties visible.
+SELECT user_id, id, amount,
+       ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY amount DESC) AS row_no,
+       RANK()       OVER (PARTITION BY user_id ORDER BY amount DESC) AS rank_no,
+       DENSE_RANK() OVER (PARTITION BY user_id ORDER BY amount DESC) AS dense_no
+FROM orders;
+
+-- Running total per user, in chronological order.
+SELECT user_id, created_at, amount,
+       SUM(amount) OVER (
+         PARTITION BY user_id
+         ORDER BY created_at
+         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+       ) AS running_total
+FROM orders;
+
+-- Compare each order with the previous and next order for the same user.
+SELECT user_id, created_at, amount,
+       LAG(amount)  OVER (PARTITION BY user_id ORDER BY created_at) AS prev_amount,
+       LEAD(amount) OVER (PARTITION BY user_id ORDER BY created_at) AS next_amount
+FROM orders;
+
+-- Keep only the most recent order per user.
+WITH ranked AS (
+  SELECT *,
+         ROW_NUMBER() OVER (
+           PARTITION BY user_id
+           ORDER BY created_at DESC, id DESC
+         ) AS rn
+  FROM orders
+)
+SELECT * FROM ranked WHERE rn = 1;
+```
+
+Worked example: for one user with amounts 100, 100, and 90 ordered descending, `ROW_NUMBER` yields 1,2,3; `RANK` yields 1,1,3; and `DENSE_RANK` yields 1,1,2. For a running total ordered by date with amounts 10, 20, and 5, the output is 10, 30, 35. `LAG` on the second row returns 10, and `LEAD` on the second row returns 5. The deduplication query assigns `rn = 1` to the newest row per user and filters the rest; adding `id DESC` breaks ties deterministically when two rows share a timestamp.
+
+Window functions usually require sorting by the partition and order keys, costing `O(n log n)` unless an index already provides the order. An index on `(user_id, created_at)` can let PostgreSQL scan in window order and avoid a sort for the running-total query. The window is processed after `WHERE`, `GROUP BY`, and `HAVING`, so filter early to reduce the row count. Multiple window definitions with different partitions may force multiple sorts. For the latest-row query, a correlated `LATERAL` join or `DISTINCT ON (user_id)` can be faster than ranking the entire table, especially with a matching index.
+@@@ END
+
+@@@ USER
+Compare B-tree and LSM-tree indexes. Explain write, read, and space amplification, compaction, and when each is the better choice.
+@@@ ASSISTANT
+A B+tree stores sorted keys in fixed-size pages and updates them in place. Internal pages hold separator keys and child pointers; leaves hold keys and row references and are linked for range scans. A point lookup follows `O(log_B N)` pages, where `B` is the fanout (often hundreds), so a billion rows need only three or four page reads if the upper levels are cached. Writes locate the leaf, modify it, and split pages when full. Those random writes are efficient on SSDs but cause write amplification at the storage layer, and page splits leave free space and fragmentation.
+
+An LSM-tree batches writes in a memtable (often a skiplist) and flushes full memtables to immutable sorted-string tables (SSTables) on disk. Background compaction merges SSTables, discarding overwritten keys and tombstones. Point reads check the memtable, then recent SSTables, then older levels; Bloom filters let a read skip an SSTable that cannot contain the key. Range reads merge multiple sorted runs. Writes are sequential, which is friendly to spinning disks and flash, but compaction rewrites data repeatedly.
+
+Write amplification is bytes written to storage per logical byte. A B-tree might write a 4 KB page for a small update, plus journal/WAL traffic; an LSM-tree rewrites SSTables during compaction, often 10-30x with leveling. Read amplification is the number of tables or pages consulted per read; LSM reads may touch several levels, while a B-tree read touches a bounded tree height. Space amplification is storage divided by logical data size; LSM keeps obsolete versions and tombstones until compaction, while a B-tree may be only 50-70% full because of page splits.
+
+Worked example: an ingest pipeline writes 100,000 small events per second and runs occasional point lookups by event id. A B-tree index performs 100,000 random leaf updates per second, each potentially dirtying a page; the WAL serializes them, but the buffer pool and disk see scattered writes. An LSM store appends to a memtable, flushes sequential SSTables, and compacts in the background; ingest is much faster, but each lookup may check a Bloom filter and one or two SSTables. If the workload is instead read-mostly with strict latency SLOs and frequent range scans, the B-tree's single-tree traversal and stable page layout are usually better.
+
+Choose a B-tree for OLTP with moderate writes, strong read latency, and rich range queries (PostgreSQL, MySQL InnoDB). Choose an LSM-tree for write-heavy ingestion, time-series, logs, and key-value stores where sequential writes dominate (RocksDB, Cassandra, ScyllaDB). LSM tuning is a tradeoff among compaction strategy, level count, and Bloom filter bits; tiered compaction lowers write amplification but increases space amplification and read cost. Neither structure is universally faster: the right choice follows from the ratio of reads to writes, the latency tail, and how much background I/O the system can tolerate.
+@@@ END
+
+@@@ USER
+Walk through DNS resolution and the TLS 1.3 handshake for a first visit to https://example.com. Explain caching, certificates, SNI, ALPN, and 0-RTT risks, and include a small Python check of the negotiated TLS parameters.
+@@@ ASSISTANT
+DNS resolution starts with the stub resolver on the client. It checks its local cache, the OS cache, and possibly a local forwarding resolver. On a miss, the recursive resolver queries a root server, which returns the delegation for `.com`; the resolver queries a `.com` TLD server, which returns the delegation for `example.com`; then it queries an authoritative nameserver for `example.com`, which returns the A and AAAA records. The resolver caches each answer according to its TTL and returns the address to the client. A CNAME redirects the query to another name; the resolver follows it and returns the final address. Negative answers are also cached, which can delay newly created records.
+
+The client opens a TCP connection to port 443 (or uses QUIC for HTTP/3). TLS 1.3 normally completes in one round trip. The ClientHello contains supported cipher suites, a key share for Diffie-Hellman, the SNI hostname, and ALPN protocols such as `h2` and `http/1.1`. The server responds with ServerHello and its key share, then EncryptedExtensions, Certificate, CertificateVerify, and Finished, all encrypted after the handshake keys are derived. The client validates the certificate chain against trusted roots, checks the hostname, expiry, and revocation policy, verifies the CertificateVerify signature, and sends its Finished. Application data can then flow. Session resumption uses a pre-shared key and can reach 0-RTT, but early data is replayable, so it must be limited to idempotent requests.
+
+SNI lets one IP address serve multiple hostnames; the server selects the certificate before terminating TLS. ALPN negotiates the application protocol so both sides agree on HTTP/2 or HTTP/1.1. Without ALPN, the connection may fall back to HTTP/1.1. TLS 1.3 removed static RSA key exchange and legacy ciphers, so forward secrecy is the default.
+
+```python
+import socket
+import ssl
+
+context = ssl.create_default_context()
+context.set_alpn_protocols(["h2", "http/1.1"])
+with socket.create_connection(("example.com", 443), timeout=5) as raw:
+    with context.wrap_socket(raw, server_hostname="example.com") as tls:
+        print("version:", tls.version())
+        print("cipher:", tls.cipher())
+        print("ALPN:", tls.selected_alpn_protocol())
+        cert = tls.getpeercert()
+        print("subject:", cert["subject"])
+        print("issuer:", cert["issuer"])
+        print("notAfter:", cert["notAfter"])
+```
+
+Worked example: typing `https://example.com` triggers a DNS lookup. Suppose the resolver has no cache entry. It asks a root server, receives the `.com` delegation, asks a `.com` server, receives the `example.com` nameserver, and asks that server for the A record. The answer might be `93.184.216.34` with a 300-second TTL. The client connects, sends a ClientHello with SNI `example.com` and ALPN `h2,http/1.1`, and the server returns a certificate for `example.com`. The client verifies the chain, both sides derive keys, and the server's first HTTP/2 response arrives after one RTT. A later visit can reuse the TLS session; a 0-RTT `GET` is safe to replay, but a 0-RTT `POST` could duplicate a payment if the server accepts early data without an idempotency key.
+
+DNS is typically unauthenticated unless DNSSEC is deployed, so a resolver can be spoofed; DoH and DoT encrypt the channel to the resolver but do not by themselves authenticate the zone data. TLS protects the connection, not the name resolution that preceded it. Certificate transparency logs and OCSP or CRL checks add visibility and revocation, though soft-fail behavior is common because revocation checks can be unreliable.
+@@@ END
+
+@@@ USER
+Explain OAuth 2.0 authorization code flow with PKCE, then compare CSRF and XSS defenses. Include the PKCE code, the role of state, and concrete mitigations for both attacks.
+@@@ ASSISTANT
+OAuth 2.0 separates the resource owner, the client, the authorization server, and the resource server. In the authorization code flow, the client redirects the user to the authorization server with `client_id`, `redirect_uri`, `scope`, `state`, and for PKCE a `code_challenge` and `code_challenge_method=S256`. The user authenticates and consents; the server redirects back with a one-time authorization code. The client exchanges that code at the token endpoint, authenticating itself if it is confidential, and receives an access token and optionally a refresh token.
+
+PKCE protects public clients (mobile apps and single-page apps) that cannot keep a client secret. The client generates a high-entropy `code_verifier`, sends only its SHA-256 hash as the challenge, and later sends the raw verifier during the token exchange. An attacker who intercepts the authorization code cannot redeem it without the verifier. `state` is a separate, unpredictable value bound to the user's session; it prevents login CSRF by ensuring the callback belongs to a flow this browser started. PKCE does not replace `state`, and `state` does not replace PKCE.
+
+```python
+import base64
+import hashlib
+import secrets
+import urllib.parse
+
+verifier = secrets.token_urlsafe(64)          # 43-128 characters
+challenge = base64.urlsafe_b64encode(
+    hashlib.sha256(verifier.encode("ascii")).digest()
+).rstrip(b"=").decode("ascii")
+
+state = secrets.token_urlsafe(32)
+params = {
+    "response_type": "code",
+    "client_id": "my-public-client",
+    "redirect_uri": "https://app.example.com/callback",
+    "scope": "openid profile payments",
+    "state": state,
+    "code_challenge": challenge,
+    "code_challenge_method": "S256",
+}
+print("https://auth.example.com/authorize?" + urllib.parse.urlencode(params))
+# Store verifier and state in the server-side session, then compare state on callback.
+```
+
+Worked example: the app stores `verifier` and `state` in the session and redirects the browser. The authorization server returns `?code=abc&state=xyz`. The callback handler compares `state` with the session value; a mismatch is rejected. It then POSTs `grant_type=authorization_code`, `code=abc`, `redirect_uri`, `client_id`, and `code_verifier` to the token endpoint. The server hashes the verifier, compares it with the stored challenge, and issues tokens. An attacker who steals the code from the browser history still lacks the verifier, which never left the app's server-side session.
+
+CSRF tricks a logged-in browser into sending an authenticated request to a site where the user has a session. Defenses are `SameSite=Lax` or `Strict` cookies, a synchronizer token stored in the session and required on state-changing requests, and an `Origin` or `Referer` check. GET requests must never change state.
+
+XSS injects attacker-controlled script into a page, which then runs with the site's origin and can read tokens, call APIs, and bypass CSRF tokens. Defenses are context-aware output encoding, framework auto-escaping, a strict Content Security Policy with nonces, avoiding `innerHTML` and `eval`, sanitizing any allowed HTML with a maintained library, and marking session cookies `HttpOnly` and `Secure`. `HttpOnly` protects cookie theft but not in-page actions, so it is defense in depth rather than a complete fix. CSP should disallow inline script and restrict `script-src` origins; a policy with `unsafe-inline` provides little protection.
+
+The two attacks differ in direction: CSRF abuses the victim's ambient credentials to send a request the attacker cannot read; XSS executes attacker code inside the trusted origin and can read responses. CSRF tokens do not stop XSS, because injected script can read the token or make same-origin requests; XSS sanitization does not stop CSRF. Use both, keep access tokens out of `localStorage`, and exact-match `redirect_uri` to prevent open-redirect token theft.
+@@@ END
+

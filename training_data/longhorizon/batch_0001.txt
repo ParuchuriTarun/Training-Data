@@ -1,0 +1,1586 @@
+@@@ USER
+We run a customer analytics dashboard: React 18.2, Vite build, Recharts 2.12. The main page mounts four line charts and polls /api/metrics every 5 seconds. In production Chrome the tab's JS heap climbs about 40 MB per hour, frame time degrades, and the tab crashes after 8-10 hours. QA reproduced it once on a 12-hour soak. We do not use StrictMode in production. What is the fastest reliable way to find the leak, and what evidence do you need from me?
+@@@ ASSISTANT
+Plan: reproduce with a production build, take two heap snapshots 20 minutes apart, diff them in DevTools, then confirm the retainer path for the largest detached-object growth. Snapshots separate retained objects from fragmentation and cache growth.
+
+Do this:
+1. `npm run build && npx vite preview --port 4173`, open the dashboard in Chrome launched with `--enable-precise-memory-info`.
+2. Warm up 2 minutes, click the GC button in DevTools Memory, take snapshot A.
+3. Wait 20 minutes, force GC again, take snapshot B.
+4. Open B, choose Comparison against A, sort by "# Delta" and "Size Delta", then filter `Detached`.
+
+Send me the top 10 constructors by delta, the retainer path for one detached node, the polling hook, the parent that renders the charts, and any `key` props on the chart components. @@@ USER
+Top deltas: Detached HTMLDivElement 4,812; Detached SVGSVGElement 1,930; ResizeObserver 1,204; d3_timer 2,400; Array 180 MB. Retainer path for a detached div: `ResizeObserverController -> ChartCard useEffect -> ResizeObserver`. The parent re-renders every 5 seconds.
+
+```jsx
+const [tick, setTick] = useState(0);
+useEffect(() => {
+  const id = setInterval(() => setTick(t => t + 1), 5000);
+  return () => clearInterval(id);
+}, []);
+
+<ChartCard key={`${chart.id}-${tick}`} chart={chart}
+  onPointClick={(p) => openDrilldown(p)} />
+```
+
+ChartCard creates a ResizeObserver in an effect with `[]` deps and never disconnects it. It also runs its own 5-second interval and appends every response to `series`.
+
+The evidence points to remounting plus missing cleanup, not to Recharts itself. `key` includes `tick`, so every poll destroys and recreates all four ChartCards: 20 minutes is 240 polls, times four charts, which matches roughly 1,000 ResizeObservers and thousands of detached nodes. Each orphaned observer still holds its target div, and each interrupted Recharts animation still holds a d3 timer. The `series` append is a separate, unbounded growth bug.
+
+Fix the mount identity first, then move polling into one place with cancellation and a cap. Memoize the click handler with `useCallback` so the effect does not restart on every parent render.
+
+```diff
+-<ChartCard key={`${chart.id}-${tick}`} chart={chart}
+-  onPointClick={(p) => openDrilldown(p)} />
++<ChartCard key={chart.id} chart={chart}
++  onPointClick={openDrilldown} />
+```
+
+```jsx
+function ChartCard({ chart, onPointClick }) {
+  const hostRef = useRef(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [series, setSeries] = useState([]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const width = Math.floor(entry.contentRect.width);
+      const height = Math.floor(entry.contentRect.height);
+      setSize(prev => prev.width === width && prev.height === height
+        ? prev : { width, height });
+    });
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+    const controller = new AbortController();
+
+    async function poll() {
+      try {
+        const res = await fetch(
+          `/api/metrics?range=${encodeURIComponent(chart.range)}`,
+          { signal: controller.signal });
+        if (!res.ok) throw new Error(`metrics ${res.status}`);
+        const rows = await res.json();
+        if (!cancelled) {
+          setSeries(prev => [...prev, ...rows].slice(-120));
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') console.error(err);
+      } finally {
+        if (!cancelled) timer = setTimeout(poll, 5000);
+      }
+    }
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      controller.abort();
+    };
+  }, [chart.range]);
+
+  return (
+    <div ref={hostRef} className="chart-card">
+      {size.width > 0 && (
+        <ResponsiveContainer width={size.width} height={size.height}>
+          <LineChart data={series} onClick={onPointClick}>
+            <Line type="monotone" dataKey="value" dot={false}
+              isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+```
+
+Recursive `setTimeout` avoids overlapping requests, `AbortController` cancels on unmount, and `slice(-120)` bounds the buffer.
+@@@ USER
+Leak dropped from about 40 MB/hour to 6-8 MB/hour, but a new snapshot still shows 3,100 retained `ChartInstance` objects and 900 `d3_timer`s. The retainer is a module-level `chartRegistry` array we use for PNG export. We also have `useMemo(() => setInterval(refresh, 60000), [])` in the export toolbar.
+@@@ ASSISTANT
+That is a second, independent leak. A module-level array is a GC root, so every chart instance and everything it references lives forever. The `useMemo` interval is also wrong: `useMemo` runs during render, can run more than once, and has no cleanup path.
+
+For PNG export, drop the registry and rasterize the card:
+
+```js
+import { toPng } from 'html-to-image';
+
+export async function exportCardPng(host) {
+  return toPng(host, { pixelRatio: 2, backgroundColor: '#fff' });
+}
+```
+
+If you genuinely need the live instance, key a WeakMap by the host element so the entry dies with the DOM:
+
+```js
+const byHost = new WeakMap();
+
+export function registerChart(host, instance) {
+  if (!host) return;
+  if (instance) byHost.set(host, instance);
+  else byHost.delete(host);
+}
+
+```
+
+Capture the host for cleanup, and replace the `useMemo` interval with a normal effect:
+
+```jsx
+useEffect(() => {
+  const host = hostRef.current;
+  registerChart(host, chartRef.current);
+  return () => registerChart(host, null);
+}, []);
+
+useEffect(() => {
+  const id = setInterval(refresh, 60_000);
+  return () => clearInterval(id);
+}, [refresh]);
+```
+@@@ USER
+Registry removed, export uses html-to-image, and the heap slope over a 6-hour run is now about 1.5 MB/hour. That may just be allocator noise, but I need a test that fails when a real leak returns. How should we verify it without a 12-hour manual soak?
+@@@ ASSISTANT
+Use CDP to force a full GC before each sample, then assert on slope, not absolute heap; `performance.memory` includes uncollected garbage. This test runs in about 10 minutes and can be nightly:
+
+```ts
+import { test, expect } from '@playwright/test';
+
+test('dashboard heap stays flat', async ({ page, context }) => {
+  test.setTimeout(15 * 60_000);
+  const cdp = await context.newCDPSession(page);
+  await page.goto('/dashboard');
+  await page.waitForSelector('[data-chart-ready="true"]');
+
+  const heap = async () => {
+    await cdp.send('HeapProfiler.collectGarbage');
+    const { usedSize } = await cdp.send('Runtime.getHeapUsage');
+    return usedSize;
+  };
+
+  const samples: number[] = [];
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(30_000);
+    samples.push(await heap());
+  }
+
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const baseline = mean(samples.slice(0, 4));
+  const tail = mean(samples.slice(-4));
+  const hours = (16 * 30_000) / 3_600_000;
+  const slopePerHour = (tail - baseline) / hours;
+
+  expect(slopePerHour).toBeLessThan(4 * 1024 * 1024);
+});
+```
+
+Run it with `--project=chromium` and `workers: 1`. The 4 MB/hour threshold catches the original leak and leaves room for normal V8 growth; keep 1.5 MB/hour as a baseline.
+@@@ USER
+The d3 timers were the part I least understood. If `isAnimationActive` is false now, why did they persist before, and how do we prove animation is not silently re-enabled by a future change?
+@@@ ASSISTANT
+Recharts starts a d3 timer when a chart mounts or its data changes. Unmounting mid-animation leaves the callback holding the DOM and data until the duration elapses. With a remount every 5 seconds, animations overlapped and timers accumulated; the snapshot showed 2,400 timer objects.
+
+With a stable mount and `isAnimationActive={false}`, there should be no d3 timers for these live charts. The reliable check is the heap snapshot: after 10 minutes, filter for `d3_timer` and confirm the count is zero or constant between two snapshots. There is no stable public API that enumerates d3 timers, so do not write a unit test that spies on internals; use the snapshot as the release check. Also add a review rule: live or polling charts must set `isAnimationActive={false}`; static report charts may animate.
+@@@ USER
+Canary is at 10% for 24 hours: heap slope 0.9 MB/hour, no crash, p95 frame time back to 16 ms. What final checks should we run before calling this closed?
+@@@ ASSISTANT
+Record these in the incident ticket:
+
+1. Heap: 12-hour soak with the CDP test, slope under 4 MB/hour, `d3_timer` and detached HTMLDivElement counts flat between hour 1 and hour 12.
+2. Runtime: zero `ResizeObserver loop` errors and zero "state update on an unmounted component" warnings in the canary logs; chart tooltips, drilldowns, range switching, and PNG export still work after 30 minutes.
+3. Rollout: 10% for 24 hours, then 50% for 24 hours, then 100%; keep the old bundle available for rollback.
+4. Guardrail: nightly Playwright soak on main, alert if the slope exceeds 4 MB/hour twice in a row, and a RUM beacon every 60 seconds reporting `performance.memory.usedJSHeapSize`.
+
+Root causes: key-driven remounts, a ResizeObserver without disconnect, orphaned animation timers, an unbounded series array, overlapping fetches, and a module-level registry.
+@@@ END
+
+@@@ USER
+After deploying orders-api v2.14 at 09:12, GET /api/orders p95 went from 140 ms to 1,050 ms. p50 only moved from 90 ms to 110 ms, error rate is flat, Postgres CPU went from 62% to 88%, and Node event-loop lag p99 went from 40 ms to 70 ms. Twelve pods, pool max 20 each behind PgBouncer, no traffic change. The endpoint takes status, page, and limit. Where do you start?
+@@@ ASSISTANT
+Plan: separate time spent in Node from time spent in Postgres, then compare the new query plan against the deploy diff. A stable p50 with a tenfold p95 usually means a heavy tail: one expensive plan, lock waits, or pool queueing behind a few slow queries. General CPU saturation would move p50 too.
+
+I need four things before proposing a fix: `pg_stat_statements` top five statements by `total_exec_time` for the last hour, `EXPLAIN (ANALYZE, BUFFERS)` for the exact v2.14 SQL with realistic parameters, the deploy diff for the handler and model, and PgBouncer pool waits plus `pg_stat_activity` counts by state. Also send one slow-request trace showing the database span versus the Node span, so we know whether the 1,050 ms is query execution or waiting for a connection.
+@@@ USER
+Deploy diff added an optional status filter and changed the sort:
+
+```diff
++ if (req.query.status) where.status = req.query.status;
++ order: [['created_at', 'DESC']],
+- order: [['id', 'DESC']],
+```
+
+`EXPLAIN (ANALYZE, BUFFERS)` shows `Seq Scan on orders (cost=0.00..912344.10 rows=8,400,000)` then a 780 ms sort, then a nested loop over `order_items`. `pg_stat_statements` for the count query: 1.2M calls, mean 810 ms, total 270 hours. Pool `waiting_count` is 12 and acquire p95 is 300 ms. Existing indexes: primary key and `(customer_id)`. Status distribution: paid 71%, pending 12%, cancelled 9%, refunded 6%, open 2%.
+@@@ ASSISTANT
+Evidence closes the loop: the new `ORDER BY created_at DESC` cannot use the `customer_id` index, so Postgres scans and sorts 8.4 million rows for the count, and the pool queue turns that into a p95 spike. The status filter is fine; the missing index and the count-every-request pattern are the problem.
+
+Plan update: add a composite index sized for the filter and sort, then stop recomputing the count on every page. Because `open` is 2%, the index is selective enough; a partial index would only complicate the other statuses. Run this outside a transaction, because `CONCURRENTLY` cannot be inside one:
+
+```sql
+SET lock_timeout = '5s';
+SET statement_timeout = '0';
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_status_created_id
+ON orders (status, created_at DESC, id DESC)
+INCLUDE (customer_id, total_cents);
+
+ANALYZE orders;
+```
+
+Verify `pg_index.indisvalid` before trusting it; if false, drop and rebuild concurrently. Expect 15-40 minutes on 8.4M rows and 5-10% more write cost. Measure it.
+@@@ USER
+Index is live: p95 260 ms, p50 95 ms. Two problems remain. Deep pages (`page=400`) still take 2.1 seconds, and during the deploy the count cache stampeded and pushed DB CPU to 96%. Also, the count query still shows up because Sequelize's `findAndCountAll` runs it every request.
+@@@ ASSISTANT
+Plan update: replace offset pagination with keyset pagination, and make the count a cached, single-flight lookup that may be a few seconds stale. Offset pagination is O(offset) even with a perfect index, so page 400 will always be slow.
+
+```js
+function cursorOf(row) {
+  return Buffer.from(JSON.stringify({
+    t: row.created_at.toISOString(), id: String(row.id),
+  })).toString('base64url');
+}
+
+async function listOrders({ status, cursor, limit }) {
+  const p = [status];
+  let where = 'status = $1';
+  if (cursor) {
+    const c = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    p.push(c.t, c.id);
+    where += ' AND (created_at, id) < ($2::timestamptz, $3::bigint)';
+  }
+  p.push(limit + 1);
+  const { rows } = await pool.query(`
+    SELECT id, customer_id, status, total_cents, created_at
+    FROM orders WHERE ${where}
+    ORDER BY created_at DESC, id DESC LIMIT $${p.length}`, p);
+  const page = rows.slice(0, limit);
+  return {
+    items: page,
+    nextCursor: rows.length > limit ? cursorOf(page.at(-1)) : null,
+  };
+}
+```
+
+For the count, use a 30-second TTL, a per-process in-flight map, and a short Redis lock so one pod recomputes after expiry:
+
+```js
+const inflight = new Map();
+
+async function getCount(status) {
+  const key = `orders:count:${status}`;
+  const hit = await redis.get(key);
+  if (hit !== null) return Number(hit);
+  if (inflight.has(key)) return inflight.get(key);
+
+  const task = (async () => {
+    const lock = await redis.set(`${key}:lock`, '1', 'PX', 5000, 'NX');
+    if (!lock) {
+      await new Promise(r => setTimeout(r, 100));
+      return Number(await redis.get(key));
+    }
+    try {
+      const { rows } = await pool.query(
+        'SELECT count(*)::bigint AS n FROM orders WHERE status = $1', [status]);
+      await redis.set(key, String(rows[0].n), 'EX', 30);
+      return Number(rows[0].n);
+    } finally {
+      await redis.del(`${key}:lock`);
+    }
+  })().finally(() => inflight.delete(key));
+
+  inflight.set(key, task);
+  return task;
+}
+```
+@@@ USER
+The keyset query uses the index, but the count cache still returns a stale number after a status change, and one pod that missed the lock waits 100 ms then returns `null` if the value is still absent. How do we make that correct under load without turning the count into a consistency requirement?
+@@@ ASSISTANT
+Treat the count as an approximate UI value, not an invariant, and make the miss path never return `null`. On a lock miss, retry the cache read with backoff, then fall back to a bounded estimate instead of scanning the table.
+
+```js
+async function readBackoff(key) {
+  for (let i = 0; i < 4; i++) {
+    const v = await redis.get(key);
+    if (v !== null) return Number(v);
+    await new Promise(r => setTimeout(r, 20 * 2 ** i + Math.random() * 20));
+  }
+  return null;
+}
+
+async function getCount(status) {
+  const waited = await readBackoff(`orders:count:${status}`);
+  if (waited !== null) return { value: waited, approximate: false };
+
+  const selectivity = {
+    open: 0.02, pending: 0.12, cancelled: 0.09, refunded: 0.06,
+  }[status] ?? 0.71;
+  const { rows } = await pool.query(
+    'SELECT (reltuples * $1)::bigint AS n FROM pg_class WHERE relname = $2',
+    [selectivity, 'orders']);
+  return { value: Number(rows[0].n), approximate: true };
+}
+```
+
+Expose `approximate` so the UI renders "about 1,240" and skips exact totals. Invalidate `orders:count:${status}` after a committed status change, but keep the TTL as the safety net. If the product needs exact totals, compute them from a nightly materialized view, not from the request path.
+@@@ USER
+Load test with k6 at 200 virtual users: page 1 p95 180 ms, page 20 p95 240 ms, page 400 p95 210 ms, DB CPU 55%, cache hit rate 94%. But the test also showed 0.4% 500s when Redis was restarted mid-run. What should we do before calling this done?
+@@@ ASSISTANT
+The latency goal is met; the 500s are a new failure mode introduced by making Redis part of the request path. Every Redis call in the count path needs a short timeout and a fallback to the approximate count, not an exception. Wrap the call in `Promise.race` with a 50 ms timer and catch; on timeout, mark the response approximate and increment a metric.
+
+Then verify before rollout:
+
+1. Re-run k6 with Redis stopped for 60 seconds; assert 0% 5xx and count responses marked approximate.
+2. Check `EXPLAIN (ANALYZE, BUFFERS)` for `open` and `paid`; confirm an index scan and no sort.
+3. Confirm `idx_scan` for `idx_orders_status_created_id` grows under load and the old count query calls fall to near zero.
+4. Canary 10% for one hour, then 50%, then 100%; watch p95, DB CPU, pool waits, and 5xx.
+5. Add alerts for p95 over 400 ms for 10 minutes and Redis error rate over 1% for 5 minutes.
+
+Add a CI test that seeds one million orders and asserts the endpoint plan contains no `Seq Scan on orders`; that catches a future `ORDER BY` change before production.
+@@@ USER
+Canary is clean at 100% for six hours: p95 190 ms, p50 92 ms, zero 5xx, Redis failover caused no errors. The count is approximate, which product accepted. Anything else to close out?
+@@@ ASSISTANT
+Close it with evidence and follow-ups:
+
+- Record the before/after numbers: p95 1,050 to 190 ms, p50 110 to 92 ms, DB CPU 88% to 55%, count query calls 1.2M/hour to near zero.
+- Keep the index; drop any index the migration made redundant only after a week of `idx_scan` data.
+- Watch write p95 for one week; if it rises more than 10%, review index count and bloat before adding another.
+- Add a nightly `EXPLAIN` regression test for the three most common status values.
+- Document that counts are cached and approximate for up to 40 seconds, including invalidation.
+- Remove `findAndCountAll` from the handler so nobody reintroduces the count scan.
+
+The root cause was sorting by an unindexed column and recomputing an expensive count in the request path. The index fixed the plan, keyset pagination fixed deep offsets, and caching plus fail-open behavior fixed the tail and the new Redis dependency.
+@@@ END
+
+@@@ USER
+Our Playwright checkout test fails about 1 in 5 GitHub Actions runs and always passes locally. The failure is usually `expect(locator).toBeVisible: Timeout 5000ms` waiting for "Payment successful"; sometimes the redirect lands on an empty cart. The test clicks Pay, calls `page.waitForTimeout(400)`, then asserts the toast. Four workers, shared staging API. We do not want to paper over it with retries. How do we find the real race?
+@@@ ASSISTANT
+Plan: reproduce under the same parallelism, capture a trace of a failing run, and read the network waterfall around the click. Retries hide the bug; `waitForTimeout` is a guess that is shorter than CI's slowest response. I need the test file, `playwright.config.ts`, the trace, and whether the test seeds its own user or uses a shared account.
+
+Run this locally first:
+
+```bash
+npx playwright test checkout.spec.ts --repeat-each=25 --workers=4 --trace=on
+```
+
+Then open the failing trace and look at three timestamps: when the button became clickable, when the POST /api/checkout request started and finished, and when the toast appeared. If the toast is rendered after the response but the assertion starts before the response, it is a synchronization bug in the test. If the cart is empty before the click, it is shared-state contamination.
+@@@ USER
+Test code:
+
+```ts
+test('checkout', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Add to cart' }).click();
+  await page.goto('/checkout');
+  await page.getByLabel('Email').fill('qa@example.com');
+  await page.getByRole('button', { name: 'Pay' }).click();
+  await page.waitForTimeout(400);
+  await expect(page.getByText('Payment successful')).toBeVisible();
+});
+```
+
+Trace: POST /api/checkout returns 200 at 690 ms after click; the toast mounts at 720 ms. The assertion starts at 400 ms and times out at 5,400 ms even though the toast exists at 4,720 ms? No, the trace shows the assertion's locator resolved to a detached node from the previous render. In other runs the cart POST returns 409 "cart empty" before the click because another worker cleared it. All workers use `qa@example.com`.
+@@@ ASSISTANT
+Two separate defects. First, the fixed 400 ms sleep is shorter than the 690 ms API response, and the locator can bind to a toast node that is replaced during the redirect. Second, all four workers share one account and one cart, so one worker's cleanup empties another worker's cart.
+
+Plan update: isolate test data per worker first, then replace every timing guess with a web-first assertion tied to the actual response.
+
+```ts
+test('checkout', async ({ page, request }, testInfo) => {
+  const email = `qa+${testInfo.workerIndex}-${Date.now()}-${Math.random()
+    .toString(36).slice(2, 8)}@example.com`;
+
+  const created = await request.post('/api/test/users', {
+    data: { email },
+    headers: { 'x-test-secret': process.env.TEST_SECRET! },
+  });
+  expect(created.ok()).toBeTruthy();
+  const { userId } = await created.json();
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Add to cart' }).click();
+  await expect(page.getByTestId('cart-count')).toHaveText('1');
+
+  await page.goto('/checkout');
+  await page.getByLabel('Email').fill(email);
+
+  const [response] = await Promise.all([
+    page.waitForResponse(r =>
+      r.url().endsWith('/api/checkout') && r.request().method() === 'POST'),
+    page.getByRole('button', { name: 'Pay' }).click(),
+  ]);
+  expect(response.status()).toBe(200);
+
+  await expect(page.getByRole('status'))
+    .toContainText('Payment successful', { timeout: 10_000 });
+
+  await request.delete(`/api/test/users/${userId}`, {
+    headers: { 'x-test-secret': process.env.TEST_SECRET! },
+  });
+});
+```
+
+`getByRole('status')` targets the live region rather than any text node, and Playwright retries the assertion until the timeout. The `waitForResponse` promise starts before the click, so there is no window where the response is missed. The per-worker email removes the shared cart entirely.
+@@@ USER
+Still 1 in 40. Trace shows the Pay button is enabled at 110 ms, the click happens at 120 ms, but the cart GET finishes at 300 ms. The click handler reads `cart.id` from state, gets `undefined`, and the API returns 409. The test also sometimes runs against a service worker serving yesterday's bundle in preview.
+@@@ ASSISTANT
+That is an application readiness bug, not just a test bug: the button is interactive before the data it depends on exists. Fix the component so it cannot submit without a cart, and make the test wait for that state instead of guessing.
+
+```jsx
+function CheckoutButton({ cart, isLoading, onPay }) {
+  const disabled = isLoading || !cart?.items?.length || !cart?.id;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      data-testid="pay-button"
+      onClick={() => onPay(cart.id)}
+    >
+      Pay
+    </button>
+  );
+}
+```
+
+If the cart query can fail, render an explicit error instead of an enabled button. In the test, wait for the enabled state, which Playwright polls:
+
+```ts
+const pay = page.getByTestId('pay-button');
+await expect(pay).toBeEnabled();
+await pay.click();
+```
+
+Block the service worker in tests so preview cannot serve a stale bundle:
+
+```ts
+// playwright.config.ts
+use: {
+  serviceWorkers: 'block',
+  trace: 'retain-on-failure',
+  video: 'retain-on-failure',
+},
+```
+
+Also add `Cache-Control: no-store` to the preview HTML or unregister the worker in the test environment; otherwise you are testing an old build and the failure looks random.
+@@@ USER
+The 409s persisted until we changed cleanup. Our `afterEach` called `DELETE /api/test/cart` with the shared user cookie, which deleted whichever cart was current, including another worker's. We now have the user id, but cleanup still races with the next test because deletion is async. How should the fixture work?
+@@@ ASSISTANT
+Make cleanup target the exact resource you created and await it; never delete "the current cart" for a shared identity. Put creation and teardown in a fixture so a failed test still cleans up its own data.
+
+```ts
+import { test as base, expect } from '@playwright/test';
+
+type Fixtures = { buyer: { id: string; email: string; cartId: string } };
+
+export const test = base.extend<Fixtures>({
+  buyer: async ({ request }, use, testInfo) => {
+    const email = `qa+${testInfo.workerIndex}-${Date.now()}-${Math.random()
+      .toString(36).slice(2, 8)}@example.com`;
+    const userRes = await request.post('/api/test/users', {
+      data: { email },
+      headers: { 'x-test-secret': process.env.TEST_SECRET! },
+    });
+    expect(userRes.ok()).toBeTruthy();
+    const user = await userRes.json();
+
+    const cartRes = await request.post('/api/test/carts', {
+      data: { userId: user.id, sku: 'sku_123', quantity: 1 },
+      headers: { 'x-test-secret': process.env.TEST_SECRET! },
+    });
+    expect(cartRes.ok()).toBeTruthy();
+    const cart = await cartRes.json();
+
+    await use({ id: user.id, email, cartId: cart.id });
+
+    await request.delete(`/api/test/users/${user.id}`, {
+      headers: { 'x-test-secret': process.env.TEST_SECRET! },
+    });
+  },
+});
+```
+
+Deleting the user cascades to that user's carts, sessions, and orders in the test database. The fixture's teardown runs even when the test fails. If your API does not have test-only endpoints, create the same rows through a direct database fixture with a unique tenant id; do not reuse a global account.
+@@@ USER
+Ran `--repeat-each=200 --workers=4` against the fixed app: zero failures. CI has been green for 25 runs. What should we add so this stays fixed and future flakes are visible without blocking every PR?
+@@@ ASSISTANT
+Add three layers: fast deterministic checks on every PR, a heavier repeat run nightly, and flake telemetry so you can see the difference between a real regression and infrastructure noise.
+
+```ts
+// playwright.config.ts
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  retries: 0, // surface flakes on the PR that introduced them
+  workers: process.env.CI ? 4 : undefined,
+  reporter: [
+    ['list'],
+    ['junit', { outputFile: 'results/junit.xml' }],
+    ['html', { open: 'never' }],
+  ],
+  use: {
+    baseURL: process.env.BASE_URL ?? 'http://localhost:3000',
+    serviceWorkers: 'block',
+    trace: 'retain-on-failure',
+    video: 'retain-on-failure',
+  },
+});
+```
+
+Nightly job:
+
+```bash
+npx playwright test checkout.spec.ts --repeat-each=20 --workers=4
+```
+
+Tag the checkout spec `@critical` and run it with `--grep @critical` on every PR; run the full suite nightly. Parse `results/junit.xml` and publish a flake rate per test; alert if any test fails more than 1% over 7 days. Keep `retries: 0` in the blocking job; if you need retries for a known third-party dependency, isolate that test and mark it non-blocking rather than retrying the whole suite.
+@@@ USER
+Final verification: what exactly should we check in the trace and in the app to prove the race is gone, not just less likely?
+@@@ ASSISTANT
+Prove it at three levels:
+
+1. Test-level: in a passing trace, the Pay button's enabled timestamp is after the cart GET response, the checkout request starts after the click, and the toast assertion starts after the 200 response. There should be no `waitForTimeout` in the spec.
+2. App-level: throttle the cart API to 2 seconds and run the spec. The button must remain disabled until the response arrives; clicking it programmatically must not send a request with an undefined cart id. This proves the readiness guard, not just test timing.
+3. Data-level: run 200 repeats with four workers and query the test database afterward for duplicate users, orphan carts, and orders attached to the wrong user. All three counts must be zero.
+
+Also run the suite against a production build with the service worker enabled once, to confirm the app still works; keep the test run itself with service workers blocked. If all three pass, the original race is closed and the isolation bug cannot recur silently.
+@@@ END
+
+@@@ USER
+Postgres 15, one primary and two replicas, PgBouncer in front. Table `events`: 380 million rows, 900 GB, 4k writes/s peak, 1.2k reads/s. I need to add `tenant_id bigint NOT NULL` backfilled from `accounts.tenant_id` through `account_id`, add an index on `(tenant_id, created_at)`, and convert `payload json` to `jsonb`. We cannot block writes for more than two seconds. The app deploys twice a day. What is the safest sequence?
+@@@ ASSISTANT
+Plan: use expand/contract. Add nullable columns, deploy dual-writes, backfill in committed batches, validate a check constraint, build the index concurrently, then switch reads and only later drop the old column. A direct `ALTER COLUMN TYPE json USING payload::jsonb` rewrites 900 GB under an ACCESS EXCLUSIVE lock, so that is off the table. Adding a nullable column is metadata-only; adding a default on PG 11+ is also metadata-only, but `SET NOT NULL` still needs proof that no nulls remain.
+
+Before I write the scripts, confirm three things:
+
+1. Is `tenant_id` immutable for an account? If an account can move tenants, the backfill and the app's dual-write need a rule for historical rows.
+2. Can the app write both columns in the same transaction for both inserts and updates?
+3. What replication lag can you tolerate? The backfill generates WAL, and the replicas must keep up.
+
+Assume immutable for now; if that is wrong, stop and redesign before backfilling.
+@@@ USER
+Tenant is immutable. The app can dual-write inserts and updates. Lag budget is 30 seconds; we would like to stay under 10. Payload averages 2 KB. We can deploy twice a day. Give me the phases with exact SQL.
+@@@ ASSISTANT
+Phase 0, deploy once, metadata only:
+
+```sql
+ALTER TABLE events ADD COLUMN tenant_id bigint;
+ALTER TABLE events ADD COLUMN payload_jsonb jsonb;
+```
+
+Phase 1, app deploy: every insert and update writes `tenant_id` and `payload_jsonb` in the same transaction as the old columns. Reads still use `payload`.
+
+```js
+await trx('events')
+  .insert({
+    ...row,
+    tenant_id: account.tenant_id,
+    payload_jsonb: row.payload,
+  });
+```
+
+Phase 2, after dual-write is live, add the constraint as NOT VALID. It still checks new rows, which is what you want:
+
+```sql
+ALTER TABLE events
+  ADD CONSTRAINT events_tenant_id_nn CHECK (tenant_id IS NOT NULL) NOT VALID;
+```
+
+Phase 3, backfill historical rows in committed batches. Do not wrap the whole table in one transaction; that creates bloat, holds locks, and makes replication lag unbounded.
+
+Phase 4, index concurrently. It cannot run inside a transaction:
+
+```sql
+SET statement_timeout = '0';
+SET lock_timeout = '5s';
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_events_tenant_created
+ON events (tenant_id, created_at DESC)
+WHERE tenant_id IS NOT NULL;
+```
+
+Phase 5, validate the constraint. `VALIDATE CONSTRAINT` takes SHARE UPDATE EXCLUSIVE, so reads and writes continue:
+
+```sql
+ALTER TABLE events VALIDATE CONSTRAINT events_tenant_id_nn;
+```
+
+Then `SET NOT NULL`, which on PG 12+ can use the validated check constraint and avoid a full scan:
+
+```sql
+SET lock_timeout = '2s';
+ALTER TABLE events ALTER COLUMN tenant_id SET NOT NULL;
+```
+
+Phase 6, switch reads to `payload_jsonb` behind a feature flag, compare results, then stop writing `payload`. Drop it in a later deploy after a rollback window.
+@@@ USER
+The backfill at 50,000-row batches pushed replica lag to 45 seconds, and we hit deadlocks with normal app updates on the same rows. The app updates an event and its audit row in one transaction. How do we throttle and avoid the deadlocks?
+@@@ ASSISTANT
+Plan update: use 2,000-row batches, short retryable statements, and pace on measured replica lag. `SKIP LOCKED` stops the backfill from waiting, but it does not prevent deadlocks when the app locks multiple rows in a different order; `lock_timeout` plus retry is the practical fix.
+
+```js
+const { Client } = require('pg');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function lagSeconds(client) {
+  const { rows } = await client.query(`
+    SELECT COALESCE(MAX(EXTRACT(EPOCH FROM replay_lag)), 0)::float AS lag
+    FROM pg_stat_replication`);
+  return rows[0].lag;
+}
+
+async function main() {
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  await client.query("SET statement_timeout = '30s'");
+  await client.query("SET lock_timeout = '200ms'");
+  await client.query('SELECT pg_advisory_lock(424242)');
+
+  let lastId = '0';
+  for (;;) {
+    if (await lagSeconds(client) > 10) {
+      await sleep(1000);
+      continue;
+    }
+    try {
+      const { rows } = await client.query(`
+        WITH batch AS (
+          SELECT e.id
+          FROM events e
+          WHERE e.id > $1::bigint AND e.tenant_id IS NULL
+          ORDER BY e.id
+          LIMIT 2000
+          FOR UPDATE OF e SKIP LOCKED
+        )
+        UPDATE events e
+        SET tenant_id = a.tenant_id,
+            payload_jsonb = e.payload::jsonb
+        FROM batch b, accounts a
+        WHERE e.id = b.id AND a.id = e.account_id
+        RETURNING e.id`, [lastId, 2000]);
+
+      if (!rows.length) break;
+      lastId = rows[rows.length - 1].id;
+      await sleep(50);
+    } catch (err) {
+      if (['40001', '40P01', '55P03'].includes(err.code)) {
+        await sleep(500);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  await client.query(`
+    UPDATE events e
+    SET tenant_id = a.tenant_id,
+        payload_jsonb = e.payload::jsonb
+    FROM accounts a
+    WHERE a.id = e.account_id AND e.tenant_id IS NULL`);
+  await client.query('SELECT pg_advisory_unlock(424242)');
+  await client.end();
+}
+
+main().catch(err => { console.error(err); process.exit(1); });
+```
+
+The sweep only touches historical rows. Run it off-peak; if too large, repeat with `LIMIT` until zero nulls.
+@@@ USER
+Backfill finished in nine hours, zero nulls. The index built in 22 minutes and is valid. `VALIDATE CONSTRAINT` completed without blocking writes. What should we check before switching reads to `payload_jsonb` and setting NOT NULL?
+@@@ ASSISTANT
+Run consistency checks first; do not switch reads on faith.
+
+```sql
+-- 1. No missing tenant ids.
+SELECT count(*) AS missing FROM events WHERE tenant_id IS NULL;
+
+-- 2. Every tenant matches the account mapping.
+SELECT count(*) AS mismatched
+FROM events e
+JOIN accounts a ON a.id = e.account_id
+WHERE e.tenant_id IS DISTINCT FROM a.tenant_id;
+
+-- 3. Every old payload has a new payload.
+SELECT count(*) AS missing_payload
+FROM events
+WHERE payload IS NOT NULL AND payload_jsonb IS NULL;
+
+-- 4. Semantic equality on a sample, since jsonb normalizes key order
+--    and duplicate keys.
+SELECT count(*) AS unequal
+FROM (
+  SELECT payload, payload_jsonb
+  FROM events
+  TABLESAMPLE SYSTEM (1)
+  WHERE payload IS NOT NULL
+) s
+WHERE s.payload::jsonb <> s.payload_jsonb;
+```
+
+If all four are zero, set NOT NULL with a short lock timeout and retry if it cannot acquire the lock immediately:
+
+```sql
+SET lock_timeout = '2s';
+ALTER TABLE events ALTER COLUMN tenant_id SET NOT NULL;
+```
+
+Then switch reads behind a flag for 5% of traffic, compare `payload_jsonb` against `payload` in the response, and ramp to 100%. Keep dual-writes on. Check the index is actually used:
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT id, created_at
+FROM events
+WHERE tenant_id = 12345
+ORDER BY created_at DESC
+LIMIT 50;
+```
+
+Expect an index scan on `idx_events_tenant_created`, not a sequential scan and sort.
+@@@ USER
+SET NOT NULL took 1.4 seconds. Reads are on `payload_jsonb` at 100%. Can we drop `payload` now, and what is the rollback story if the new column has a semantic difference we missed?
+@@@ ASSISTANT
+Not yet. Keep `payload` for at least one full business cycle, and keep dual-writes until you have compared a week of real responses. Dropping a column is fast but takes ACCESS EXCLUSIVE; a long-running query or idle-in-transaction session can block it, and then it blocks everything behind it.
+
+Use this when you are ready:
+
+```sql
+SET lock_timeout = '2s';
+ALTER TABLE events DROP COLUMN payload;
+```
+
+If it cannot get the lock, it fails cleanly; retry later rather than raising the timeout. The column drop is metadata-only, but the space is not returned to the OS until the table is rewritten or `pg_repack` is run. Do not rewrite a 900 GB table just to reclaim space unless you have measured a real problem.
+
+Rollback before the drop: flip the read flag back to `payload`, keep dual-writes, investigate. Rollback after the drop: you cannot recover the old column without a backup or a logical replica; that is why the drop is the last step, not part of the cutover. Take a logical dump of a sample and keep the old application deployable for the same window.
+@@@ USER
+What final verification proves the migration is safe under production load, and how do we monitor the drop window?
+@@@ ASSISTANT
+Run a load test against a staging copy at 1.5x peak, with dual-writes and reads on `payload_jsonb`, and record:
+
+- p95 write latency and p95 read latency versus the pre-migration baseline; the extra column and index should cost less than 10%.
+- Replica lag p95 and max; it must stay under 10 seconds.
+- `pg_stat_activity` waits: no long `Lock: relation` waits and no idle-in-transaction sessions over 30 seconds.
+- `pg_stat_user_indexes.idx_scan` for the new index; it must increase during the read workload.
+- `pg_stat_statements` for the event insert and update; compare mean time before and after.
+
+During the drop window, watch this query every few seconds:
+
+```sql
+SELECT pid, state, wait_event_type, wait_event,
+       now() - xact_start AS xact_age,
+       left(query, 120) AS query
+FROM pg_stat_activity
+WHERE datname = current_database()
+  AND (wait_event_type = 'Lock' OR state = 'idle in transaction')
+ORDER BY xact_age DESC;
+```
+
+If a session is blocking the DDL, cancel that session, not the DDL, then retry. After the drop, run `ANALYZE events`, confirm the app has no references to `payload`, and keep the old deploy artifact for one week. The migration is complete when the checks are zero, the index is used, replica lag is normal, and the drop has survived a full traffic cycle.
+@@@ END
+
+@@@ USER
+We see intermittent 502s: about 0.2-0.5% of requests, in bursts roughly every 10 minutes. Nginx 1.24 proxies to a Node 20 cluster with four workers, and an AWS ALB sits in front of Nginx. The error is always `upstream prematurely closed connection while reading response header from upstream`. Some POSTs fail. Node logs show nothing. How do we diagnose this without guessing at timeouts?
+@@@ ASSISTANT
+Plan: correlate the 502 timestamps with connection reuse and idle timeouts, then inspect the full timeout chain: ALB, Nginx, and Node. The error means Nginx wrote a request onto a connection the upstream had already closed; it is a keepalive race until proven otherwise.
+
+Send me:
+
+1. Ten 502 lines from the Nginx error log with timestamps and upstream addresses.
+2. `nginx -T` output for the `http`, `upstream`, and relevant `location` blocks.
+3. The Node server bootstrap, including `listen`, `keepAliveTimeout`, and `headersTimeout`.
+4. The ALB idle timeout and target group deregistration delay.
+5. Whether the 502s cluster around 5 seconds, 60 seconds, or 65 seconds after the previous request on that connection.
+
+`ss -tan` on the Node hosts is also useful: a large `TIME_WAIT` count on the upstream port suggests connections are being closed by Node rather than reused.
+@@@ USER
+Nginx config has `keepalive_timeout 65s`, `upstream api { server 10.0.0.11:3000; keepalive 32; }`, and no `proxy_http_version` or `Connection` header. Node calls `app.listen(3000)` with no timeout settings. ALB idle timeout is 60 seconds. Error timestamps are often 5.0-5.2 seconds after the previous request on the same connection. `ss` shows many `TIME_WAIT` entries on port 3000.
+@@@ ASSISTANT
+That is the classic keepalive mismatch. Node's default `server.keepAliveTimeout` is 5 seconds; Nginx keeps upstream connections for 65 seconds. At 5.001 seconds Nginx may pick an idle connection at the same moment Node closes it, and the request is lost before a response header exists. The missing `proxy_http_version 1.1` also means Nginx may use HTTP/1.0 upstream, so `keepalive` is not actually working as intended.
+
+Plan update: make Node's idle timeout longer than Nginx's, and Nginx's longer than the ALB's, with the headers timeout above the keepalive timeout.
+
+```js
+const server = app.listen(3000, () => {
+  console.log('listening on 3000');
+});
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
+server.requestTimeout = 30_000;
+```
+
+```nginx
+upstream api {
+    server 10.0.0.11:3000;
+    keepalive 64;
+    keepalive_timeout 60s;
+}
+
+server {
+    location /api/ {
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_connect_timeout 2s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+        proxy_next_upstream error timeout http_502;
+        proxy_next_upstream_tries 2;
+    }
+}
+```
+
+Keep the ALB idle timeout at 60 seconds and the Node keepalive at 65 seconds so the load balancer never closes a connection Nginx is about to reuse. `proxy_next_upstream` does not retry non-idempotent POSTs unless you add `non_idempotent`, so leave that off.
+@@@ USER
+502s are gone for 48 hours. Now we get 504s on large CSV uploads and `client intended to send too large body`. The upload endpoint streams to S3 but takes 2-4 minutes for 200 MB files. What changed, and how do we tune this without reintroducing the 502 race?
+@@@ ASSISTANT
+Nothing regressed in the keepalive fix; you are now hitting the proxy's default body and read limits. `client_max_body_size` defaults to 1 MB, and `proxy_read_timeout` defaults to 60 seconds, so a slow upload or long S3 operation produces 413 or 504.
+
+Use a dedicated location for uploads so you do not loosen limits for the whole API:
+
+```nginx
+location /api/uploads/ {
+    client_max_body_size 250m;
+    client_body_timeout 60s;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_request_buffering off;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+    proxy_next_upstream off;
+}
+```
+
+`proxy_request_buffering off` forwards the body as it arrives instead of writing the whole file to a temp file first. Do not add `proxy_next_upstream` here: retrying a partially consumed upload is worse than failing it. On the Node side, `server.requestTimeout` must exceed the upload duration; set it to 300 seconds for this service, or handle the upload on a separate listener with its own limits. `headersTimeout` stays at 66 seconds because it only covers headers, not the body.
+@@@ USER
+Uploads work, but we still see occasional 499s and the Node process's memory spikes when several 200 MB uploads run concurrently. The handler pipes `req` into an S3 multipart upload. Is the 499 a server problem or a client problem, and how do we bound memory?
+@@@ ASSISTANT
+499 means the client closed the connection before Nginx sent a response; Nginx is reporting the symptom, not causing it. Common causes are a client-side timeout shorter than the upload, a user cancel, or an ALB target that stops responding. Check the client timeout and the ALB access logs for the same request; if the client gave up at 30 seconds, fix the client contract or return `202 Accepted` sooner.
+
+The memory spike is separate: `req` is a stream, but if any middleware buffers it, or if you collect chunks before the S3 call, you hold the whole file per request. Keep the stream end to end and bound concurrency:
+
+```js
+import { PassThrough } from 'node:stream';
+import { Upload } from '@aws-sdk/lib-storage';
+
+const uploadsInFlight = new Set();
+const MAX_CONCURRENT_UPLOADS = 8;
+
+app.post('/api/uploads', async (req, res) => {
+  if (uploadsInFlight.size >= MAX_CONCURRENT_UPLOADS) {
+    return res.status(429).json({ error: 'too_many_uploads' });
+  }
+  const key = `uploads/${crypto.randomUUID()}.csv`;
+  const body = new PassThrough();
+  const upload = new Upload({
+    client: s3,
+    params: { Bucket: bucket, Key: key, Body: body },
+    queueSize: 4,
+    partSize: 8 * 1024 * 1024,
+  });
+
+  uploadsInFlight.add(key);
+  req.pipe(body);
+  try {
+    await upload.done();
+    res.status(201).json({ key });
+  } catch (err) {
+    req.unpipe(body);
+    body.destroy();
+    res.status(500).json({ error: 'upload_failed' });
+  } finally {
+    uploadsInFlight.delete(key);
+  }
+});
+```
+
+Do not call `express.json()` on this route. If the CSV is parsed after upload, do it in a worker reading from S3, not in the request process.
+@@@ USER
+We capped uploads at 8 and memory is flat. The 499s dropped but did not disappear. How do we prove the remaining ones are client-side and not a hidden proxy timeout?
+@@@ ASSISTANT
+Compare three timestamps for the same request id: when the client sent the last byte, when Nginx logged 499, and when the ALB logged the target response. If Nginx logs 499 while the upstream is still active and the client connection is gone, the client or an intermediary closed it. If the ALB logs a 504 first, the proxy chain timed out.
+
+Add a request id at the edge and propagate it:
+
+```nginx
+proxy_set_header X-Request-Id $request_id;
+```
+
+Then correlate:
+
+```bash
+grep 'X-Request-Id' /var/log/nginx/access.log
+```
+
+Also check the client's HTTP timeout; a 30-second SDK default will abort a 4-minute upload. If the product needs long uploads, return `202` with an upload id as soon as the stream is accepted and let the client poll status, so no single HTTP request has to stay open for minutes.
+@@@ USER
+After all changes: 72 hours with zero 502s, upload 504s gone, memory flat, 499 rate 0.02% and explained by client cancellations. What should we put in place so this does not regress?
+@@@ ASSISTANT
+Lock the timeout chain into configuration tests and alerts:
+
+1. Add a CI check that parses `nginx -T` and asserts `keepalive_timeout` on the upstream is less than Node's `keepAliveTimeout`, which is less than the ALB idle timeout. A unit test cannot catch a config drift across three systems; this can.
+2. Keep an idle-connection regression test: open a TCP connection to Nginx, wait 5.2 seconds, send a request, assert a 200 and no reset. Run 1,000 iterations in staging.
+3. Alert on 502 rate over 0.05% for 5 minutes, 504 rate over 0.1%, and upstream `TIME_WAIT` growth above baseline.
+4. Add a dashboard panel for Nginx `upstream_response_time` and `upstream_connect_time`; a rising connect time means the pool is unhealthy before users see 502s.
+5. Document the chain: ALB 60s, Nginx upstream keepalive 60s, Node keepalive 65s, Node headers 66s, upload location read timeout 300s.
+6. Keep `proxy_next_upstream` limited to idempotent methods; do not add `non_idempotent`.
+
+Final verification is the 72-hour window plus the idle test and the config assertion. That combination catches the original race and the upload limits, not just the symptom that paged you.
+@@@ END
+
+@@@ USER
+After a Stripe incident, they retried webhooks for two hours. We sent duplicate receipt emails and one customer received double account credits. Our Express app uses `app.use(express.json())` globally, and signature verification often fails with `No signatures found matching the expected signature`. We need idempotent handling with replay protection, not another retry wrapper. Where do we start?
+@@@ ASSISTANT
+Plan: fix signature verification first by giving the webhook route the raw request body, then make event processing idempotent with a database unique key, and move side effects into a transactional outbox. Stripe delivers at least once and may deliver out of order, so the handler must be safe to run twice with the same event id and safe to run after a later event for the same object.
+
+I need your current handler, the `orders` and credit tables, whether email is sent synchronously, and whether you have a queue. The signature failure is almost certainly caused by `express.json()` parsing and re-serializing the body before `constructEvent` sees it; the duplicate email is a separate missing-dedupe problem.
+@@@ USER
+Handler:
+
+```js
+app.use(express.json());
+
+app.post('/webhooks/stripe', async (req, res) => {
+  const event = stripe.webhooks.constructEvent(
+    req.body, req.headers['stripe-signature'], process.env.STRIPE_SECRET);
+  if (event.type === 'checkout.session.completed') {
+    const order = await Order.findByPk(event.data.object.client_reference_id);
+    order.status = 'paid';
+    await order.save();
+    await sendReceipt(order);
+  }
+  res.json({ received: true });
+});
+```
+
+Postgres, no queue, SES called inline. We also credit loyalty points in the same block.
+@@@ ASSISTANT
+Two structural problems: the body is parsed before verification, and the business effects plus email are not protected by an idempotency record. Fix both in one change.
+
+Mount the raw parser only on the webhook path, before the global JSON parser:
+
+```js
+app.post(
+  '/webhooks/stripe',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        req.get('stripe-signature'),
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (err) {
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const inserted = await client.query(
+        `INSERT INTO stripe_events (id, type, created, payload)
+         VALUES ($1, $2, to_timestamp($3), $4)
+         ON CONFLICT (id) DO NOTHING
+         RETURNING id`,
+        [event.id, event.type, event.created, JSON.stringify(event)]
+      );
+
+      if (inserted.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.json({ received: true, duplicate: true });
+      }
+
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        await client.query(
+          `UPDATE orders
+           SET status = 'paid', stripe_session_id = $2, paid_at = now()
+           WHERE id = $1 AND status <> 'paid'`,
+          [session.client_reference_id, session.id]
+        );
+        await client.query(
+          `INSERT INTO outbox (topic, aggregate_id, payload)
+           VALUES ('order.receipt', $1, $2)
+           ON CONFLICT (topic, aggregate_id) DO NOTHING`,
+          [session.client_reference_id,
+           JSON.stringify({ orderId: session.client_reference_id })]
+        );
+        await client.query(
+          `INSERT INTO loyalty_ledger (order_id, points, reason)
+           VALUES ($1, $2, 'purchase')
+           ON CONFLICT (order_id, reason) DO NOTHING`,
+          [session.client_reference_id, Math.floor(session.amount_total / 100)]
+        );
+      }
+
+      await client.query('COMMIT');
+      return res.json({ received: true });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('stripe_webhook_failed', event.id, err);
+      return res.status(500).json({ error: 'processing_failed' });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+app.use(express.json());
+```
+
+Schema:
+
+```sql
+CREATE TABLE stripe_events (
+  id text PRIMARY KEY,
+  type text NOT NULL,
+  created timestamptz NOT NULL,
+  payload jsonb NOT NULL
+);
+
+CREATE TABLE outbox (
+  id bigserial PRIMARY KEY,
+  topic text NOT NULL,
+  aggregate_id text NOT NULL,
+  payload jsonb NOT NULL,
+  attempts int NOT NULL DEFAULT 0,
+  available_at timestamptz NOT NULL DEFAULT now(),
+  processed_at timestamptz,
+  UNIQUE (topic, aggregate_id)
+);
+
+CREATE TABLE loyalty_ledger (
+  order_id text NOT NULL,
+  reason text NOT NULL,
+  points int NOT NULL,
+  PRIMARY KEY (order_id, reason)
+);
+```
+
+The event insert, order update, loyalty insert, and outbox insert either all commit or none do. Returning 200 for a duplicate is deliberate: Stripe should stop retrying.
+@@@ USER
+What about replay protection? An attacker who captures a valid signed request could resend it within the signature timestamp window. And with multiple pods, two requests with the same event id can enter the handler at the same time. Does `ON CONFLICT` handle that correctly?
+@@@ ASSISTANT
+The signature timestamp check is the replay defense: `constructEvent` rejects a timestamp older than the tolerance (default 300 seconds) and a signature that does not match the raw body. Do not disable or widen that tolerance; a captured request is useless after five minutes. Within those five minutes, the `stripe_events` primary key makes the second insert a no-op.
+
+Concurrent inserts are safe: the second transaction blocks on the unique index until the first commits, then `ON CONFLICT DO NOTHING` returns zero rows. If the first transaction rolls back, the second proceeds. Keep the handler transaction short; do not call Stripe or SES inside it.
+
+For internal reprocessing, do not delete the event row and re-run the handler. Write an admin script that inserts a new outbox row and an audit record. Reusing the original event id must remain a no-op forever.
+@@@ USER
+The outbox worker crashed and receipts sat for 40 minutes. We also saw two workers send the same email. How should the worker claim and retry rows without double-sending?
+@@@ ASSISTANT
+Claim rows with `FOR UPDATE SKIP LOCKED` and exponential backoff. Two workers cannot claim the same row, but email is not transactional, so exactly-once delivery is impossible; aim for at-least-once and accept a tiny duplicate window.
+
+```js
+async function claimBatch(client, limit = 50) {
+  const { rows } = await client.query(`
+    WITH claimed AS (
+      SELECT id
+      FROM outbox
+      WHERE processed_at IS NULL AND available_at <= now()
+      ORDER BY id
+      LIMIT $1
+      FOR UPDATE SKIP LOCKED
+    )
+    UPDATE outbox o
+    SET attempts = o.attempts + 1,
+        available_at = now() + (interval '1 second' * power(2, least(o.attempts, 6)))
+    FROM claimed c
+    WHERE o.id = c.id
+    RETURNING o.*`, [limit]);
+  return rows;
+}
+```
+
+Worker loop:
+
+```js
+for (;;) {
+  const batch = await claimBatch(client);
+  for (const row of batch) {
+    try {
+      await ses.sendReceipt(row.payload.orderId); // provider call
+      await client.query(
+        'UPDATE outbox SET processed_at = now() WHERE id = $1', [row.id]);
+    } catch (err) {
+      if (row.attempts >= 10) {
+        await client.query(
+          `INSERT INTO outbox_dlq (id, topic, payload, attempts, failed_at)
+           SELECT id, topic, payload, attempts, now() FROM outbox WHERE id = $1
+           ON CONFLICT (id) DO NOTHING`, [row.id]);
+        await client.query(
+          'UPDATE outbox SET processed_at = now() WHERE id = $1', [row.id]);
+      }
+      console.error('outbox_send_failed', row.id, err);
+    }
+  }
+  await sleep(1000);
+}
+```
+
+If a worker crashes after SES accepts the email but before `processed_at` is set, the row is retried. Keep the receipt body idempotent and document at-least-once delivery; do not claim exactly-once.
+@@@ USER
+We also get `payment_intent.succeeded` and `charge.refunded` for the same order. Sometimes the refund event arrives before the checkout event. How do we avoid marking a refunded order as paid or crediting points twice?
+@@@ ASSISTANT
+Do not project state purely from event order. Store every event, then apply a state machine with allowed transitions and reconcile against the current Stripe object when an event is older than the order's last known state.
+
+```js
+const ALLOWED = {
+  pending: ['paid', 'cancelled'],
+  paid: ['fulfilled', 'refunded'],
+  fulfilled: ['refunded'],
+  refunded: [],
+  cancelled: [],
+};
+
+async function transition(client, orderId, next, eventCreated) {
+  const { rows } = await client.query(
+    'SELECT status, last_event_at FROM orders WHERE id = $1 FOR UPDATE',
+    [orderId]);
+  if (!rows.length) return;
+  const order = rows[0];
+  if (order.last_event_at && eventCreated < order.last_event_at) return;
+  if (!ALLOWED[order.status]?.includes(next)) return;
+  await client.query(
+    `UPDATE orders
+     SET status = $2, last_event_at = $3
+     WHERE id = $1`, [orderId, next, eventCreated]);
+}
+```
+
+For a refund that arrives first, record it and leave the order pending. On any event that conflicts with local state, call `stripe.checkout.sessions.retrieve` or `stripe.paymentIntents.retrieve` and reconcile to Stripe's current object. Use the event as a trigger, not as the final state.
+
+Loyalty points are keyed by order and reason, so a second `payment_intent.succeeded` cannot insert a second ledger row.
+@@@ USER
+Final verification: how do we test duplicate delivery, concurrent delivery, out-of-order events, and replay in staging without touching real customer data?
+@@@ ASSISTANT
+Use Stripe test mode and the CLI, plus direct database assertions:
+
+1. Duplicate delivery: process `evt_test_1` once, then `stripe events resend evt_test_1` twice. Assert one order update, one loyalty row, one outbox row, and `stripe_events` has one row.
+2. Concurrent delivery: send the same signed payload from 20 parallel curl processes; assert 19 responses say `duplicate: true`, one processes, and the database counts are one.
+3. Out-of-order: insert a refund event before the checkout event for the same order; assert the order ends refunded and points are not granted twice.
+4. Replay: resend a captured request older than 300 seconds; assert 400 and no row inserted. Then resend within the window; assert 200 duplicate and no side effect.
+5. Worker crash: kill the worker after SES accepts but before `processed_at`; assert the row is retried and the receipt body is identical.
+6. Signature failure: tamper with one byte of the body; assert 400 and no event row.
+
+Run all six in CI against an ephemeral Postgres, then once in staging with Stripe test clocks. The acceptance criteria are zero duplicate ledger rows, zero duplicate outbox rows per order, and every valid event either processed once or acknowledged as a duplicate.
+@@@ END
+
+@@@ USER
+We have a Create React App 5 project: React 18, react-router 6, `REACT_APP_*` environment variables, `src/setupProxy.js`, Jest tests, SVG imports using `ReactComponent`, deployed to S3 + CloudFront under `/app`. We want to move to Vite without breaking routing or env vars. What is the migration order, and what should we inventory first?
+@@@ ASSISTANT
+Plan: inventory every CRA-specific behavior before changing the build, then migrate in a branch with the old build still deployable. The risky parts are not JSX; they are `public/index.html`, `%PUBLIC_URL%`, `process.env`, the dev proxy, SVG component imports, Jest, and the CloudFront fallback for deep links.
+
+Send me `package.json`, the `src` tree, every occurrence of `process.env`, `%PUBLIC_URL%`, `require.context`, and `ReactComponent`, the router setup, and the CloudFront distribution config. Also tell me whether the app is served at the domain root or only under `/app`, because that determines `base` and the router `basename`.
+
+Migration order:
+1. Add Vite and move `index.html`.
+2. Port env access to `import.meta.env` with `envPrefix`.
+3. Port the proxy.
+4. Port SVG imports.
+5. Move Jest to Vitest.
+6. Build, compare routes and assets under `/app`, then canary.
+@@@ USER
+First attempt gives a blank page, `Uncaught ReferenceError: process is not defined`, `import.meta.env.REACT_APP_API_URL` is undefined, and `vite preview` returns 404 when I open `/orders/123` directly. The build output is in `dist`, but CloudFront expects `build`.
+@@@ ASSISTANT
+Four separate issues. The blank page is likely the old `public/index.html` still referencing `%PUBLIC_URL%` and a script tag that Vite does not process. Vite needs `index.html` at the project root with a module entry.
+
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>
+```
+
+Config:
+
+```ts
+import { defineConfig, loadEnv } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'REACT_APP_');
+  return {
+    base: '/app/',
+    envPrefix: 'REACT_APP_',
+    plugins: [react()],
+    define: {
+      'process.env.NODE_ENV': JSON.stringify(mode),
+    },
+    server: {
+      port: 3000,
+      proxy: {
+        '/api': {
+          target: env.REACT_APP_API_URL ?? 'http://localhost:8080',
+          changeOrigin: true,
+        },
+      },
+    },
+    build: {
+      outDir: 'build',
+      emptyOutDir: true,
+      sourcemap: true,
+    },
+  };
+});
+```
+
+`envPrefix` exposes only `REACT_APP_*` on `import.meta.env`; without it Vite only exposes `VITE_*`. Replace app code mechanically:
+
+```bash
+# review the diff; do not run blindly on generated files
+npx jscodeshift -t ./codemods/env-to-import-meta.js src
+```
+
+The codemod should turn `process.env.REACT_APP_API_URL` into `import.meta.env.REACT_APP_API_URL`. For third-party libraries that still reference `process.env`, add `define: { 'process.env': '{}' }` or a polyfill plugin; do not leave app code on `process.env`.
+@@@ USER
+Routing works at the root, but `/app/orders/123` 404s in preview and in CloudFront. Also, env vars are baked into the bundle, and we need one artifact promoted from staging to production. How do we solve both without rebuilding per environment?
+@@@ ASSISTANT
+For routing, three things must agree: Vite's `base`, the router's `basename`, and the host's fallback.
+
+```tsx
+<BrowserRouter basename="/app">
+  <App />
+</BrowserRouter>
+```
+
+If you use `createBrowserRouter`, pass `basename: '/app'` in the router options. `base: '/app/'` makes Vite emit asset URLs under `/app/`, and `vite preview` serves the SPA fallback by default when `appType` is `spa`. Direct requests in production still need CloudFront to return `index.html`:
+
+- S3 origin path: `/app`.
+- Default root object: `index.html`.
+- Custom error responses: 403 and 404 both return `/app/index.html` with HTTP 200.
+- Do not use a 302 redirect to `/app`; that changes the URL and breaks deep links.
+
+For one artifact across environments, move the changing values out of the bundle into a runtime file:
+
+```html
+<script src="%BASE_URL%config.js"></script>
+<script type="module" src="/src/index.tsx"></script>
+```
+
+```js
+// public/config.js, replaced per environment in S3
+window.__APP_CONFIG__ = {
+  API_URL: 'https://api.example.com',
+  STRIPE_KEY: 'pk_live_...'
+};
+```
+
+```ts
+type AppConfig = { API_URL: string; STRIPE_KEY: string };
+declare global {
+  interface Window { __APP_CONFIG__?: AppConfig }
+}
+
+export const config: AppConfig = window.__APP_CONFIG__ ?? {
+  API_URL: import.meta.env.REACT_APP_API_URL,
+  STRIPE_KEY: import.meta.env.REACT_APP_STRIPE_KEY,
+};
+```
+
+Build once, upload the same hashed assets everywhere, and replace only `config.js` in each environment. Keep build-time `REACT_APP_*` for values that truly cannot change at runtime.
+@@@ USER
+Jest tests fail with `Cannot use 'import.meta' outside a module`, and our tests mock `process.env.REACT_APP_API_URL`. Do we keep Jest or move to Vitest?
+@@@ ASSISTANT
+Move to Vitest; it shares Vite's transform pipeline, so `import.meta.env` and SVG imports behave the same in tests as in the build. Keeping Jest means adding a Babel transform for `import.meta`, which is fragile and tests a different module system than production.
+
+```ts
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/setupTests.ts',
+    css: true,
+    restoreMocks: true,
+  },
+});
+```
+
+```json
+{
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  }
+}
+```
+
+Replace `jest.mock` with `vi.mock`, `jest.fn` with `vi.fn`, and env mocks with `vi.stubEnv`:
+
+```ts
+import { beforeEach, afterEach, vi } from 'vitest';
+
+beforeEach(() => {
+  vi.stubEnv('REACT_APP_API_URL', 'http://localhost:8080');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+```
+
+For `setupTests.ts`, import `@testing-library/jest-dom/vitest`. Convert one test file first and run both suites until parity; do not migrate everything in one commit.
+@@@ USER
+SVG imports are the other breakage: CRA lets us do `import { ReactComponent as Logo } from './logo.svg'`. Our `setupProxy.js` also has custom `onProxyReq` logic for auth headers. What is the Vite equivalent of each?
+@@@ ASSISTANT
+For SVGs, add `vite-plugin-svgr` and use the explicit `?react` suffix:
+
+```ts
+import svgr from 'vite-plugin-svgr';
+
+plugins: [react(), svgr({ include: '**/*.svg?react' })],
+```
+
+```diff
+-import { ReactComponent as Logo } from './logo.svg';
++import Logo from './logo.svg?react';
+```
+
+Codemod every `ReactComponent` import; a plain `import logoUrl from './logo.svg'` still returns a URL, which is what you want for `<img src={logoUrl}>`. Do not configure SVGR to swallow every `.svg` import, or you will break URL imports.
+
+For the proxy, port the simple parts to `server.proxy` and use the `configure` hook for the auth header:
+
+```ts
+server: {
+  proxy: {
+    '/api': {
+      target: env.REACT_APP_API_URL ?? 'http://localhost:8080',
+      changeOrigin: true,
+      configure: (proxy) => {
+        proxy.on('proxyReq', (proxyReq, req) => {
+          if (req.headers.authorization) {
+            proxyReq.setHeader('Authorization', req.headers.authorization);
+          }
+          proxyReq.setHeader('X-Dev-Proxy', 'vite');
+        });
+      },
+    },
+  },
+},
+```
+
+`setupProxy.js` is not read by Vite. Delete it only after the Vite proxy is verified; keep it on the branch until the migration is complete.
+@@@ USER
+Final parity check before we switch CI and CloudFront: what should we test to prove routing, env, assets, and tests all behave the same?
+@@@ ASSISTANT
+Run a parity matrix against both the old CRA build and the Vite build, served at `/app`:
+
+1. Routes: `/`, `/orders`, `/orders/123`, `/orders/123?tab=items`, and an unknown route. Direct-load each URL, not just client-side navigation. Expect the app shell and the correct view, not a 404.
+2. Assets: hashed JS/CSS, fonts, images, and `config.js` all return 200 under `/app`; no request goes to `/static/...` from the old CRA layout.
+3. Env: build with staging values, promote the artifact, replace `config.js` with production values, and confirm the API base changes without rebuilding. Confirm no `REACT_APP_*` secret is present in the bundle.
+4. SVG: a page using `Logo?react` renders the component; a page using `logo.svg` as a URL renders an image.
+5. Tests: `vitest run` passes with the same coverage threshold as Jest, including one test that stubs `REACT_APP_API_URL`.
+6. Performance: compare gzip bundle sizes and Lighthouse; a regression over 10% needs an explanation before rollout.
+
+Canary 10% of traffic behind CloudFront, watch 404s and JS errors, then switch 100%. Keep the CRA artifact and distribution config for one week. The migration is done when direct deep links work, the single artifact runs in both environments via `config.js`, and the test suite runs on Vitest with no Jest-only mocks.
+@@@ END
+
+@@@ USER
+Incident last night: Redis restarted at 02:14, and our API returned 503 for every request for about four minutes because the rate limiter failed closed. Checkout was unavailable; 38,000 requests failed. We need an immediate mitigation, a real graceful-degradation design, and a postmortem. Where do we start?
+@@@ ASSISTANT
+Immediate mitigation first: put the limiter behind a feature flag that can bypass it, or hotfix `passOnStoreError: true` if you are on express-rate-limit v7, then restore Redis and confirm the error rate returns to baseline. Preserve the Nginx, application, and Redis logs before they rotate; the timeline matters more than the patch.
+
+Then design, not just patch. Fail-open for every route is an abuse risk, so classify routes: checkout and login need availability with a conservative local limit; read-only endpoints can tolerate a looser fallback; admin routes can fail closed. I need the limiter code and store configuration, the incident timeline in UTC, the number of pods, whether readiness checks depended on Redis, and whether traffic spiked during the outage.
+
+Plan: add a hard command timeout, a circuit breaker, and a bounded per-pod fallback; decouple liveness from Redis; then run a chaos test that stops Redis under load.
+@@@ USER
+Timeline: 02:14:03 Redis primary failover; 02:14:05 first 503; 02:18:40 Redis back; 02:19:10 API recovered. Limiter code:
+
+```js
+import rateLimit from 'express-rate-limit';
+import RedisStore from 'rate-limit-redis';
+
+const limiter = rateLimit({
+  windowMs: 60_000,
+  max: 100,
+  store: new RedisStore({
+    sendCommand: (...args) => redis.call(...args),
+  }),
+});
+
+app.use('/api', limiter);
+```
+
+ioredis is created with `maxRetriesPerRequest: 3`, no `commandTimeout`, default offline queue. Twelve pods.
+@@@ ASSISTANT
+The failure mode is clear: when Redis is unreachable, `increment` rejects, the store error propagates, and the middleware returns 500/503 for every request. `maxRetriesPerRequest` makes each request wait through retries, and the default offline queue holds commands instead of failing fast.
+
+Hotfix now:
+
+```js
+const limiter = rateLimit({
+  windowMs: 60_000,
+  max: 100,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  passOnStoreError: true, // temporary: availability over strict limiting
+  store: new RedisStore({ sendCommand: (...args) => redis.call(...args) }),
+});
+```
+
+Also configure the client so failures are fast:
+
+```js
+const redis = new Redis(process.env.REDIS_URL, {
+  commandTimeout: 100,
+  enableOfflineQueue: false,
+  maxRetriesPerRequest: 1,
+  retryStrategy: (times) => Math.min(times * 100, 2000),
+});
+```
+
+That stops the bleeding, but `passOnStoreError` means unlimited traffic while Redis is down. The real fix is a store wrapper that falls back to a bounded local limiter and a circuit breaker, so requests are still limited per pod.
+@@@ USER
+We implemented a fallback map keyed by IP, but under a synthetic attack the map grew to 400 MB in two minutes, and the effective limit became 1,200 requests/minute because each of 12 pods allowed 100. We need bounded memory and a sane global limit during degradation.
+@@@ ASSISTANT
+Bound the fallback and divide the global budget by the expected fleet size. An unbounded `Map` is a memory leak under exactly the traffic pattern a rate limiter is supposed to handle.
+
+```js
+import { LRUCache } from 'lru-cache';
+
+const GLOBAL_LIMIT = Number(process.env.RATE_LIMIT_GLOBAL ?? 100);
+const EXPECTED_PODS = Number(process.env.RATE_LIMIT_PODS ?? 12);
+const POD_LIMIT = Math.max(1, Math.ceil(GLOBAL_LIMIT / EXPECTED_PODS));
+const WINDOW_MS = 60_000;
+const fallback = new LRUCache({ max: 50_000, ttl: WINDOW_MS });
+
+function localIncrement(key) {
+  const now = Date.now();
+  const current = fallback.get(key);
+  const entry = current && now < current.resetAt
+    ? current
+    : { count: 0, resetAt: now + WINDOW_MS };
+  entry.count += 1;
+  fallback.set(key, entry, { ttl: entry.resetAt - now });
+  return { totalHits: entry.count, resetTime: new Date(entry.resetAt) };
+}
+```
+
+`max: 50_000` caps memory even if every request uses a new key; the LRU evicts the least recently used entry. At roughly 100 bytes per entry, that is about 5 MB, not 400 MB.
+
+For the budget, `POD_LIMIT = ceil(global / expected pods)` gives about 9 requests per minute per pod, or 108 across 12 pods, which is the intended global rate. If HPA can scale to 30 pods, set `EXPECTED_PODS=30` so the degraded total stays under the global limit; being stricter during an outage is better than multiplying the limit. Add an edge rate limit at the ALB/WAF as a coarse backstop that does not depend on Redis.
+@@@ USER
+How should the store wrapper and circuit breaker look, and what do we expose for health checks so a Redis outage does not remove every pod from service?
+@@@ ASSISTANT
+Implement the express-rate-limit store interface with `increment`, `decrement`, and `resetKey`, and open the circuit after consecutive Redis failures. Serve stale local counts while the circuit is open.
+
+```js
+let failures = 0;
+let openUntil = 0;
+
+function circuitOpen() {
+  return Date.now() < openUntil;
+}
+
+class ResilientStore {
+  constructor(redisStore) {
+    this.redisStore = redisStore;
+  }
+
+  async increment(key) {
+    if (circuitOpen()) return localIncrement(key);
+    try {
+      const result = await this.redisStore.increment(key);
+      failures = 0;
+      return result;
+    } catch (err) {
+      failures += 1;
+      if (failures >= 5) openUntil = Date.now() + 30_000;
+      metrics.increment('rate_limiter.redis_fallback');
+      return localIncrement(key);
+    }
+  }
+
+  async decrement(key) {
+    if (circuitOpen()) return;
+    try { await this.redisStore.decrement(key); } catch { /* local only */ }
+  }
+
+  async resetKey(key) {
+    fallback.delete(key);
+    if (circuitOpen()) return;
+    try { await this.redisStore.resetKey(key); } catch { /* local only */ }
+  }
+}
+```
+
+After 30 seconds the next request tries Redis again; a success closes the circuit and resets `failures`. Export `rate_limiter_circuit_open` and `rate_limiter_redis_fallback_total` as metrics.
+
+Health checks: `/healthz` must not call Redis; it returns 200 while the process can serve. `/readyz` checks Postgres and reports Redis as `degraded` but still returns 200, because the limiter has a fallback. If you make readiness depend on Redis, Kubernetes removes every pod during exactly the outage you are trying to survive.
+@@@ USER
+Give me the postmortem structure and the action items. Leadership will ask why we did not catch this in staging, and I do not want a document that says "add more monitoring" without owners.
+@@@ ASSISTANT
+Use a blameless format with dates and owners:
+
+**Summary:** Redis failover at 02:14 UTC caused the rate-limiter store to throw; because the store failed closed and had no timeout, every `/api` request returned 503 for 4 minutes 36 seconds.
+
+**Impact:** 38,412 failed requests; checkout 100% unavailable; 0.7% of the monthly error budget consumed. No data loss.
+
+**Timeline (UTC):** 02:14:03 failover started; 02:14:05 first 503; 02:16 pager acknowledged; 02:18:40 Redis restored; 02:19:10 error rate baseline.
+
+**Root causes:** no `commandTimeout` and default offline queue; store errors propagated as 5xx; no local fallback; readiness coupled to Redis; no chaos test for dependency loss.
+
+**5 whys:** Why 503? Store threw. Why did it throw? Redis unreachable during failover. Why did that fail requests? No fallback and fail-closed default. Why no fallback? Limiter was treated as infrastructure, not a degraded-mode feature. Why was that not caught? Staging never stopped Redis under load.
+
+**Action items:**
+
+| Action | Owner | Due |
+|---|---|---|
+| Add `commandTimeout: 100`, `enableOfflineQueue: false` | Platform | 3 days |
+| Ship resilient store with circuit breaker and LRU fallback | API | 1 week |
+| Decouple `/readyz` from Redis; add degraded status | SRE | 3 days |
+| Alert on `rate_limiter_redis_fallback_total` > 1% for 5 min | Observability | 1 week |
+| Monthly chaos test: stop Redis under 2x peak | QA/SRE | 2 weeks |
+| Document degraded-mode limits and customer impact | Eng manager | 1 week |
+
+Do not close the incident until the chaos test passes and the alert has fired in staging at least once.
+@@@ USER
+What does the chaos test look like, and what are the pass criteria before we call the graceful degradation verified?
+@@@ ASSISTANT
+Run it in staging with production-like pod count and a load generator at 2x peak. Use a script that stops Redis for 90 seconds, keeps traffic running, then restores it.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+k6 run --duration 5m --vus 400 load.js &
+K6_PID=$!
+sleep 60
+docker stop redis-staging
+sleep 90
+docker start redis-staging
+wait "$K6_PID"
+```
+
+Pass criteria:
+
+- 5xx rate below 0.5% for the whole run, including the outage window.
+- 429 rate between 0.1% and 5%; zero 429s would mean the fallback is not limiting.
+- p95 latency below 300 ms for allowed requests.
+- `rate_limiter_redis_fallback_total` increases during the outage and stops increasing within 30 seconds of recovery.
+- `rate_limiter_circuit_open` is 1 during the outage and 0 after the half-open probe succeeds.
+- RSS growth under 50 MB, proving the LRU cap works.
+- `/readyz` stays 200 and reports `redis: degraded`.
+- After recovery, Redis counters resume and the local fallback is no longer consulted.
+
+Run the same test once with Redis blocked at the network layer, not just stopped, so the client exercises timeouts rather than connection refused. Record the results in the postmortem and keep the script in the repo so the next on-call can repeat it.
+@@@ END
+

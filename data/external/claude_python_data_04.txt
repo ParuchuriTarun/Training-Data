@@ -1,0 +1,492 @@
+@@@ USER
+How do I read a CSV file in Python, add up the amounts per category, and write a summary CSV? I do not want to install pandas.
+@@@ ASSISTANT
+The built-in `csv` module is enough. `csv.DictReader` gives every row as a dictionary, so you refer to columns by name. This example reads from a string so you can run it as is; for a real file use `open("sales.csv", newline="", encoding="utf-8")` instead of `io.StringIO(DATA)`.
+
+```python
+import csv
+import io
+from collections import defaultdict
+
+DATA = """date,category,item,amount
+2026-11-01,food,rice,120.50
+2026-11-01,travel,bus,45
+2026-11-02,food,milk,60.25
+2026-11-03,books,python book,899
+2026-11-03,food,eggs,84
+2026-11-04,travel,metro,30.5
+"""
+
+totals = defaultdict(float)
+rows = list(csv.DictReader(io.StringIO(DATA)))      # use open("sales.csv", newline="", encoding="utf-8") for a real file
+for row in rows:
+    totals[row["category"]] += float(row["amount"])
+
+for category, total in sorted(totals.items(), key=lambda kv: kv[1], reverse=True):
+    print(f"{category:<8}{total:>10.2f}")
+print(f"{'all':<8}{sum(totals.values()):>10.2f}")
+
+# write a summary file (here into memory so the example is self-contained)
+out = io.StringIO()
+writer = csv.writer(out, lineterminator="\n")
+writer.writerow(["category", "total"])
+for category, total in sorted(totals.items()):
+    writer.writerow([category, f"{total:.2f}"])
+print(out.getvalue(), end="")
+```
+
+Output:
+
+```
+books       899.00
+food        264.75
+travel       75.50
+all        1239.25
+category,total
+books,899.00
+food,264.75
+travel,75.50
+```
+
+Notes:
+- Every value from a CSV is text. Convert with `float(...)` or `int(...)` before doing math.
+- `defaultdict(float)` starts every new category at `0.0`, so no "if key not in dict" check is needed.
+- For a real file, always pass `newline=""` to `open`. Without it, Windows can add blank lines when you write a CSV.
+- For money, `float` can show tiny rounding errors. When exact cents matter, use `decimal.Decimal` or count whole cents as integers.
+@@@ END
+
+@@@ USER
+How do I get the average, median, standard deviation and quartiles of a list of numbers in Python, and why is the median sometimes better than the mean?
+@@@ ASSISTANT
+The standard library has a `statistics` module for this.
+
+```python
+import statistics as st
+
+scores = [72, 85, 91, 66, 85, 78, 99, 85, 54]
+print("count   ", len(scores))
+print("mean    ", round(st.mean(scores), 2))
+print("median  ", st.median(scores))
+print("mode    ", st.mode(scores))
+print("stdev   ", round(st.stdev(scores), 2))
+print("quartiles", st.quantiles(scores, n=4))
+print("min/max ", min(scores), max(scores))
+
+# one big value ruins the mean but not the median
+salaries = [30, 32, 35, 36, 40, 400]
+print(st.mean(salaries), st.median(salaries))
+
+# simple outlier check: more than 2 standard deviations from the mean
+m, s = st.mean(salaries), st.stdev(salaries)
+print([x for x in salaries if abs(x - m) > 2 * s])
+```
+
+Output:
+
+```
+count    9
+mean     79.44
+median   85
+mode     85
+stdev    13.67
+quartiles [69.0, 85.0, 88.0]
+min/max  54 99
+95.5 35.5
+[400]
+```
+
+What the numbers mean:
+- **mean**: the sum divided by the count. Every value pulls on it, including extreme ones.
+- **median**: the middle value after sorting. It ignores how extreme the ends are, so it describes a "typical" value better when the data has outliers.
+- **mode**: the most common value.
+- **stdev**: how spread out the values are. `stdev` is for a sample (a part of a bigger group); use `pstdev` when you have the whole group.
+- **quartiles**: the three cut points that split the data into four equal parts. The middle one is the median.
+- In the salary list, one value of 400 makes the mean 95.5, which is higher than five of the six people actually earn. The median 35.5 is the honest summary.
+@@@ END
+
+@@@ USER
+How do I work with dates and times in Python: format them, add days, find the number of days between two dates, and handle time zones?
+@@@ ASSISTANT
+Use `datetime` from the standard library. `date` is a day, `datetime` is a day plus a time, `timedelta` is a length of time.
+
+```python
+from datetime import date, datetime, timedelta, timezone
+
+d = date(2026, 11, 11)
+print(d.isoformat(), d.strftime("%d %b %Y"), d.strftime("%A"))
+print(d + timedelta(days=30))
+print((date(2026, 12, 25) - d).days, "days until 25 Dec")
+
+parsed = datetime.strptime("2026-11-11 14:30", "%Y-%m-%d %H:%M")
+print(parsed)
+print(parsed + timedelta(hours=10))
+print(parsed.replace(hour=0, minute=0))
+print(parsed.isocalendar().week, parsed.weekday())      # weekday(): Monday is 0
+
+# first day of next month
+first_next = (d.replace(day=1) + timedelta(days=32)).replace(day=1)
+print(first_next)
+
+# group dates by month
+dates = [date(2026, 1, 5), date(2026, 1, 20), date(2026, 2, 3)]
+by_month = {}
+for x in dates:
+    by_month.setdefault(x.strftime("%Y-%m"), []).append(x.day)
+print(by_month)
+
+# store times in UTC, convert only when showing them to a person
+now_utc = datetime(2026, 11, 11, 9, 0, tzinfo=timezone.utc)
+print(now_utc.isoformat())
+print(now_utc.astimezone(timezone(timedelta(hours=5, minutes=30))).isoformat())
+```
+
+Output:
+
+```
+2026-11-11 11 Nov 2026 Wednesday
+2026-12-11
+44 days until 25 Dec
+2026-11-11 14:30:00
+2026-11-12 00:30:00
+2026-11-11 00:00:00
+46 2
+2026-12-01
+{'2026-01': [5, 20], '2026-02': [3]}
+2026-11-11T09:00:00+00:00
+2026-11-11T14:30:00+05:30
+```
+
+Notes:
+- `strftime` turns a date into text, `strptime` turns text into a date. Common codes: `%Y` year, `%m` month, `%d` day, `%H` hour (24h), `%M` minute, `%S` second, `%A` weekday name, `%b` month name.
+- Subtracting two dates gives a `timedelta`; `.days` is the whole number of days.
+- Adding "one month" has no built-in. The trick `replace(day=1) + timedelta(days=32)` always lands in the next month.
+- A datetime without a time zone ("naive") is a common source of bugs. Store UTC (`timezone.utc`), and convert to the local zone (`astimezone`) only for display. For named zones such as `Asia/Kolkata`, use `zoneinfo.ZoneInfo`.
+@@@ END
+
+@@@ USER
+How do I process nested JSON in Python: read values safely, sum things, flatten it into one level, and print it nicely?
+@@@ ASSISTANT
+`json.loads` turns JSON text into normal dictionaries and lists. After that it is plain Python.
+
+```python
+import json
+
+raw = """
+{
+  "user": {"name": "Ana", "tags": ["admin", "dev"], "address": {"city": "Pune", "zip": "411001"}},
+  "orders": [
+    {"id": 1, "total": 250.5, "items": ["pen", "book"]},
+    {"id": 2, "total": 99, "items": []}
+  ]
+}
+"""
+data = json.loads(raw)
+print(data["user"]["address"]["city"])
+print(data["user"].get("phone", "no phone"))
+print(sum(o["total"] for o in data["orders"]))
+print([o["id"] for o in data["orders"] if o["items"]])
+
+
+def flatten(value, prefix=""):
+    """Turn nested dicts/lists into one flat dict with dotted keys."""
+    flat = {}
+    if isinstance(value, dict):
+        for k, v in value.items():
+            flat.update(flatten(v, f"{prefix}{k}."))
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            flat.update(flatten(v, f"{prefix}{i}."))
+    else:
+        flat[prefix[:-1]] = value
+    return flat
+
+
+for key, val in flatten(data).items():
+    print(key, "=", val)
+
+print(json.dumps({"b": 1, "a": [1, 2], "name": "Ana"}, indent=2, sort_keys=True))
+print(json.dumps({"name": "Ana é"}, ensure_ascii=False))
+```
+
+Output:
+
+```
+Pune
+no phone
+349.5
+[1]
+user.name = Ana
+user.tags.0 = admin
+user.tags.1 = dev
+user.address.city = Pune
+user.address.zip = 411001
+orders.0.id = 1
+orders.0.total = 250.5
+orders.0.items.0 = pen
+orders.0.items.1 = book
+orders.1.id = 2
+orders.1.total = 99
+{
+  "a": [
+    1,
+    2
+  ],
+  "b": 1,
+  "name": "Ana"
+}
+{"name": "Ana é"}
+```
+
+Notes:
+- `d["key"]` raises `KeyError` when the key is missing. `d.get("key", default)` gives the default instead. Use `.get` for data you do not control, such as API responses.
+- An empty list is "falsy", so `if o["items"]` means "has at least one item".
+- `flatten` calls itself for each level (recursion). Dicts add the key to the path, lists add the index, and everything else is a final value.
+- `indent=2` makes the output readable, `sort_keys=True` makes it the same every time (useful for diffs), `ensure_ascii=False` keeps letters such as `é` instead of writing `é`.
+- For a file, use `json.load(f)` and `json.dump(data, f)` (without the `s`).
+@@@ END
+
+@@@ USER
+How do I list files, count them by type and read their sizes in Python with pathlib? Show me something I can run without touching my real folders.
+@@@ ASSISTANT
+`pathlib.Path` treats paths as objects. The example builds a small project inside a temporary folder that is deleted at the end, so nothing on your disk changes.
+
+```python
+import tempfile
+from collections import Counter
+from pathlib import Path
+
+with tempfile.TemporaryDirectory() as tmp:
+    root = Path(tmp)
+    (root / "src").mkdir()
+    (root / "src" / "main.rs").write_text("fn main() {}\n")
+    (root / "src" / "lib.rs").write_text("pub fn f() {}\n" * 3)
+    (root / "web").mkdir()
+    (root / "web" / "index.html").write_text("<h1>hi</h1>\n")
+    (root / "web" / "app.js").write_text("console.log(1)\n")
+    (root / "README.md").write_text("# demo\n")
+
+    files = sorted(p for p in root.rglob("*") if p.is_file())
+    print([p.relative_to(root).as_posix() for p in files])
+
+    by_ext = Counter(p.suffix or "(none)" for p in files)
+    print(sorted(by_ext.items()))
+
+    total_lines = sum(len(p.read_text().splitlines()) for p in files)
+    print("lines:", total_lines)
+
+    longest = max(files, key=lambda p: len(p.read_text().splitlines()))
+    print(longest.name, len(longest.read_text().splitlines()), "lines")
+
+    print(root.joinpath("src", "main.rs").exists(), (root / "nope").exists())
+    print((root / "src" / "main.rs").stem, (root / "src" / "main.rs").suffix, (root / "src" / "main.rs").parent.name)
+```
+
+Output:
+
+```
+['README.md', 'src/lib.rs', 'src/main.rs', 'web/app.js', 'web/index.html']
+[('.html', 1), ('.js', 1), ('.md', 1), ('.rs', 2)]
+lines: 7
+lib.rs 3 lines
+True False
+main .rs src
+```
+
+Notes:
+- `/` joins path parts on every system, so you never need to write `\\` or `/` by hand.
+- `root.rglob("*")` walks all subfolders. `root.glob("*.rs")` looks only in one folder. Use `"**/*.rs"` to search every folder for one extension.
+- Handy parts of a path: `.name` (`main.rs`), `.stem` (`main`), `.suffix` (`.rs`), `.parent` (the folder).
+- `p.stat().st_size` is the size in bytes and `p.stat().st_mtime` the last change time.
+- `Path.read_text()` and `.write_text()` open and close the file for you. Pass `encoding="utf-8"` for files with non-English text.
+- `Counter` counts how often each value appears, which is exactly what "files by type" is.
+@@@ END
+
+@@@ USER
+What are the most useful itertools functions in Python? I want chunking, grouping, combinations and running totals.
+@@@ ASSISTANT
+`itertools` works lazily: it produces one item at a time, so it also works on very large inputs.
+
+```python
+from itertools import accumulate, chain, combinations, groupby, islice, product
+
+print(list(chain([1, 2], (3,), "ab")))
+print(list(islice(range(100), 5, 10)))
+print(list(accumulate([1, 2, 3, 4])))                 # running total
+print(list(combinations("abc", 2)))
+print(list(product([1, 2], "xy")))
+
+# groupby needs sorted data
+words = ["apple", "avocado", "banana", "blueberry", "cherry", "apricot"]
+for letter, group in groupby(sorted(words), key=lambda w: w[0]):
+    print(letter, list(group))
+
+# batch a long list into chunks of 3
+def batches(items, n):
+    it = iter(items)
+    while chunk := list(islice(it, n)):
+        yield chunk
+
+print(list(batches(range(8), 3)))
+```
+
+Output:
+
+```
+[1, 2, 3, 'a', 'b']
+[5, 6, 7, 8, 9]
+[1, 3, 6, 10]
+[('a', 'b'), ('a', 'c'), ('b', 'c')]
+[(1, 'x'), (1, 'y'), (2, 'x'), (2, 'y')]
+a ['apple', 'apricot', 'avocado']
+b ['banana', 'blueberry']
+c ['cherry']
+[[0, 1, 2], [3, 4, 5], [6, 7]]
+```
+
+What each one does:
+- `chain(a, b, ...)`: go through several sequences as if they were one.
+- `islice(it, start, stop)`: a slice of any iterator, even one that has no length.
+- `accumulate`: running totals (or a running max or product with a function as second argument).
+- `combinations(x, 2)`: every pair, ignoring order. `permutations` counts different orders as different. `product` is every pairing of two lists (the same as nested loops).
+- `groupby` only groups **neighbours** with the same key, so sort by the same key first. Forget that and the same letter appears in several groups.
+- `batches` shows the standard way to split any iterable into chunks. The `:=` ("walrus") assigns and tests in one line; the loop ends when `list(islice(...))` is empty.
+@@@ END
+
+@@@ USER
+My CSV data is messy: extra spaces, mixed case, amounts like "$1,234.50", "N/A" values and duplicate people. How do I clean it in plain Python?
+@@@ ASSISTANT
+Clean each field in a small function, then rebuild the rows. Keep missing values as `None` instead of `0`, so they are not counted as real zeros later.
+
+```python
+import re
+
+
+def to_number(text):
+    """Turn '$1,234.50', ' 12 ', '7%' into a float. Return None for empty or N/A."""
+    if text is None:
+        return None
+    t = text.strip().replace(",", "").replace("$", "").rstrip("%")
+    if t == "" or t.lower() in {"n/a", "na", "null", "-"}:
+        return None
+    return float(t)
+
+
+raw_rows = [
+    {"name": "  Ana ", "city": "pune", "spent": "$1,234.50"},
+    {"name": "BOB", "city": "Pune ", "spent": "N/A"},
+    {"name": "ana", "city": "PUNE", "spent": "$10"},
+    {"name": "Carol", "city": "", "spent": "99"},
+]
+
+clean = []
+for row in raw_rows:
+    clean.append({
+        "name": row["name"].strip().title(),
+        "city": row["city"].strip().title() or "Unknown",
+        "spent": to_number(row["spent"]),
+    })
+for row in clean:
+    print(row)
+
+# remove duplicates by a key, keep the first one
+seen, unique = set(), []
+for row in clean:
+    key = row["name"].lower()
+    if key not in seen:
+        seen.add(key)
+        unique.append(row)
+print([r["name"] for r in unique])
+
+known = [r["spent"] for r in clean if r["spent"] is not None]
+print(len(known), "known values, total", sum(known))
+
+print(re.sub(r"\s+", " ", "too    many\t spaces\n here"))
+print(re.findall(r"\d+", "order 66, item 4, qty 12"))
+```
+
+Output:
+
+```
+{'name': 'Ana', 'city': 'Pune', 'spent': 1234.5}
+{'name': 'Bob', 'city': 'Pune', 'spent': None}
+{'name': 'Ana', 'city': 'Pune', 'spent': 10.0}
+{'name': 'Carol', 'city': 'Unknown', 'spent': 99.0}
+['Ana', 'Bob', 'Carol']
+3 known values, total 1343.5
+too many spaces here
+['66', '4', '12']
+```
+
+The cleaning steps, in the order to do them:
+1. **Trim and normalize case** (`strip`, `title`). `"  Ana "` and `"ana"` become the same name.
+2. **Parse numbers in one place** (`to_number`). If a new format appears, you fix one function.
+3. **Use `None` for missing** and filter it out before adding (`if r["spent"] is not None`). A `0` would pull averages down.
+4. **Deduplicate on a normalized key** (`name.lower()`), after cleaning. Before cleaning, `"Ana"` and `"ana"` look different.
+5. **Fill defaults** for empty text (`or "Unknown"`).
+
+Note that here the two Anas are treated as one person and the first row is kept. Decide on purpose which duplicate to keep (first, last, or the most complete one).
+@@@ END
+
+@@@ USER
+What are lru_cache, partial and reduce in Python, and how do I write a decorator that measures how long a function takes?
+@@@ ASSISTANT
+These tools are in `functools` and `time`.
+
+```python
+import time
+from functools import lru_cache, partial, reduce
+
+
+@lru_cache(maxsize=None)
+def fib(n):
+    return n if n < 2 else fib(n - 1) + fib(n - 2)
+
+
+print(fib(80))
+print(fib.cache_info())
+
+power = lambda base, exp: base ** exp
+square = partial(power, exp=2)
+print(square(9))
+
+print(reduce(lambda a, b: a * b, [1, 2, 3, 4, 5]))
+
+
+def timed(label):
+    def wrap(fn):
+        def inner(*args, **kwargs):
+            start = time.perf_counter()
+            result = fn(*args, **kwargs)
+            elapsed = time.perf_counter() - start
+            print(f"{label}: {'fast' if elapsed < 1 else 'slow'}")
+            return result
+        return inner
+    return wrap
+
+
+@timed("sum of squares")
+def sum_squares(n):
+    return sum(i * i for i in range(n))
+
+
+print(sum_squares(100000))
+```
+
+Output:
+
+```
+23416728348467685
+CacheInfo(hits=78, misses=81, maxsize=None, currsize=81)
+81
+120
+sum of squares: fast
+333328333350000
+```
+
+Notes:
+- **`lru_cache`** remembers the result for each argument. Without it, `fib(80)` would take longer than you are willing to wait, because the plain version repeats the same work an enormous number of times (the call count grows about as fast as the result itself). With it, each value is calculated once (81 misses), and every other call is answered from memory (78 hits). Only use it on functions that always give the same result for the same input.
+- **`partial`** fixes some arguments in advance and returns a new function: `square(9)` is `power(9, exp=2)`.
+- **`reduce`** folds a list into one value by applying a function to the running result and the next item: `1*2*3*4*5 = 120`.
+- **The decorator** has three levels: `timed("label")` takes the settings, `wrap(fn)` takes the function, and `inner(...)` runs on every call. `time.perf_counter()` is the right clock for measuring short durations. The example prints only "fast" or "slow", because the exact number of seconds is different on every run.
+- To keep the original function's name and docstring, add `@functools.wraps(fn)` above `inner`.
+@@@ END

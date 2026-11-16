@@ -1,0 +1,516 @@
+@@@ USER
+Our Node workers grow in memory by ~200MB/day and eventually OOM. They process PDF reports and cache the parsed pages to avoid re-parsing. Where do I start?
+@@@ ASSISTANT
+Start with evidence, not guesses: confirm the growth is in retained heap (not native memory), then find what retains the cache.
+
+Give me three things first:
+
+1. Node version and flags (`--max-old-space-size`), and the job rate.
+2. A heap snapshot before and after 1 hour of traffic, or a `--inspect` profile.
+3. The cache implementation you use (Map, LRU, direct array).
+
+While you collect that, do this: run with `node --heapsnapshot-signal=SIGUSR1` and take two snapshots an hour apart. In the Chrome DevTools heap timeline, search for the report object ids; the retained size will tell you whether the cache is the leak or something else entirely (timers, sockets, listeners).
+@@@ END
+
+@@@ USER
+Node 20, default heap, 40 reports/min. The cache is a plain `Map` with no eviction. Heap snapshot shows `Map` entries growing. What is the leak?
+@@@ ASSISTANT
+The leak is the unbounded `Map`. At 40 reports per minute, even a 2 MB parsed page set costs 80 MB/min of retention. No eviction means it grows until the heap hits the default limit (~2 GB on 64-bit) and the process OOMs.
+
+Two fixes, in order:
+
+1. **Bound the cache properly.** A plain `Map` needs manual eviction; an LRU package does this correctly and removes the job from your code.
+
+```ts
+import { LRUCache } from "lru-cache";
+
+const cache = new LRUCache<string, ParsedReport>({
+  max: 50,                         // entries
+  maxSize: 200 * 1024 * 1024,     // 200 MB total
+  sizeCalculation: (v) => estimateSize(v),
+  ttl: 5 * 60 * 1000,             // 5 minute TTL
+});
+```
+
+2. **Stop caching parsed pages at all if hit rate is low.** If a report is parsed once and never re-requested in the same 5 minutes, caching only delays the OOM. Measure hit rate first: log hits vs. misses. Below ~20% hit rate, delete the cache.
+
+Which do you prefer? I need your real hit rate: how often is the same report id parsed twice within 5 minutes?
+@@@ END
+
+@@@ USER
+Hit rate is about 8%. Same report is rarely requested twice. So the cache is pure overhead. How do I remove it safely?
+@@@ ASSISTANT
+Delete the cache, keep the parse step pure, and add a regression test that catches re-introduction.
+
+```ts
+// before
+const cache = new Map();
+
+// after — no shared state, no retention
+async function parseReport(id: string) {
+  const buffer = await fetchReportBuffer(id);
+  return parsePdfBuffer(buffer);
+}
+
+// call site
+const report = await parseReport(id);
+await render(report);
+```
+
+Add a guard test:
+
+```ts
+it("does not retain report data between calls", async () => {
+  await parseReport("a");
+  const before = process.memoryUsage().heapUsed;
+  for (let i = 0; i < 200; i++) await parseReport(`r-${i}`);
+  const after = process.memoryUsage().heapUsed;
+  const growth = after - before;
+  expect(growth).toBeLessThan(50 * 1024 * 1024); // < 50 MB retained
+});
+```
+
+Deploy, then watch heap over 24 hours. Expect flat heap. If it still climbs, the leak is elsewhere (timers, listeners) and we profile again. What is your current `--max-old-space-size` in production, and do you have alerting on heap used?
+@@@ END
+
+@@@ USER
+Heap is flat for 3 days. But now CPU is high because we parse every time. Can we cache smarter?
+@@@ ASSISTANT
+Yes — cache on disk, not in memory. PDF parsing is CPU-bound, not memory-bound, so a shared, bounded disk cache gives the hit rate without the leak.
+
+```ts
+import { createReadStream } from "node:fs";
+import { createHash } from "node:crypto";
+
+const CACHE_DIR = "/var/cache/reports";
+
+async function cachedReport(id: string) {
+  const digest = createHash("sha256").update(id).digest("hex").slice(0, 32);
+  const path = `${CACHE_DIR}/${digest}.json`;
+  try {
+    return await readJson(path); // hit
+  } catch {
+    const report = await parseReport(id);
+    await writeJsonAtomic(path, report);
+    return report;
+  }
+}
+```
+
+Rules:
+- Content-addressed filename (hash of id) so two workers do not collide.
+- Atomic write: write to `path.tmp` then rename. Readers never see a half-written file.
+- Bound the directory: cron or a janitor deletes files older than 24h; cap total size.
+- Log hit/miss. If the hit rate stays under 10%, keep the disk cache but do not add memory caching back.
+- On shared NFS, use a lock file or `O_EXCL` to avoid two workers parsing the same file simultaneously.
+
+CPU will drop by roughly your old hit rate (8%), which is small — the win here is that workers stop OOMing, not that they get faster. True CPU savings need precomputation or a smaller parse cost. Do you want that now, or is flat heap the win for this change?
+@@@ END
+
+@@@ USER
+Flat heap is the win. Now add a postmortem-lite: what was the cause, what changed, and what prevents recurrence?
+@@@ ASSISTANT
+**Cause**: unbounded in-memory `Map` used as a report cache with ~8% hit rate. At 40 reports/min the cache grew until the heap limit, causing OOM kills every ~10 days.
+
+**Changes**:
+- Removed the in-memory cache (deleted ~15 lines).
+- Added a heap-growth regression test (< 50 MB retained after 200 parses).
+- Alerting: heap used > 80% for 5 minutes pages on-call.
+
+**Verification**: heap flat for 3 days at production load; worker restart count 0 in that window.
+
+**Prevention**:
+- Lint rule: no module-level `new Map()` in worker code without a size bound. Reviewers must approve any new cache.
+- All caches require a TTL and a hit/miss metric before merge.
+- Load test at 2× peak for 1 hour before any change to parsing or caching.
+
+**Follow-up**: measure the disk cache hit rate for a week; if still under 10%, remove it. CPU work is a separate ticket.
+
+Nice work — the diagnosis (snapshot + hit rate) is exactly the evidence that made this fix fast.
+@@@ END
+
+@@@ USER
+Checkout is overselling inventory under load. Two orders for the last unit both succeed. Our code checks stock then decrements. Inventory is in Postgres. How do I reproduce and fix it?
+@@@ ASSISTANT
+That check-then-decrement pattern races. Reproduce it under concurrency before fixing, so the fix is verified.
+
+Reproduction:
+
+1. Seed one product with stock = 1.
+2. Fire 50 concurrent orders for that product.
+3. Count successful orders. Expect > 1 (the bug).
+
+```ts
+const results = await Promise.allSettled(
+  Array.from({ length: 50 }, () => createOrder(productId, 1))
+);
+const succeeded = results.filter(r => r.status === "fulfilled").length;
+console.log("succeeded:", succeeded); // bug: > 1
+```
+
+Fix: make the decrement atomic and conditional on stock. Do it in one SQL statement.
+
+```sql
+UPDATE inventory
+SET stock = stock - 1
+WHERE product_id = $1 AND stock >= 1
+RETURNING stock;
+```
+
+```ts
+async function createOrder(productId: string, qty: number) {
+  return db.transaction(async (tx) => {
+    const updated = await tx.query(
+      `UPDATE inventory SET stock = stock - $2
+       WHERE product_id = $1 AND stock >= $2
+       RETURNING stock`,
+      [productId, qty]
+    );
+    if (updated.rows.length === 0) {
+      throw new Error("insufficient_stock");
+    }
+    return tx.query(
+      `INSERT INTO orders (product_id, quantity) VALUES ($1, $2) RETURNING *`,
+      [productId, qty]
+    ).then(r => r.rows[0]);
+  });
+}
+```
+
+The database now guarantees stock never goes negative; the `WHERE stock >= qty` is the check, inside the same statement as the write. Re-run the 50-concurrent test. Expect exactly 1 success and 49 `insufficient_stock` errors. What does your current stock check look like — do you read stock in application code first?
+@@@ END
+
+@@@ USER
+Our code does `SELECT stock`, checks in JS, then `UPDATE stock = stock - qty` in one transaction at READ COMMITTED. Is that safe?
+@@@ ASSISTANT
+No. At `READ COMMITTED`, two transactions can both `SELECT 1`, both pass the JS check, and both `UPDATE` — each seeing the other's uncommitted write is invisible, so both succeed. You need row locks.
+
+Fix with `SELECT ... FOR UPDATE`:
+
+```ts
+async function createOrder(productId: string, qty: number) {
+  return db.transaction(async (tx) => {
+    const row = await tx.query(
+      `SELECT stock FROM inventory WHERE product_id = $1 FOR UPDATE`,
+      [productId]
+    ).then(r => r.rows[0]);
+
+    if (!row || row.stock < qty) throw new Error("insufficient_stock");
+
+    await tx.query(
+      `UPDATE inventory SET stock = stock - $2 WHERE product_id = $1`,
+      [productId, qty]
+    );
+    return tx.query(
+      `INSERT INTO orders (product_id, quantity) VALUES ($1, $2) RETURNING *`,
+      [productId, qty]
+    ).then(r => r.rows[0]);
+  });
+}
+```
+
+`FOR UPDATE` locks the row until commit, so concurrent transactions serialize on that row. The conditional single-statement update is simpler and faster; the `FOR UPDATE` version is better when you need to read the pre-decrement stock or validate multiple fields.
+
+Also add a database invariant as a backstop:
+
+```sql
+ALTER TABLE inventory ADD CONSTRAINT inventory_stock_nonnegative CHECK (stock >= 0);
+```
+
+Deadlock risk: if a transaction locks multiple inventory rows, lock them in ascending `product_id` order. How many products does a single order contain in your case?
+@@@ END
+
+@@@ USER
+Orders have up to 5 line items. After the fix we saw deadlocks in logs. How do we avoid them?
+@@@ ASSISTANT
+Lock inventory rows in a deterministic order: sort the line items by `product_id` before locking. Two transactions that lock in the same order cannot deadlock on that set.
+
+```ts
+async function createOrder(items: { productId: string; qty: number }[]) {
+  const sorted = [...items].sort((a, b) => a.productId.localeCompare(b.productId));
+  return db.transaction(async (tx) => {
+    for (const item of sorted) {
+      const row = await tx.query(
+        `SELECT stock FROM inventory WHERE product_id = $1 FOR UPDATE`,
+        [item.productId]
+      ).then(r => r.rows[0]);
+      if (!row || row.stock < item.qty) throw new Error("insufficient_stock");
+      await tx.query(
+        `UPDATE inventory SET stock = stock - $2 WHERE product_id = $1`,
+        [item.productId, item.qty]
+      );
+    }
+    // insert order + lines...
+  });
+}
+```
+
+Additional defenses:
+- Set `lock_timeout = '5s'` so a deadlock becomes a fast error, not a hang.
+- Retry the whole transaction on `40P01` (deadlock detected) up to 3 times with jitter. Deadlocks are retryable; validation errors are not.
+- Keep transactions short: do not call external APIs inside.
+- Add a unique constraint on `(order_id, product_id)` so a retried transaction cannot double-insert lines.
+- Monitor deadlock count; a rising count means ordering is not enforced somewhere.
+
+Test: run 200 concurrent multi-item orders with overlapping product sets and assert zero oversells and a low deadlock rate (< 1% with retries). How are you currently handling `40P01` errors — retrying or returning 500?
+@@@ END
+
+@@@ USER
+We added retries. Now how do we prove the fix works and stop this class of bug?
+@@@ ASSISTANT
+**Proof**:
+- 50 concurrent single-unit orders against stock=1 → exactly 1 success, 49 `insufficient_stock`.
+- 200 concurrent multi-item orders → zero oversells, stock never negative, deadlock retries < 1%.
+- `CHECK (stock >= 0)` constraint present and tested.
+
+**Systemic fix**:
+- All stock mutations go through one function (`decrementStock`) that locks in sorted order. No direct `UPDATE inventory` outside it.
+- A CI test runs the concurrency suite on every change to ordering/inventory code.
+- Load test: 2× peak for 30 minutes weekly; alert on negative stock (should be impossible) and on oversell counts.
+
+**Remaining risks**:
+- Retries without idempotency keys can double-insert. Add an `Idempotency-Key` header on the order endpoint.
+- External payment calls must stay outside the transaction; reconcile with webhooks after commit.
+- Cash + inventory consistency: the order insert and stock decrement are atomic, but payment success is not. Add a reconciliation job that voids orders without payment after 24h.
+
+Final check: run the concurrency test twice. If both runs are clean, ship it.
+@@@ END
+
+@@@ USER
+Our CI-only tests fail on timezone. They pass locally but fail in CI with errors like "expected 2026-11-07, got 2026-11-08". How do I fix this properly?
+@@@ ASSISTANT
+Your tests depend on the machine timezone. CI default is usually UTC; your machine is not. Fix by pinning the timezone in both CI and test code, and comparing instants, not local calendar strings.
+
+1. Pin the timezone in CI:
+
+```yaml
+# .github/workflows/test.yml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      TZ: America/New_York
+      LANG: en_US.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+```
+
+2. In tests, compare instants, not formatted strings:
+
+```ts
+it("adds one day", () => {
+  const start = new Date("2026-11-07T15:00:00Z"); // explicit Z = UTC
+  const result = addDays(start, 1);
+  expect(result.toISOString()).toBe("2026-11-08T15:00:00.000Z");
+});
+```
+
+3. For calendar logic (month boundaries, "next business day"), use an explicit timezone library (`date-fns-tz` or Luxon) and state the zone in the test name.
+
+4. Audit the failures: the tests that fail are almost always comparing `toLocaleDateString()` or `getDate()` on a UTC instant near midnight. Replace those with ISO comparisons.
+
+What is the exact failing assertion — is it a date string comparison or a timestamp equality?
+@@@ END
+
+@@@ USER
+The failure is `expect(formatOrderDate(order)).toBe("Nov 7, 2026")` but CI gives "Nov 8, 2026". The order is at 23:30 UTC. How do I fix the display?
+@@@ ASSISTANT
+23:30 UTC is already November 8 in any timezone east of UTC+1. The test is right to catch a real display bug: you are formatting in the viewer's local timezone, which is wrong for a global product.
+
+Decide the display zone explicitly. For order dates, use the customer's account timezone, not the server or browser default.
+
+```ts
+import { formatInTimeZone } from "date-fns-tz";
+
+export function formatOrderDate(iso: string, timeZone: string): string {
+  return formatInTimeZone(new Date(iso), timeZone, "MMM d, yyyy");
+}
+```
+
+```ts
+// test: explicit timezone, deterministic
+it("formats an order date in the customer's timezone", () => {
+  expect(formatOrderDate("2026-11-07T23:30:00Z", "America/New_York")).toBe("Nov 7, 2026");
+  expect(formatOrderDate("2026-11-07T23:30:00Z", "Asia/Kolkata")).toBe("Nov 8, 2026");
+});
+```
+
+Rules:
+- Never use `toLocaleDateString()` without an explicit `timeZone` option for user-visible dates.
+- Store all instants in UTC (`timestamptz` in Postgres, ISO 8601 with `Z` in JSON). Format at the edge.
+- Pass the timezone with the data: `order.accountTimeZone`. Do not infer it from the browser on the server.
+- For the server test suite, pin `TZ` in CI (as in the previous answer) so developer machines and CI agree.
+- Add a test at a midnight boundary in three zones (UTC, US/Eastern, Asia/Kolkata) for every date formatter.
+
+Re-run: the test should pass in any machine timezone. If it still fails in CI, the formatter is still using a default zone somewhere — search for `toLocaleDateString` without options.
+@@@ END
+
+@@@ USER
+The formatter now uses the account timezone. But some old orders have no timezone stored. How do I handle them?
+@@@ ASSISTANT
+Backfill a default, mark it explicitly, and never guess silently.
+
+```sql
+ALTER TABLE accounts ADD COLUMN timezone text NOT NULL DEFAULT 'UTC';
+UPDATE accounts SET timezone = 'UTC' WHERE timezone IS NULL;
+ALTER TABLE accounts ALTER COLUMN timezone DROP DEFAULT;
+```
+
+Then:
+- New accounts: require a timezone at signup (default to the browser's `Intl.DateTimeFormat().resolvedOptions().timeZone`, editable in settings).
+- Old accounts: default `UTC`, and show a one-time banner: "Your account timezone is UTC. Change it in Settings." Silent wrongness is worse than a visible default.
+- Formatting code: `formatOrderDate(iso, account.timezone ?? "UTC")`. The `?? "UTC"` is a safety net, not the path.
+- Test: an order at 23:30 UTC with a legacy `UTC` account formats as "Nov 7" and the test name states the assumption.
+
+Also add a CI check: no date formatting in templates without an explicit timezone argument. Search for `toLocaleDateString`, `format(`, and `getDate()` in view code.
+
+Run the full suite in two timezones (`TZ=UTC` and `TZ=Asia/Kolkata`) in CI. If a test passes in one and not the other, it is still timezone-fragile. That is the definitive check.
+@@@ END
+
+@@@ USER
+Both timezone CI jobs pass. Is there anything else that could bite us around dates?
+@@@ ASSISTANT
+Three more things:
+
+1. **DST gaps and folds.** "2:30 AM" does not exist on spring-forward day and happens twice on fall-back. Use libraries (`date-fns-tz`, Luxon) that handle this; never do `+ 24 * 60 * 60 * 1000` arithmetic for calendar days.
+2. **Month-end arithmetic.** `Jan 31 + 1 month` is Feb 28 or Mar 3 depending on the library. Use a calendar-aware function and test the month boundaries explicitly.
+3. **Leap seconds and year boundaries.** Unlikely for your app, but test `2024-02-29` and `2026-12-31 23:59 UTC` in the formatters.
+
+Also: add a `TZ` matrix to CI (`UTC`, `America/New_York`, `Asia/Kolkata`) for the unit suite. Three runs catch almost all remaining fragility, and the cost is a few minutes of CI.
+
+Final verification: run `TZ=Asia/Kolkata npm test` locally. Green there means the suite is timezone-independent.
+
+Anything else for dates, or shall we move to the next thing?
+@@@ END
+
+@@@ USER
+Our cloud bill jumped 300% last week. We suspect N+1 queries and missing indexes. How do I find the cause?
+@@@ ASSISTANT
+Start with the bill, then the database metrics, then the queries. Do not speculate.
+
+1. **Which cost line moved?** Split by service: compute, database, data transfer, storage. A 300% total bill with database at 5× points at queries; compute at 5× points at application loops or workers.
+2. **Database**: enable `pg_stat_statements`, then rank by total execution time and by mean time.
+
+```sql
+SELECT query, calls, total_exec_time, mean_exec_time, rows
+FROM pg_stat_statements
+ORDER BY total_exec_time DESC
+LIMIT 20;
+```
+
+3. **Check for N+1**: look for one query with very high call count and small row counts, and a parent query with a moderate count. The parent's rows × the child's calls is the signature.
+4. **Check for missing indexes**: the same query with `mean_exec_time` high and `rows` large, and `EXPLAIN ANALYZE` showing Seq Scan on a large table.
+
+Run queries 2 and 3 now and paste the top 5 rows (query text truncated is fine). I will read them and tell you which is the N+1 and which needs an index.
+@@@ END
+
+@@@ USER
+Here are the top queries. One does 4.2M calls, mean 0.4ms, total 1,680s. Another does 2,100 calls, mean 48ms, total 100s. Which is the problem?
+@@@ ASSISTANT
+Both, but differently. The 4.2M-call query is an N+1: each call is cheap (0.4 ms) but there are millions of them, so it dominates total time and connection count. The 2,100-call query is a missing index: 48 ms per call on a large table.
+
+Fixes:
+
+**N+1** — eager-load:
+
+```ts
+// Before: one query per order for its items.
+const orders = await db.order.findMany({ where: { userId } });
+for (const o of orders) {
+  o.items = await db.orderItem.findMany({ where: { orderId: o.id } });
+}
+
+// After: one joined query.
+const orders = await db.order.findMany({
+  where: { userId },
+  include: { items: true },
+});
+```
+
+**Missing index** — match the query:
+
+```sql
+-- Query: WHERE user_id = ? AND status = ? ORDER BY created_at DESC
+CREATE INDEX orders_user_status_created_idx
+  ON orders (user_id, status, created_at DESC);
+```
+
+Verify with `EXPLAIN (ANALYZE, BUFFERS)` before and after: the first should show Index Scan, not Bitmap Heap Scan + Sort. What does the N+1 query look like — is the child fetching a relation that is always rendered?
+@@@ END
+
+@@@ USER
+The child is order items, always rendered. We added the index and eager loading. Bill dropped 40%. What else could be inflating costs?
+@@@ ASSISTANT
+Good: 40% down. The remaining cost is usually one of these. Check in this order:
+
+1. **Unpaginated lists.** Any endpoint that returns "all rows" will grow with the database. Add cursor pagination and a hard max (100–1000).
+2. **Chatty micro-frontend calls.** Count requests per page load in logs. A dashboard making 80 API calls is 80 billable units of compute and egress.
+3. **Logs and metrics volume.** Log retention and per-line size. A debug line in a hot loop (N+1 code path) can be the biggest line item. Sample or remove it.
+4. **Data transfer.** Chatty internal calls across availability zones cost egress. Keep services in the same AZ where latency allows.
+5. **Over-provisioned instances.** Right-size by CPU utilization: if p95 CPU is under 20%, step down one tier. Database IOPS and storage classes are the other two knobs.
+6. **Idle resources.** Reserved/spot for batch, scheduled shutdown for dev, and deletion of orphaned volumes and snapshots. Orphaned snapshots are a classic surprise.
+
+Add a cost alert at 120% of the 7-day average, with a breakdown by service in the notification. That is the early warning you did not have last week. Which of these matches your stack — is the database or the application tier the bigger remaining cost?
+@@@ END
+
+@@@ USER
+The app tier is still high. We found a worker that retries failed jobs every 30 seconds forever. How do we fix it?
+@@@ ASSISTANT
+Add attempt limits, exponential backoff with jitter, and a dead-letter queue. Infinite retries are a cost bug and a correctness bug.
+
+```ts
+// Queue config
+await queue.add("process-report", { reportId }, {
+  attempts: 5,
+  backoff: { type: "exponential", delay: 2000, jitter: 0.2 },
+});
+
+// Worker: only retry transient errors
+queue.process("process-report", async (job) => {
+  try {
+    await processReport(job.data.reportId);
+    await markProcessed(job.id);
+  } catch (err: any) {
+    if (isTransient(err)) throw err;      // will retry with backoff
+    throw new UnrecoverableError(err.message); // -> DLQ immediately
+  }
+});
+```
+
+Also:
+- **DLQ alerting**: alert when DLQ depth > 0. Replaying a DLQ entry is a deliberate manual action, never automatic.
+- **Concurrency cap**: the worker should not spawn unbounded parallel jobs against a rate-limited downstream API.
+- **Kill switch**: an env flag or config value to pause the queue during incidents.
+- **Job metrics**: attempts, duration, and outcome per job in logs. A job type with a high retry rate is a product bug, not an infra bug.
+- **Backfill guard**: a bulk enqueue must be chunked and rate-limited, or it will stampede the database.
+
+After the fix: worker CPU should drop to a flat line, and the DLQ should show the poison jobs that were retrying for months. Those need product fixes, not retries. What is the DLQ showing — one job type or many?
+@@@ END
+
+@@@ USER
+One job type dominates the DLQ: PDF generation fails on malformed uploads. How do we handle the upload side?
+@@@ ASSISTANT
+Validate and quarantine at upload time so malformed files never reach the worker.
+
+```ts
+// On complete upload
+const head = await s3.send(new HeadObjectCommand({ Bucket, Key: key }));
+if (head.ContentLength === 0) reject("empty file");
+
+const magic = await readFirstBytes(key, 8);
+if (!isKnownMagic(magic)) {
+  await quarantine(key, "unknown_magic");
+  return res.status(400).json({ error: { code: "unsupported_file" } });
+}
+```
+
+Rules:
+- Check size (0 < size <= 25 MB) and magic bytes on `complete`, before enqueueing.
+- Run the parser in a sandbox with a timeout and memory limit; a malformed PDF must not take down the worker. Catch parse errors and quarantine the file with the error.
+- Store the quarantine reason on the file row so the user can be told: "This PDF could not be read. Try exporting it again from your source app."
+- Manual review queue for quarantined files; a weekly count is a product signal (a new producer is emitting broken PDFs).
+- Never retry a parse error for the same file id; it is deterministic. Deterministic failures go straight to DLQ.
+
+Summary of the incident: N+1 queries and a missing index caused database load; an unbounded-retry worker amplified it into a compute bill; malformed uploads fed the retry loop. Three different fixes, one root cause pattern: no bounds. Add bounds everywhere: query counts, retry counts, queue depth, log volume, and cost alerts.
+@@@ END

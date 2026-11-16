@@ -1,0 +1,711 @@
+@@@ USER
+How does asyncio work in Python? Show gather, a limit on how many run at once, and a timeout.
+@@@ ASSISTANT
+`async def` defines a coroutine. `await` pauses it while it waits (for the network, a timer, a file), and lets other coroutines run in the meantime. One thread does everything, so asyncio is great for many waiting tasks (downloads, API calls) but does not speed up heavy calculations.
+
+```python
+import asyncio
+import time
+
+
+async def fetch(name, delay):
+    print(f"start {name}")
+    await asyncio.sleep(delay)  # stands in for a network call
+    print(f"done {name}")
+    return f"{name}:{delay}"
+
+
+async def limited(semaphore, name, delay):
+    async with semaphore:  # at most N tasks inside this block at once
+        return await fetch(name, delay)
+
+
+async def main():
+    started = time.perf_counter()
+    results = await asyncio.gather(fetch("a", 0.3), fetch("b", 0.1), fetch("c", 0.2))
+    print(results)
+    print("took about", round(time.perf_counter() - started, 1), "s")  # not 0.6: they overlap
+
+    semaphore = asyncio.Semaphore(2)
+    jobs = [("x", 0.2), ("y", 0.1), ("z", 0.15)]
+    print(await asyncio.gather(*(limited(semaphore, n, d) for n, d in jobs)))
+
+    try:
+        await asyncio.wait_for(fetch("slow", 1.0), timeout=0.2)
+    except asyncio.TimeoutError:
+        print("timed out")
+
+
+asyncio.run(main())
+```
+
+Output:
+
+```
+start a
+start b
+start c
+done b
+done c
+done a
+['a:0.3', 'b:0.1', 'c:0.2']
+took about 0.3 s
+start x
+start y
+done y
+start z
+done x
+done z
+['x:0.2', 'y:0.1', 'z:0.15']
+start slow
+timed out
+```
+
+Key points:
+- Total time was about 0.3 s, the longest task, not 0.6 s, the sum. That is the whole benefit.
+- `gather` returns results in the order you passed the coroutines, not the order they finished.
+- Never call blocking code like `time.sleep()` or `requests.get()` inside a coroutine: it freezes every other task. Use `await asyncio.sleep()` or an async library such as `aiohttp` or `httpx`.
+- `asyncio.run(main())` is called once, at the top of the program.
+@@@ END
+
+@@@ USER
+How do I build a command-line tool in Python with argparse, with subcommands like `todo add`, `todo done 3`, `todo list --all`?
+@@@ ASSISTANT
+Create a parser, add one sub-parser per command, and give each its own arguments. `argparse` also writes `--help` and error messages for you.
+
+```python
+import argparse
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(prog="todo", description="Tiny task manager")
+    parser.add_argument("--file", default="tasks.json", help="where tasks are stored")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    add = sub.add_parser("add", help="add a task")
+    add.add_argument("text")
+    add.add_argument("--priority", type=int, choices=[1, 2, 3], default=2)
+
+    done = sub.add_parser("done", help="mark a task as done")
+    done.add_argument("id", type=int)
+
+    listing = sub.add_parser("list", help="show tasks")
+    listing.add_argument("--all", action="store_true", help="include finished tasks")
+    return parser
+
+
+parser = build_parser()
+print(parser.parse_args(["add", "buy milk", "--priority", "1"]))
+print(parser.parse_args(["--file", "my.json", "done", "3"]))
+print(parser.parse_args(["list", "--all"]))
+
+try:
+    parser.parse_args(["add", "x", "--priority", "9"])
+except SystemExit as exit_info:
+    print("exit code", exit_info.code)
+```
+
+Output (the error text goes to the error stream):
+
+```
+Namespace(file='tasks.json', command='add', text='buy milk', priority=1)
+Namespace(file='my.json', command='done', id=3)
+Namespace(file='tasks.json', command='list', all=True)
+exit code 2
+```
+
+For the last call argparse also prints a usage line and an error such as `argument --priority: invalid choice: '9' (choose from '1', '2', '3')`; the exact wording depends on your Python version.
+
+In a real program, call `args = build_parser().parse_args()` (it reads `sys.argv`) and then branch on `args.command`:
+
+```python
+args = build_parser().parse_args()
+if args.command == "add":
+    ...
+elif args.command == "done":
+    ...
+```
+
+Notes:
+- `type=int` converts the text and rejects non-numbers automatically.
+- `action="store_true"` makes a flag that is `True` when present.
+- Run `python todo.py --help` or `python todo.py add --help` to see the generated help.
+- Returning a non-zero exit code on failure (`sys.exit(1)`) lets other scripts detect that your tool failed.
+@@@ END
+
+@@@ USER
+How do I write unit tests in Python with unittest? Show tests for a small function including error cases.
+@@@ ASSISTANT
+Write a class that inherits from `unittest.TestCase`; every method whose name starts with `test` is one test. Use `assertEqual` for values, `assertRaises` for expected errors, and `subTest` to run many inputs in one test.
+
+```python
+import re
+import unittest
+
+
+def parse_duration(text):
+    """Convert '1h30m' to seconds."""
+    text = text.strip()
+    match = re.fullmatch(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?", text)
+    if not text or not match:
+        raise ValueError(f"bad duration: {text!r}")
+    hours, minutes, seconds = (int(g) if g else 0 for g in match.groups())
+    return hours * 3600 + minutes * 60 + seconds
+
+
+class ParseDurationTests(unittest.TestCase):
+    def test_hours_and_minutes(self):
+        self.assertEqual(parse_duration("1h30m"), 5400)
+
+    def test_seconds_only(self):
+        self.assertEqual(parse_duration("45s"), 45)
+
+    def test_whitespace_is_ignored(self):
+        self.assertEqual(parse_duration("  2m "), 120)
+
+    def test_bad_input(self):
+        for text in ["", "abc", "10x", "h"]:
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError):
+                    parse_duration(text)
+
+
+if __name__ == "__main__":
+    unittest.main()
+```
+
+Run it with `python test_duration.py` (or `python -m unittest -v`). Output:
+
+```
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+OK
+```
+
+The time differs on each run. A failing test shows a line like `AssertionError: 5399 != 5400` with the file and line number.
+
+Tips:
+- Test normal cases, edge cases (empty input, zero, very large) and error cases.
+- A test should check one behavior and have a name that says which (`test_whitespace_is_ignored`).
+- `setUp(self)` runs before every test, useful for creating fresh objects.
+- Tests do not touch real files, the network or the clock; pass such things in as parameters or replace them with fakes.
+- `pytest` is a popular alternative: plain `def test_x(): assert parse_duration("45s") == 45`.
+@@@ END
+
+@@@ USER
+Explain generators in Python: yield, generator expressions, reading a file lazily, and useful itertools functions.
+@@@ ASSISTANT
+A generator produces values one at a time, only when asked, instead of building a whole list in memory. A function containing `yield` is a generator function. It pauses at each `yield` and continues from there on the next request.
+
+```python
+import io
+from itertools import chain, groupby, islice
+
+
+def read_numbers(lines):
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith("#"):
+            yield int(line)
+
+
+def fibonacci():
+    a, b = 0, 1
+    while True:  # infinite, but fine: values are made only on demand
+        yield a
+        a, b = b, a + b
+
+
+data = io.StringIO("# sizes\n10\n20\n\n30\n# end\n40\n")  # works the same with open("file.txt")
+numbers = read_numbers(data)
+print(next(numbers))  # first value
+print(sum(numbers))   # continues where it stopped: 20 + 30 + 40
+
+print(list(islice(fibonacci(), 10)))  # take only the first 10 from an infinite generator
+
+squares = (n * n for n in range(1, 6))  # generator expression
+print(list(squares), list(squares))     # a generator can be used only once
+
+print(list(chain([1, 2], (3, 4), range(5, 7))))  # join several iterables
+
+words = sorted(["apple", "avocado", "banana", "blueberry", "cherry"])
+for letter, group in groupby(words, key=lambda w: w[0]):  # input must be sorted by the key
+    print(letter, list(group))
+```
+
+Output:
+
+```
+10
+90
+[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
+[1, 4, 9, 16, 25] []
+[1, 2, 3, 4, 5, 6]
+a ['apple', 'avocado']
+b ['banana', 'blueberry']
+c ['cherry']
+```
+
+Why use generators:
+- A 10 GB log file can be processed line by line in a few kilobytes of memory, because iterating over an open file is itself lazy.
+- `sum(x * x for x in numbers)` needs no temporary list.
+- `[...]` builds everything now; `(...)` builds nothing until you loop over it.
+- The second `list(squares)` is empty because the generator is already used up. Create it again if you need to repeat.
+@@@ END
+
+@@@ USER
+What are type hints, Protocol and TypedDict in Python? Do they check anything when the program runs?
+@@@ ASSISTANT
+Type hints describe what types a function expects and returns. **Python does not enforce them at run time.** They are for readers, editors and checkers such as `mypy` or `pyright`, which find mistakes before you run the program.
+
+```python
+from typing import Optional, Protocol, TypedDict
+
+
+class Greeter(Protocol):
+    """Anything with a greet(name) method counts, no inheritance needed."""
+
+    def greet(self, name: str) -> str: ...
+
+
+class English:
+    def greet(self, name: str) -> str:
+        return f"Hello, {name}!"
+
+
+class Spanish:
+    def greet(self, name: str) -> str:
+        return f"Hola, {name}!"
+
+
+def welcome(greeter: Greeter, names: list[str]) -> list[str]:
+    return [greeter.greet(n) for n in names]
+
+
+class UserRecord(TypedDict):
+    id: int
+    name: str
+    email: Optional[str]  # a str or None
+
+
+def describe(user: UserRecord) -> str:
+    email = user["email"] or "no email"
+    return f"#{user['id']} {user['name']} <{email}>"
+
+
+print(welcome(English(), ["Asha", "Ravi"]))
+print(welcome(Spanish(), ["Meena"]))
+print(describe({"id": 1, "name": "Asha", "email": None}))
+print(describe({"id": 2, "name": "Ravi", "email": "ravi@example.com"}))
+```
+
+Output:
+
+```
+['Hello, Asha!', 'Hello, Ravi!']
+['Hola, Meena!']
+#1 Asha <no email>
+#2 Ravi <ravi@example.com>
+```
+
+What each one gives you:
+- `Protocol` is "duck typing with a checker": `welcome` accepts any object that has the right method, and the type checker verifies it.
+- `TypedDict` describes the keys of a dictionary, which is useful for JSON data. A checker warns if you write `user["emial"]`.
+- `Optional[str]` (or `str | None` in Python 3.10 and newer) tells readers and checkers that `None` is possible, so they remember to handle it.
+- Run `pip install mypy` and then `mypy yourfile.py` to see the problems the hints reveal.
+@@@ END
+
+@@@ USER
+How do I run several slow tasks at the same time in Python with threads? Show ThreadPoolExecutor with map and as_completed.
+@@@ ASSISTANT
+Use `concurrent.futures.ThreadPoolExecutor`. It manages a pool of worker threads. Threads help when the work **waits** (network requests, disk, `sleep`). For heavy calculations Python's GIL prevents threads from running in parallel; use `ProcessPoolExecutor` for that.
+
+```python
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+def work(n):
+    time.sleep(0.05 * (5 - n))  # bigger n finishes sooner
+    return n * n
+
+
+# map: results come back in the INPUT order
+with ThreadPoolExecutor(max_workers=5) as pool:
+    print(list(pool.map(work, [1, 2, 3, 4])))
+
+# submit + as_completed: handle each result as soon as it is ready
+with ThreadPoolExecutor(max_workers=5) as pool:
+    futures = {pool.submit(work, n): n for n in [1, 2, 3, 4]}
+    for future in as_completed(futures):
+        print("finished", futures[future], "->", future.result())
+```
+
+Output:
+
+```
+[1, 4, 9, 16]
+finished 4 -> 16
+finished 3 -> 9
+finished 2 -> 4
+finished 1 -> 1
+```
+
+Notes:
+- The four tasks together take about 0.2 s (the slowest one), not 0.5 s.
+- `future.result()` raises the exception if the task failed, so put it inside `try/except` when tasks can fail, and one bad task will not hide the others.
+- The `with` block waits for all tasks to finish before continuing.
+- Threads share memory. If several threads change the same variable, protect it with `threading.Lock`, or better, return results and combine them in one place.
+- Choose a sensible `max_workers`: 4 to 16 for network calls, `os.cpu_count()` for a process pool.
+@@@ END
+
+@@@ USER
+Show me the useful tools in Python's collections module: Counter, defaultdict, deque and namedtuple.
+@@@ ASSISTANT
+```python
+from collections import Counter, defaultdict, deque, namedtuple
+
+text = "the cat and the elephant and the mouse"
+words = text.split()
+
+# Counter: count things
+counts = Counter(words)
+print(counts.most_common(2))
+print(counts["dog"])  # 0, no KeyError for missing items
+
+# defaultdict: dictionary that creates missing values for you
+groups = defaultdict(list)
+for word in words:
+    groups[len(word)].append(word)
+print(dict(groups))
+
+# deque: a queue with fast adds and removals at both ends; maxlen keeps only the newest
+last3 = deque(maxlen=3)
+for i in range(6):
+    last3.append(i)
+print(last3)
+
+# namedtuple: a tuple whose items have names
+Point = namedtuple("Point", ["x", "y"])
+p = Point(3, 4)
+print(p, p.x + p.y, p._replace(x=10))
+```
+
+Output:
+
+```
+[('the', 3), ('and', 2)]
+0
+{3: ['the', 'cat', 'and', 'the', 'and', 'the'], 8: ['elephant'], 5: ['mouse']}
+deque([3, 4, 5], maxlen=3)
+Point(x=3, y=4) 7 Point(x=10, y=4)
+```
+
+When to use each:
+- `Counter` replaces the "if key in dict: += 1 else: = 1" pattern. It also supports `counts.update(...)` and adding two counters together.
+- `defaultdict(list)` removes the "create the list first" check when grouping. Use `defaultdict(int)` for counting.
+- `deque` is the right queue: `list.pop(0)` is slow on big lists because it shifts every item, while `deque.popleft()` is instant. Use `maxlen` for "last N items" such as recent logs.
+- Prefer `@dataclass` over `namedtuple` when you need defaults or methods; use `namedtuple` for tiny immutable records.
+@@@ END
+
+@@@ USER
+How do I set up proper logging in Python instead of print statements?
+@@@ ASSISTANT
+Use the `logging` module. You get levels (DEBUG, INFO, WARNING, ERROR), timestamps, and the choice of sending output to the screen, a file, or both, with no code changes at the places where you log.
+
+A self-contained demo that captures the output so you can see exactly what is written:
+
+```python
+import io
+import logging
+
+stream = io.StringIO()
+handler = logging.StreamHandler(stream)
+handler.setFormatter(logging.Formatter("%(levelname)-8s %(name)s: %(message)s"))
+
+log = logging.getLogger("shop.orders")
+log.setLevel(logging.INFO)
+log.addHandler(handler)
+log.propagate = False
+
+log.debug("not shown: below INFO")
+log.info("order %s created", 1001)
+log.warning("stock low for %s", "pen")
+try:
+    1 / 0
+except ZeroDivisionError:
+    log.exception("payment failed")  # logs the message plus the full traceback
+
+print(stream.getvalue().splitlines()[:3])
+```
+
+Output:
+
+```
+['INFO     shop.orders: order 1001 created', 'WARNING  shop.orders: stock low for pen', 'ERROR    shop.orders: payment failed']
+```
+
+For a real program, configure logging once at startup, and use one logger per module:
+
+```python
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    handlers=[logging.FileHandler("app.log", encoding="utf-8"), logging.StreamHandler()],
+)
+
+log = logging.getLogger(__name__)
+log.info("program started")
+```
+
+Rules:
+- Pass values as arguments (`log.info("order %s", id)`), not as an f-string. The text is built only when the message is actually going to be shown.
+- `log.exception(...)` inside an `except` block adds the traceback automatically; use it instead of `print(e)`.
+- Use DEBUG for details you only want while investigating, INFO for normal events, WARNING for odd but handled situations, ERROR when something failed.
+- Never log passwords, tokens or personal data.
+@@@ END
+
+@@@ USER
+What are the most common Python gotchas: mutable default arguments, lambdas in loops, `is` vs `==`, changing a list while looping, and float comparison?
+@@@ ASSISTANT
+```python
+import math
+
+# 1. A mutable default argument is created ONCE and shared by every call
+def add_item(item, items=[]):
+    items.append(item)
+    return items
+
+print(add_item("a"), add_item("b"))
+
+def add_item_fixed(item, items=None):
+    if items is None:
+        items = []
+    items.append(item)
+    return items
+
+print(add_item_fixed("a"), add_item_fixed("b"))
+
+# 2. Lambdas in a loop all see the final value of the loop variable
+funcs = [lambda: i for i in range(3)]
+print([f() for f in funcs])
+funcs = [lambda i=i: i for i in range(3)]  # bind the current value as a default
+print([f() for f in funcs])
+
+# 3. == compares values, `is` compares identity (the very same object)
+a = [1, 2]
+b = [1, 2]
+print(a == b, a is b)
+
+# 4. Removing items while looping over the same list skips elements
+nums = [2, 4, 6, 8]
+for n in nums:
+    if n % 2 == 0:
+        nums.remove(n)
+print(nums)
+nums = [2, 4, 6, 8, 9]
+print([n for n in nums if n % 2 != 0])  # build a new list instead
+
+# 5. Floats are binary approximations
+print(0.1 + 0.2 == 0.3, math.isclose(0.1 + 0.2, 0.3))
+```
+
+Output:
+
+```
+['a', 'b'] ['a', 'b']
+['a'] ['b']
+[2, 2, 2]
+[0, 1, 2]
+True False
+[4, 8]
+[9]
+False True
+```
+
+The explanations:
+1. The `[]` in `def ...(items=[])` runs when the function is *defined*, so every call that does not pass `items` appends to the same list. Use `None` as the default and create the list inside.
+2. The lambda looks up `i` when it is *called*, after the loop has finished (`i` is 2).
+3. Use `is` only for `None` (`if x is None`). For everything else use `==`.
+4. The loop uses an internal position. After removing an item, the next item moves into the current spot and is skipped. Build a new list with a comprehension, or loop over a copy (`for n in nums[:]`).
+5. Never compare floats with `==`. Use `math.isclose`, or work with integers (cents instead of dollars) or `decimal.Decimal` for money.
+@@@ END
+
+@@@ USER
+Show me Python f-string formatting: alignment, thousands separators, percentages, padding, dates and the debug form.
+@@@ ASSISTANT
+After the value, write a colon and a format specification: `{value:spec}`.
+
+```python
+from datetime import date
+
+price = 1234567.891
+name = "Asha"
+pct = 0.4567
+
+print(f"{name:>10}|{name:<10}|{name:^10}|")      # right, left, centered in 10 characters
+print(f"{price:,.2f}")                            # thousands separator, 2 decimals
+print(f"{pct:.1%}")                               # percent with 1 decimal
+print(f"{42:05d} {255:x} {255:#b} {1e6:.2e}")     # zero padding, hex, binary, scientific
+x = 7
+print(f"{x = }, {x * 2 = }")                      # debug form: shows the expression and the value
+
+d = date(2026, 11, 11)
+print(f"{d:%d %B %Y}, {d:%A}")                    # date formatting
+
+print(f"{'quote'!r} {name!s}")                    # !r uses repr(), !s uses str()
+width = 8
+print(f"[{name:{width}}]")                        # the width itself can be a variable
+```
+
+Output:
+
+```
+      Asha|Asha      |   Asha   |
+1,234,567.89
+45.7%
+00042 ff 0b11111111 1.00e+06
+x = 7, x * 2 = 14
+11 November 2026, Wednesday
+'quote' Asha
+[Asha    ]
+```
+
+Quick reference:
+- `<` left, `>` right, `^` center, followed by the width. Text is left-aligned by default, numbers right-aligned.
+- `,` adds thousands separators; `.2f` means 2 digits after the decimal point; `%` multiplies by 100 and adds the sign.
+- `{x = }` is great for quick debugging; it prints the variable name too.
+- Use a table of aligned columns for reports: `f"{name:<12}{qty:>5}{price:>10.2f}"`.
+@@@ END
+
+@@@ USER
+Write a small grep-like tool in Python: search files with a given extension for a regex and print file, line number and text.
+@@@ ASSISTANT
+Walk the folder with `Path.rglob`, read each file, and test every line with a compiled regex. A generator keeps memory use low and lets the caller decide what to do with each hit.
+
+```python
+import re
+import tempfile
+from pathlib import Path
+
+# Build a small sample project so the example runs anywhere
+root = Path(tempfile.mkdtemp())
+(root / "src").mkdir()
+(root / "src" / "main.rs").write_text(
+    'fn main() {\n    // TODO: parse args\n    println!("hi");\n}\n', encoding="utf-8"
+)
+(root / "src" / "lib.rs").write_text(
+    "// TODO: write docs\npub fn add(a: i32, b: i32) -> i32 { a + b }\n// FIXME: overflow\n",
+    encoding="utf-8",
+)
+(root / "notes.txt").write_text("nothing here\n", encoding="utf-8")
+
+
+def grep(pattern, folder, suffix):
+    regex = re.compile(pattern)
+    for path in sorted(folder.rglob(f"*{suffix}")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for number, line in enumerate(text.splitlines(), start=1):
+            if regex.search(line):
+                yield path.relative_to(folder).as_posix(), number, line.strip()
+
+
+for file, number, line in grep(r"TODO|FIXME", root, ".rs"):
+    print(f"{file}:{number}: {line}")
+```
+
+Output:
+
+```
+src/lib.rs:1: // TODO: write docs
+src/lib.rs:3: // FIXME: overflow
+src/main.rs:2: // TODO: parse args
+```
+
+Notes:
+- `rglob("*.rs")` searches subfolders too; `glob` searches only one level.
+- `errors="replace"` stops the tool from crashing on a file that is not valid UTF-8 (binary files, other encodings).
+- `as_posix()` prints forward slashes on every operating system.
+- To make it a real command, add `argparse` for the pattern and the folder, skip folders such as `.git` and `target`, and read large files line by line instead of loading them whole.
+@@@ END
+
+@@@ USER
+Show me object-oriented Python: properties, classmethod, staticmethod, __repr__, comparison operators and sorting, with a Money class.
+@@@ ASSISTANT
+```python
+from functools import total_ordering
+
+
+@total_ordering  # define == and one ordering method; Python fills in <=, >, >=
+class Money:
+    def __init__(self, cents):
+        if cents < 0:
+            raise ValueError("cents cannot be negative")
+        self._cents = cents  # the underscore means "internal, please do not touch"
+
+    @classmethod
+    def from_string(cls, text):
+        """Alternative constructor: Money.from_string('$12.5')"""
+        dollars, _, cents = text.lstrip("$").partition(".")
+        return cls(int(dollars) * 100 + int((cents + "00")[:2]))
+
+    @staticmethod
+    def is_valid(text):
+        """A helper that needs neither the class nor an object."""
+        try:
+            Money.from_string(text)
+            return True
+        except ValueError:
+            return False
+
+    @property
+    def cents(self):  # read-only attribute
+        return self._cents
+
+    @property
+    def display(self):
+        return f"${self._cents // 100}.{self._cents % 100:02d}"
+
+    def __add__(self, other):
+        return Money(self._cents + other._cents)
+
+    def __eq__(self, other):
+        return isinstance(other, Money) and self._cents == other._cents
+
+    def __lt__(self, other):
+        return self._cents < other._cents
+
+    def __hash__(self):  # needed because __eq__ is defined; lets Money be used in sets
+        return hash(self._cents)
+
+    def __repr__(self):  # what you see when printing or debugging
+        return f"Money({self._cents})"
+
+
+a = Money.from_string("$12.5")
+b = Money(399)
+print(a, b, a + b)
+print((a + b).display)
+print(a > b, sorted([a, b]), max(a, b))
+print(Money.is_valid("$3.99"), Money.is_valid("abc"))
+```
+
+Output:
+
+```
+Money(1250) Money(399) Money(1649)
+$16.49
+True [Money(399), Money(1250)] Money(1250)
+True False
+```
+
+Notes:
+- Keeping money as whole cents avoids float rounding errors.
+- `@classmethod` receives the class (`cls`) and is used for alternative constructors; `@staticmethod` receives nothing and is just a function that lives in the class for organization.
+- `@property` lets you read `money.display` like an attribute while running code. Without a setter it is read-only.
+- Define `__repr__` for every class: debugging output like `Money(1250)` beats `<__main__.Money object at 0x7f...>`.
+@@@ END

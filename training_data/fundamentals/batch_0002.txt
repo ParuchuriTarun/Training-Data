@@ -1,0 +1,487 @@
+@@@ USER
+How do I choose between a B-tree and an LSM index in Postgres, and what are the tradeoffs?
+@@@ ASSISTANT
+In Postgres, the practical choice is usually between a B-tree (the default) and a hash or BRIN index. True LSM behavior (as in RocksDB, Cassandra, or Pebble) means write-optimized ingestion with compaction, which matters at write scale.
+
+B-tree:
+- Best for equality, range, and ordered scans.
+- Random reads are fast; updates cause page churn.
+- Supports unique constraints, composite indexes, and `INCLUDE` covering indexes.
+- Good default for OLTP tables with < ~100M rows.
+
+BRIN (Block Range INdex):
+- Tiny indexes over physically clustered data. Ideal for append-only time-series: `CREATE INDEX ON events USING BRIN (created_at)`.
+- Stores min/max per block range; useless if data is not physically ordered.
+- Near-zero write overhead, very fast for "give me the last hour".
+
+Hash:
+- Equality only, no ordering, no range. Marginally faster than B-tree for pure equality.
+
+LSM (RocksDB/Pebble) vs B-tree:
+- **LSM**: writes are sequential and cheap (WAL + memtable flush). Reads may need to check multiple levels. Best for write-heavy, high-ingest workloads and range scans on a time-ordered key.
+- **B-tree**: reads are predictable (log N, one structure). Best for read-heavy, point-lookup workloads and anything where a single index must serve many access patterns.
+
+Decision rules:
+1. If the table is append-only and queried by time, use BRIN or partition by time. Do not add a B-tree per column.
+2. If the workload is read-heavy OLTP with joins, B-tree with composite covering indexes wins.
+3. If ingest is millions of rows per second and reads tolerate a small amplification, LSM wins.
+4. Watch write amplification: every B-tree index is updated on every write. Drop unused indexes before tuning the database.
+5. Measure: `EXPLAIN (ANALYZE, BUFFERS)` for index scan vs seq scan, and track `pg_stat_user_indexes` for idx_scan counts. An index with zero scans is a write tax with no benefit.
+@@@ END
+
+@@@ USER
+How do I design a distributed lock with Redis correctly, and what does it not guarantee?
+@@@ ASSISTANT
+Use a tokenized lock with a TTL, release only if you own it, and treat the lock as an optimization — not a correctness primitive, unless you use a fencing token.
+
+```ts
+import crypto from "node:crypto";
+
+const LOCK_TTL_MS = 10_000;
+
+async function acquireLock(key: string): Promise<string | null> {
+  const token = crypto.randomUUID();
+  const res = await redis.set(key, token, { NX: true, PX: LOCK_TTL_MS });
+  return res === "OK" ? token : null;
+}
+
+async function releaseLock(key: string, token: string): Promise<void> {
+  // Atomic compare-and-delete: only the owner can release.
+  const script = `
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+      return redis.call("del", KEYS[1])
+    else
+      return 0
+    end`;
+  await redis.eval(script, 1, key, token);
+}
+
+async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const token = await acquireLock(key);
+  if (!token) throw new Error("lock held by another worker");
+  try {
+    return await fn();
+  } finally {
+    await releaseLock(key, token);
+  }
+}
+```
+
+Critical rules:
+1. **Unique token per holder + compare-and-delete release.** Never `DEL` unconditionally; you may delete someone else's lock after yours expired.
+2. **TTL is a safety valve, not a guarantee.** If your work takes longer than the TTL, another worker acquires the lock. Either keep work under the TTL or use Redlock with fencing.
+3. **Fencing token**: include a monotonically increasing number with every resource write; the storage rejects writes with a stale fencing token. This is the correct way to get mutual exclusion against a pausing holder.
+4. **Redlock is not a guarantee of safety** under network partitions; it is a guarantee of liveness. For money or correctness-critical sections, use a database transaction with `SELECT ... FOR UPDATE` instead.
+
+Test:
+- Lock, wait beyond TTL, assert a second acquire succeeds.
+- Lock, attempt release with a wrong token, assert the lock survives.
+- Kill the holder mid-lock, assert the next worker acquires after TTL.
+@@@ END
+
+@@@ USER
+What is the transactional outbox pattern and why do I need it?
+@@@ ASSISTANT
+The outbox solves the dual-write problem: writing to your database and publishing an event is not atomic. The outbox makes the event part of the same transaction as the state change.
+
+```sql
+CREATE TABLE orders (
+  id bigserial PRIMARY KEY,
+  user_id uuid NOT NULL,
+  status text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE outbox (
+  id          bigserial PRIMARY KEY,
+  aggregate   text NOT NULL,        -- 'order'
+  aggregate_id bigint NOT NULL,
+  type        text NOT NULL,        -- 'order.created'
+  payload     jsonb NOT NULL,
+  published_at timestamptz,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX outbox_unpublished_idx ON outbox (created_at) WHERE published_at IS NULL;
+```
+
+```ts
+async function createOrder(userId: string, items: Item[]) {
+  return db.transaction(async (tx) => {
+    const order = await tx.query(
+      `INSERT INTO orders (user_id, status) VALUES ($1, 'created') RETURNING *`,
+      [userId]
+    ).then(r => r.rows[0]);
+
+    await tx.query(
+      `INSERT INTO outbox (aggregate, aggregate_id, type, payload)
+       VALUES ('order', $1, 'order.created', $2)`,
+      [order.id, JSON.stringify({ userId, items })]
+    );
+    return order;
+    // COMMIT writes both rows atomically. Either both exist or neither.
+  });
+}
+```
+
+The publisher:
+
+```ts
+async function publishOutbox() {
+  const rows = await db.query(
+    `UPDATE outbox SET published_at = now()
+     WHERE id IN (SELECT id FROM outbox WHERE published_at IS NULL ORDER BY created_at LIMIT 100)
+     RETURNING *`
+  );
+  for (const row of rows.rows) {
+    await bus.publish(row.type, row.payload);
+  }
+}
+setInterval(publishOutbox, 1000);
+```
+
+Rules:
+- The outbox row and the state change commit together. No event is published for a rolled-back transaction.
+- Consumers must be idempotent: the publisher may publish twice if it crashes after publish but before marking `published_at`.
+- Use at-least-once delivery. Exactly-once across a database and a broker is not achievable; idempotent consumers are.
+- Poll with `FOR UPDATE SKIP LOCKED` if multiple publishers run.
+- For real-time needs, use LISTEN/NOTIFY or a CDC tool (Debezium) instead of polling.
+- Test: create an order, kill the publisher before the first poll, restart, and assert exactly one event is received (consumer deduplicates by `aggregate_id`).
+@@@ END
+
+@@@ USER
+How do I implement consistent hashing for sharding a cache?
+@@@ ASSISTANT
+Consistent hashing maps both keys and nodes onto a ring. Adding or removing a node moves only `K/N` of the keys, instead of all of them.
+
+```ts
+import crypto from "node:crypto";
+
+function hash(str: string): number {
+  return crypto.createHash("md5").update(str).digest().readUInt32BE(0);
+}
+
+class ConsistentHash {
+  private ring: { position: number; node: string }[] = [];
+  private nodeSet = new Set<string>();
+  private readonly replicas = 150; // virtual nodes per physical node
+
+  addNode(node: string) {
+    if (this.nodeSet.has(node)) return;
+    this.nodeSet.add(node);
+    for (let i = 0; i < this.replicas; i++) {
+      this.ring.push({ position: hash(`${node}:${i}`), node });
+    }
+    this.ring.sort((a, b) => a.position - b.position);
+  }
+
+  removeNode(node: string) {
+    if (!this.nodeSet.has(node)) return;
+    this.nodeSet.delete(node);
+    this.ring = this.ring.filter((e) => e.node !== node);
+  }
+
+  getNode(key: string): string {
+    if (!this.ring.length) throw new Error("no nodes");
+    const pos = hash(key);
+    // Binary search for the first node with position >= pos; wrap around.
+    let lo = 0, hi = this.ring.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.ring[mid].position < pos) lo = mid + 1;
+      else hi = mid;
+    }
+    return this.ring[lo].node;
+  }
+}
+```
+
+Key points:
+- **Virtual nodes (replicas)** smooth distribution: 100–200 per physical node balances load when node counts are small.
+- **Bounded loads**: if a node is hot, walk the ring to the next node up to a load threshold (consistent hashing with bounded loads).
+- **Use a cryptographic hash** (md5/sha) for uniformity; a weak hash creates hot spots.
+- **Resharding**: on node removal, only the keys mapped to that node move. On node addition, only keys from the new node's neighbors move.
+- **Test for balance**: insert 100k keys, assert each node's share is within ±10% of `K/N`.
+
+Do not use consistent hashing for data sharding by hand if a database already does this (e.g., Vitess, Citus, or managed SQL). It is appropriate for cache tiers, feature-flag evaluation, and A/B assignment.
+@@@ END
+
+@@@ USER
+How do I choose a load balancing algorithm per route?
+@@@ ASSISTANT
+Match the algorithm to the shape of your traffic and backends.
+
+- **Round robin**: even, stateless, homogeneous backends. Default when you do not know better.
+- **Least connections**: backends with long-lived or variable-cost requests (LLM inference, report generation). Sends each request to the backend with the fewest in-flight requests.
+- **Least response time**: backends with different hardware or noisy neighbors. Uses measured latency, not just count. Best when backend performance varies.
+- **IP hash / consistent hash**: sticky sessions that cannot be stored server-side. Hashes source IP to a backend. A backend failure remaps only its slice.
+- **Weighted round robin**: backends with different capacities. Weight by measured throughput, not by guesswork. A 4-core box gets weight 4, a 2-core box weight 2.
+- **Join-the-shortest-queue (power of two choices)**: pick two random backends, send to the one with fewer in-flight requests. Near-optimal with almost no state. Best general-purpose choice for heterogeneous backends.
+
+Code sketch for least connections:
+
+```ts
+function pickBackend(backends: Backend[]): Backend {
+  let best: Backend | null = null;
+  for (const b of backends) {
+    if (!b.healthy) continue;
+    if (!best || b.inflight < best.inflight) best = b;
+  }
+  if (!best) throw new Error("no healthy backends");
+  best.inflight++;
+  return best;
+}
+```
+
+Rules:
+- Health checks drive weights: a failing backend gets zero traffic, not a reduced share.
+- Health checks must be passive (based on real request outcomes) plus active (synthetic probes) for fast failover.
+- Connection draining on deploy: stop sending new requests, wait for in-flight to finish, then shut down.
+- Keep backends homogeneous where possible; algorithm choice is a second-order optimization.
+- Test: kill one backend and assert requests redistribute within seconds with no 5xx spike.
+@@@ END
+
+@@@ USER
+How do I design an API versioning and deprecation strategy?
+@@@ ASSISTANT
+Use additive changes, a version in the path, and a 12-month sunset window with machine-readable headers.
+
+Headers on every response:
+
+```http
+HTTP/1.1 200 OK
+Deprecation: true
+Sunset: Wed, 01 Oct 2026 00:00:00 GMT
+Link: <https://docs.example.com/v2>; rel="successor-version"
+```
+
+Rules:
+1. **Additive first.** New fields, new optional parameters, new endpoints. Never rename or remove without a major version.
+2. **URL versioning** (`/v1`, `/v2`) for breaking changes. Header versioning is harder to debug and cache.
+3. **Run both versions** during the transition. Old contracts remain served until sunset.
+4. **Announce early.** Deprecation header + changelog + direct email to affected customers 12 months before sunset. 6 months is too short for enterprise integrations.
+5. **Sunset, do not silently break.** At sunset, return `410 Gone` with a pointer to the replacement, not a generic 404.
+6. **Usage telemetry.** Track which clients still call the deprecated version; contact the top 10 holders before sunset.
+7. **Never reuse a removed field name** for a different meaning in the next version. That is how silent data corruption happens.
+8. **Contract tests** for each live version in CI. A breaking change must fail the build.
+
+Test: freeze the v1 contract, ship v2, assert v1 requests still pass the golden suite, and assert the deprecation headers are present.
+@@@ END
+
+@@@ USER
+How do I use database transactions correctly for money movement?
+@@@ ASSISTANT
+Use `SELECT ... FOR UPDATE`, check balances inside the transaction, and write a double-entry ledger. Never trust a balance read without a lock.
+
+```sql
+BEGIN;
+SELECT balance_cents FROM accounts WHERE id = 1 FOR UPDATE;
+SELECT balance_cents FROM accounts WHERE id = 2 FOR UPDATE;
+-- check: from.balance >= amount
+UPDATE accounts SET balance_cents = balance_cents - 1000 WHERE id = 1;
+UPDATE accounts SET balance_cents = balance_cents + 1000 WHERE id = 2;
+
+INSERT INTO ledger_entries (account_id, amount_cents, transfer_id, created_at)
+VALUES (1, -1000, 'tr_123', now());
+
+INSERT INTO ledger_entries (account_id, amount_cents, transfer_id, created_at)
+VALUES (2, 1000, 'tr_123', now());
+COMMIT;
+```
+
+Rules:
+1. **Lock rows in a consistent order** (ascending id) to prevent deadlocks. Two concurrent transfers locking in opposite order deadlock; always lock the lower id first.
+2. **Balance check inside the transaction** with `FOR UPDATE`. A check-then-update without a lock races.
+3. **Double-entry ledger**: every transfer writes a negative and a positive entry with one `transfer_id`. The sum across all entries is always zero. That invariant catches bugs.
+4. **Idempotency key** per transfer. Retries must not double-charge. Store the key + response scoped per user.
+5. **Isolation level**: `READ COMMITTED` with `FOR UPDATE` is enough for this pattern. `SERIALIZABLE` is the last resort and causes more serialization failures.
+6. **No external calls inside the transaction.** Call the payment processor after commit; reconcile with webhooks.
+7. **Retry deadlocks** with exponential backoff (3 retries, jitter). A deadlock error is retryable; a validation error is not.
+
+Test: run 100 concurrent transfers between two accounts in both directions and assert the total is unchanged and no deadlock errors surface.
+@@@ END
+
+@@@ USER
+How do I handle tenant isolation at the database level with row-level security?
+@@@ ASSISTANT
+Enable RLS, force it for the table owner, and set a transaction-local tenant id per request. Deny by default.
+
+```sql
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_select ON invoices
+  FOR SELECT
+  USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+CREATE POLICY tenant_insert ON invoices
+  FOR INSERT
+  WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+CREATE INDEX invoices_tenant_created_idx ON invoices (tenant_id, created_at DESC);
+```
+
+Application:
+
+```ts
+async function withTenant(tenantId: string, fn: (client: Client) => Promise<unknown>) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+```
+
+Critical details:
+1. `FORCE ROW LEVEL SECURITY` — without it, the table owner bypasses policies. Migrations and background jobs must use a separate owner role.
+2. `set_config(..., true)` makes the setting local to the transaction. Using plain `SET` leaks the tenant to the next request on a pooled connection. This is the most common RLS bug.
+3. The app role must not have `BYPASSRLS` and must not own the tables.
+4. Test the negative case: connect as the app role, set tenant A, and query for tenant B's known id. Expect zero rows. Run it in CI.
+5. Add `tenant_id` to every unique constraint and join; rely on the database, not the ORM, for isolation.
+6. RLS adds a predicate to every query; the `(tenant_id, ...)` index keeps it cheap.
+@@@ END
+
+@@@ USER
+How do I implement a circuit breaker for downstream services?
+@@@ ASSISTANT
+Open the circuit after repeated failures, fail fast while open, and half-open with a single probe after a timeout. Add a bulkhead (separate thread/connection pool) so one dependency cannot consume all resources.
+
+```ts
+type State = "closed" | "open" | "half-open";
+
+class CircuitBreaker {
+  private state: State = "closed";
+  private failures = 0;
+  private openedAt = 0;
+
+  constructor(
+    private readonly threshold = 5,
+    private readonly resetAfterMs = 30_000,
+  ) {}
+
+  async execute<T>(fn: () => Promise<T>, fallback: () => Promise<T>): Promise<T> {
+    if (this.state === "open") {
+      if (Date.now() - this.openedAt < this.resetAfterMs) {
+        return fallback(); // fail fast, do not call the dependency
+      }
+      this.state = "half-open";
+    }
+
+    try {
+      const result = await fn();
+      this.failures = 0;
+      this.state = "closed";
+      return result;
+    } catch (err) {
+      this.failures += 1;
+      if (this.failures >= this.threshold) {
+        this.state = "open";
+        this.openedAt = Date.now();
+      }
+      return fallback();
+    }
+  }
+}
+```
+
+Rules:
+- Count only transient failures (timeouts, 5xx, connection errors). A 400 validation error must not trip the breaker.
+- Fallback must be safe: cached value, queued job, or a clear error. Never an empty success that hides the outage.
+- Set a short per-call timeout (2–5s). A breaker without a timeout never trips because callers hang forever.
+- Half-open allows one probe; success closes, failure reopens. Ten concurrent probes during an outage re-trigger it.
+- Add metrics: state changes, rejected calls, fallback rate. Alert when the breaker is open for more than a few minutes.
+- Combine with retries: retry only inside the closed state, with jitter, and only idempotent operations.
+@@@ END
+
+@@@ USER
+How do I implement leader election for a single-writer service?
+@@@ ASSISTANT
+Use a lease with a monotonically increasing term from a consensus-aware store (etcd, Consul, or Postgres advisory locks). The leader must hold a fencing token that the storage checks.
+
+For Postgres advisory locks:
+
+```sql
+-- Acquire: returns true if this session is the leader
+SELECT pg_try_advisory_xact_lock(42);
+-- Lock is held until the transaction commits; session-level variant survives longer:
+SELECT pg_try_advisory_lock(42);
+```
+
+Leader loop:
+
+```ts
+let leader = false;
+let term = 0;
+
+async function leaderLoop() {
+  while (true) {
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query("SELECT pg_try_advisory_lock(42)");
+      if (rows[0].pg_try_advisory_lock) {
+        leader = true;
+        term += 1;
+        console.log(`became leader, term ${term}`);
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    } finally {
+      client.release();
+    }
+  }
+}
+```
+
+Key points:
+1. **Fencing token**: every write carries the term. Storage rejects writes from a stale term. Without fencing, a paused leader that resumes can overwrite newer data.
+2. **Lease expiry**: if the holder dies, the lock releases when the connection closes (session lock) or the transaction ends (xact lock).
+3. **Clock skew**: do not trust wall-clock expiry across hosts. Use the store's own lease timing.
+4. **Split brain**: two leaders can both believe they hold the lock during a partition. Fencing at the storage layer is what makes this safe.
+5. **Prefer managed consensus** (etcd/Consul/Raft) for production. Advisory locks are a fine default for a single Postgres deployment.
+6. **Test**: kill the leader mid-write, assert a new leader is elected within seconds and no stale write lands.
+@@@ END
+
+@@@ USER
+How do I design a queue with visibility timeout and exactly-once effects?
+@@@ ASSISTANT
+Exactly-once processing across a network is impossible. Achieve exactly-once *effects* with at-least-once delivery plus idempotent consumers.
+
+Visibility timeout flow:
+
+```
+Producer -> Queue -> Worker A (picks up, marks invisible for 30s)
+  Worker A crashes before ack -> visibility expires -> job reappears
+  Worker B picks it up, processes, acks -> job deleted
+```
+
+Idempotent consumer:
+
+```ts
+async function handleJob(job: Job) {
+  // Claim the job: first writer wins.
+  const claimed = await db.query(
+    `INSERT INTO processed_jobs (job_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING job_id`,
+    [job.id]
+  );
+  if (claimed.rows.length === 0) return; // already processed
+
+  await processSideEffects(job); // must be safe if this throws after insert
+}
+```
+
+Rules:
+1. Visibility timeout longer than the p99 processing time (e.g., 5× p99). Too short causes duplicate delivery; too long delays recovery.
+2. Ack only after success. A crash before ack re-delivers the job; that is the point.
+3. Idempotency table keyed by job id. The insert is the lock.
+4. Poison pills: a job that always fails must move to a DLQ after N attempts, not loop forever. Track `attempts` and dead-letter at 5.
+5. Throughput: batch-ack successful jobs; use `receive + delete` windows cautiously (a delete after the visibility window fails).
+6. Test: process a job, kill the worker before ack, restart, and assert the side effect happened once.
+@@@ END

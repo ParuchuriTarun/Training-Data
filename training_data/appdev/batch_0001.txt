@@ -1,0 +1,1648 @@
+@@@ USER
+I'm building a small ticket system and want to freeze the REST contract before writing handlers. Resources are tickets and comments. Show the endpoint design, status codes, cursor pagination, and a runnable filtered list endpoint.
+@@@ ASSISTANT
+Model resources as plural nouns and keep nesting one level deep:
+
+| Method | Path | Success | Notes |
+|---|---|---|---|
+| GET | /v1/tickets?status=open&limit=25&cursor=... | 200 | Filter + keyset page |
+| POST | /v1/tickets | 201 + Location | Accepts Idempotency-Key |
+| GET | /v1/tickets/{id} | 200 / 404 | Opaque id |
+| PATCH | /v1/tickets/{id} | 200 | Partial update, 409 on stale version |
+| DELETE | /v1/tickets/{id} | 204 | Soft delete |
+| GET | /v1/tickets/{id}/comments | 200 | Same cursor scheme |
+| POST | /v1/tickets/{id}/comments | 201 | |
+
+Use 400 for malformed syntax, 422 for semantic errors, 401/403 for auth, 429 with Retry-After, and problem+json errors with `type`, `title`, `status`, `detail`, and `request_id`. Never return 200 with `{success:false}`. Paginate by `(created_at, id)` instead of OFFSET so concurrent inserts do not shift pages.
+
+```python
+import base64, json, os
+from datetime import datetime
+from typing import Literal
+import asyncpg
+from fastapi import FastAPI, HTTPException, Query
+
+app = FastAPI()
+
+def encode(ts: datetime, row_id: int) -> str:
+    raw = json.dumps([ts.isoformat(), row_id]).encode()
+    return base64.urlsafe_b64encode(raw).decode()
+
+def decode(cursor: str) -> tuple[datetime, int]:
+    try:
+        ts, row_id = json.loads(base64.urlsafe_b64decode(cursor))
+        return datetime.fromisoformat(ts), int(row_id)
+    except Exception:
+        raise HTTPException(422, "invalid cursor")
+
+@app.get("/v1/tickets")
+async def list_tickets(
+    status: Literal["open", "closed"] | None = None,
+    limit: int = Query(25, ge=1, le=100),
+    cursor: str | None = None,
+):
+    after_ts, after_id = decode(cursor) if cursor else (None, None)
+    rows = await app.state.pool.fetch(
+        """
+        SELECT id, title, status, created_at
+          FROM tickets
+         WHERE ($1::text IS NULL OR status = $1)
+           AND ($2::timestamptz IS NULL OR (created_at, id) < ($2, $3))
+         ORDER BY created_at DESC, id DESC
+         LIMIT $4
+        """,
+        status, after_ts, after_id, limit,
+    )
+    items = [dict(row) for row in rows]
+    next_cursor = (
+        encode(rows[-1]["created_at"], rows[-1]["id"])
+        if len(rows) == limit else None
+    )
+    return {"items": items, "next_cursor": next_cursor}
+
+@app.on_event("startup")
+async def startup():
+    app.state.pool = await asyncpg.create_pool(os.environ["DATABASE_URL"])
+```
+
+The tuple comparison `(created_at, id) < ($2, $3)` is the keyset seek; it stays correct when many rows share a timestamp. The composite index `(created_at DESC, id DESC)` serves both the order and the cursor.
+
+Verify it:
+
+```bash
+uvicorn main:app --reload
+curl -i "http://127.0.0.1:8000/v1/tickets?status=open&limit=2"
+curl -i "http://127.0.0.1:8000/v1/tickets?limit=2&cursor=BAD"
+```
+
+The first call returns two items plus `next_cursor`; the second must return 422. Reuse the cursor and assert no id repeats. `POST /v1/tickets` should return `Location: /v1/tickets/{id}` and store the Idempotency-Key under a unique index so a retried create returns the original body.
+@@@ END
+
+@@@ USER
+Show me production-grade password login for Node/Express using an httpOnly session cookie backed by Postgres. I need login, an auth middleware, logout, CSRF reasoning, and curl commands that prove the cookie flags and revocation.
+@@@ ASSISTANT
+The cookie carries an opaque random token; store only its SHA-256, so a database leak does not expose live sessions.
+
+```sql
+CREATE TABLE sessions (
+  token_hash text PRIMARY KEY,
+  user_id bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL
+);
+```
+
+```js
+import express from "express";
+import cookieParser from "cookie-parser";
+import argon2 from "argon2";
+import pg from "pg";
+import { createHash, randomBytes } from "node:crypto";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const app = express();
+app.use(express.json());
+app.use(cookieParser());
+
+const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+const baseCookie = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  path: "/",
+};
+
+app.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body ?? {};
+  const { rows } = await pool.query(
+    "SELECT id, password_hash FROM users WHERE email = $1", [email]
+  );
+  const user = rows[0];
+  if (!user || !(await argon2.verify(user.password_hash, password ?? ""))) {
+    return res.status(401).json({ error: "invalid_credentials" });
+  }
+  const token = randomBytes(32).toString("base64url");
+  await pool.query(
+    `INSERT INTO sessions (token_hash, user_id, expires_at)
+     VALUES ($1, $2, now() + interval '14 days')`,
+    [sha256(token), user.id]
+  );
+  res.cookie("sid", token, { ...baseCookie, maxAge: 14 * 24 * 60 * 60 * 1000 });
+  res.status(204).end();
+});
+
+app.get("/auth/me", requireUser, (req, res) => res.json(req.user));
+
+app.post("/auth/logout", requireUser, async (req, res) => {
+  await pool.query("DELETE FROM sessions WHERE token_hash = $1", [sha256(req.cookies.sid)]);
+  res.clearCookie("sid", baseCookie);
+  res.status(204).end();
+});
+
+async function requireUser(req, res, next) {
+  try {
+    const token = req.cookies.sid;
+    if (!token) return res.status(401).json({ error: "unauthenticated" });
+    const { rows } = await pool.query(
+      `SELECT u.id, u.email, u.role
+         FROM sessions s JOIN users u ON u.id = s.user_id
+        WHERE s.token_hash = $1 AND s.expires_at > now()`,
+      [sha256(token)]
+    );
+    if (!rows[0]) return res.status(401).json({ error: "unauthenticated" });
+    req.user = rows[0];
+    next();
+  } catch (err) { next(err); }
+}
+```
+
+Generate a test user and exercise the flow:
+
+```bash
+HASH=$(node -e "import('argon2').then(async a => process.stdout.write(await a.hash('correct-horse-battery')))")
+psql "$DATABASE_URL" -c "INSERT INTO users (email,password_hash) VALUES ('a@example.com','$HASH');"
+curl -i -c jar.txt -H 'Content-Type: application/json' \
+  -d '{"email":"a@example.com","password":"correct-horse-battery"}' \
+  http://localhost:3000/auth/login
+curl -i -b jar.txt http://localhost:3000/auth/me
+curl -i -b jar.txt -X POST http://localhost:3000/auth/logout
+curl -i -b jar.txt http://localhost:3000/auth/me
+```
+
+SameSite=Lax plus an `Origin` check on non-GET requests stops CSRF.
+@@@ END
+
+@@@ USER
+Implement JWT access and refresh tokens with rotation and reuse detection in FastAPI. Access should last 15 minutes, refresh 30 days, and replaying an old refresh token must revoke the whole token family.
+@@@ ASSISTANT
+Store refresh token hashes, one row per issued token. A `family_id` groups every rotation from one login; seeing a revoked token again means theft, so kill the family.
+
+```sql
+CREATE TABLE refresh_tokens (
+  jti uuid PRIMARY KEY, family_id uuid NOT NULL, user_id bigint NOT NULL,
+  token_hash text NOT NULL, expires_at timestamptz NOT NULL,
+  revoked_at timestamptz
+);
+```
+
+```python
+import hashlib, os, uuid
+from datetime import datetime, timedelta, timezone
+import jwt
+from fastapi import Body, FastAPI, HTTPException
+
+SECRET = os.environ["JWT_SECRET"]
+app = FastAPI()
+
+def access_token(user_id: int) -> str:
+    now = datetime.now(timezone.utc)
+    return jwt.encode({
+        "sub": str(user_id), "typ": "access",
+        "exp": now + timedelta(minutes=15),
+    }, SECRET, algorithm="HS256")
+
+def refresh_token(user_id: int, family_id: uuid.UUID):
+    jti = uuid.uuid4()
+    expires = datetime.now(timezone.utc) + timedelta(days=30)
+    token = jwt.encode({
+        "sub": str(user_id), "typ": "refresh",
+        "jti": str(jti), "exp": expires,
+    }, SECRET, algorithm="HS256")
+    return token, jti, expires
+
+async def create_pair(conn, user_id: int, family_id=None):
+    family_id = family_id or uuid.uuid4()
+    refresh, jti, expires = refresh_token(user_id, family_id)
+    await conn.execute(
+        """INSERT INTO refresh_tokens (jti, family_id, user_id, token_hash, expires_at)
+           VALUES ($1,$2,$3,$4,$5)""",
+        jti, family_id, user_id,
+        hashlib.sha256(refresh.encode()).hexdigest(), expires,
+    )
+    return {"access_token": access_token(user_id),
+            "refresh_token": refresh, "expires_in": 900}
+
+@app.post("/auth/refresh")
+async def refresh(refresh_token: str = Body(embed=True)):
+    try:
+        claims = jwt.decode(
+            refresh_token, SECRET, algorithms=["HS256"],
+            options={"require": ["exp", "sub", "jti", "typ"]},
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(401, "invalid_refresh")
+    if claims["typ"] != "refresh":
+        raise HTTPException(401, "invalid_refresh")
+    digest = hashlib.sha256(refresh_token.encode()).hexdigest()
+
+    async with app.state.pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT * FROM refresh_tokens WHERE jti=$1 FOR UPDATE",
+                uuid.UUID(claims["jti"]),
+            )
+            if row is None or row["token_hash"] != digest:
+                raise HTTPException(401, "invalid_refresh")
+            if row["revoked_at"] is not None:
+                await conn.execute(
+                    """UPDATE refresh_tokens SET revoked_at=now()
+                       WHERE family_id=$1 AND revoked_at IS NULL""",
+                    row["family_id"],
+                )
+                raise HTTPException(401, "refresh_reuse")
+            pair = await create_pair(conn, row["user_id"], row["family_id"])
+            await conn.execute(
+                "UPDATE refresh_tokens SET revoked_at=now() WHERE jti=$1",
+                row["jti"],
+            )
+    return pair
+```
+
+Call `create_pair` inside the login transaction after password verification. The access token verifier must check `typ == "access"` as well as signature and expiry.
+
+```python
+async def test_reuse(client, login):
+    old = (await login()).json()["refresh_token"]
+    new = (await client.post("/auth/refresh", json={"refresh_token": old})).json()["refresh_token"]
+    for token in (old, new):
+        r = await client.post("/auth/refresh", json={"refresh_token": token})
+        assert r.status_code == 401
+```
+
+The replay returns 401 and the newest token is rejected, proving family revocation.
+@@@ END
+
+@@@ USER
+Write role-based authorization middleware for Express with four roles: viewer, member, admin, owner. Lower roles must be denied, unauthenticated users must get 401, and object ownership must still be checked for owners of a project. Include a supertest that proves all three cases.
+@@@ ASSISTANT
+Separate authentication (who are you), role authorization (may your role perform this action), and object authorization (do you own this row). The middleware handles the first two; the handler or a second guard checks ownership.
+
+```js
+import express from "express";
+
+const RANK = { viewer: 1, member: 2, admin: 3, owner: 4 };
+
+export function requireRole(minimum) {
+  return function (req, res, next) {
+    if (!req.user) {
+      return res.status(401).json({ error: "unauthenticated" });
+    }
+    const actual = RANK[req.user.role] ?? 0;
+    if (actual < RANK[minimum]) {
+      return res.status(403).json({
+        error: "forbidden",
+        required: minimum,
+        actual: req.user.role,
+      });
+    }
+    next();
+  };
+}
+
+export function requireProjectOwner(req, res, next) {
+  if (req.project.ownerId !== req.user.id) {
+    return res.status(404).json({ error: "project_not_found" });
+  }
+  next();
+}
+```
+
+Use it on a router. `loadProject` runs before the ownership guard, and the role guard runs before both:
+
+```js
+const router = express.Router();
+
+async function loadProject(req, res, next) {
+  try {
+    const { rows } = await db.query(
+      "SELECT id, owner_id FROM projects WHERE id = $1 AND deleted_at IS NULL",
+      [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "project_not_found" });
+    req.project = { id: rows[0].id, ownerId: rows[0].owner_id };
+    next();
+  } catch (err) { next(err); }
+}
+
+router.delete(
+  "/projects/:id",
+  requireRole("admin"),
+  loadProject,
+  requireProjectOwner,
+  async (req, res) => {
+    await db.query("UPDATE projects SET deleted_at = now() WHERE id = $1", [req.params.id]);
+    res.status(204).end();
+  }
+);
+```
+
+The `requireRole("admin")` guard deliberately comes first: a member should get 403 before the code reveals whether a project exists. The owner guard returns 404 instead of 403 so members cannot enumerate other people's project ids.
+
+Prove all paths with supertest, injecting a test identity before the router:
+
+```js
+import request from "supertest";
+import { test, expect } from "vitest";
+
+function makeApp(role) {
+  const app = express();
+  app.use((req, _res, next) => {
+    if (role) req.user = { id: 7, role };
+    next();
+  });
+  app.delete(
+    "/projects/:id",
+    requireRole("admin"),
+    (req, _res, next) => {
+      req.project = { id: 1, ownerId: 7 };
+      next();
+    },
+    requireProjectOwner,
+    (_req, res) => res.status(204).end()
+  );
+  return app;
+}
+
+test("401 without a user", async () => {
+  await request(makeApp(null)).delete("/projects/1").expect(401);
+});
+
+test("403 for member", async () => {
+  const res = await request(makeApp("member")).delete("/projects/1").expect(403);
+  expect(res.body.required).toBe("admin");
+});
+
+test("204 for owner", async () => {
+  await request(makeApp("owner")).delete("/projects/1").expect(204);
+});
+```
+
+Keep role checks declarative at the route boundary and ownership checks next to the row. If roles later need per-resource grants, add a `project_members(project_id, user_id, role)` table and resolve the effective role from it inside `loadProject`; do not grow a chain of `if` statements in handlers.
+@@@ END
+
+@@@ USER
+Validate a signup request in TypeScript with Zod: email normalized, password strength, age coercion, enum plan, optional nested address, and rejection of unknown keys. Return field-level errors and show tests for success and failure.
+@@@ ASSISTANT
+Define one schema as the single source of truth, use `.strict()` so typos fail instead of being silently dropped, and use `safeParse` so validation errors become a 422 rather than an exception.
+
+```ts
+import express from "express";
+import { z } from "zod";
+
+const Signup = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(12).max(72)
+    .refine((v) => /[a-z]/.test(v) && /[A-Z]/.test(v) && /\d/.test(v), {
+      message: "use upper case, lower case, and a digit",
+    }),
+  age: z.coerce.number().int().min(13).max(120),
+  plan: z.enum(["free", "pro"]).default("free"),
+  address: z.object({
+    country: z.string().length(2).toUpperCase(),
+    city: z.string().trim().min(1),
+  }).optional(),
+  marketing: z.boolean().default(false),
+}).strict();
+
+const app = express();
+app.use(express.json({ limit: "32kb" }));
+
+app.post("/signup", (req, res) => {
+  const parsed = Signup.safeParse(req.body);
+  if (!parsed.success) {
+    const flattened = parsed.error.flatten();
+    return res.status(422).json({
+      error: "validation_failed",
+      fields: flattened.fieldErrors,
+      formErrors: flattened.formErrors,
+    });
+  }
+  // parsed.data is fully typed and normalized here
+  res.status(201).json({ user: parsed.data });
+});
+```
+
+Key details: `.trim().toLowerCase()` are transformations applied before `.email()` in Zod pipelines; `z.coerce.number()` turns `"31"` into 31 but still rejects `"31abc"`; `.default()` fills absent fields; `.strict()` turns `{ email, password, age, plan, extra: 1 }` into an unrecognized-key error. Password max 72 avoids silently truncating input if a bcrypt fallback is ever added; Argon2 has no such limit.
+
+Test the contract with supertest and Vitest:
+
+```ts
+import request from "supertest";
+import { test, expect } from "vitest";
+
+test("normalizes and accepts a valid body", async () => {
+  const res = await request(app).post("/signup").send({
+    email: "  ADA@Example.COM ",
+    password: "correctHorse9",
+    age: "31",
+    address: { country: "gb", city: " London " },
+  }).expect(201);
+
+  expect(res.body.user.email).toBe("ada@example.com");
+  expect(res.body.user.age).toBe(31);
+  expect(res.body.user.plan).toBe("free");
+  expect(res.body.user.address.country).toBe("GB");
+});
+
+test("rejects unknown keys and weak passwords", async () => {
+  const res = await request(app).post("/signup").send({
+    email: "ada@example.com",
+    password: "short",
+    age: 31,
+    isAdmin: true,
+  }).expect(422);
+
+  expect(res.body.fields.password).toBeDefined();
+  expect(res.body.formErrors.join(" ")).toContain("isAdmin");
+});
+```
+
+Run `npx vitest run`. A 201 with the normalized email and defaulted plan proves transforms and defaults; a 422 naming both `password` and `isAdmin` proves refinement and unknown-key rejection. Reuse the schema with `Signup.partial()` for PATCH, but keep `.strict()` so clients cannot mass-assign columns such as `role`.
+@@@ END
+
+@@@ USER
+Design the Postgres schema and indexes for a small shop with customers, orders, and order items. I need the DDL, the reasoning for composite and partial index order, and EXPLAIN commands that prove the indexes are used.
+@@@ ASSISTANT
+```sql
+CREATE TABLE customers (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  email text NOT NULL UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE orders (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  customer_id bigint NOT NULL REFERENCES customers(id),
+  status text NOT NULL CHECK (status IN ('pending', 'paid', 'shipped', 'cancelled')),
+  total_cents integer NOT NULL CHECK (total_cents >= 0),
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE order_items (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  order_id bigint NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  sku text NOT NULL,
+  quantity integer NOT NULL CHECK (quantity > 0),
+  unit_cents integer NOT NULL CHECK (unit_cents >= 0)
+);
+```
+
+The workhorse query is "a customer's newest orders". Put equality columns first, then the sort columns in matching order:
+
+```sql
+CREATE INDEX orders_customer_recent_idx
+  ON orders (customer_id, created_at DESC, id DESC);
+
+CREATE INDEX orders_pending_idx
+  ON orders (created_at DESC, id DESC)
+  WHERE status = 'pending';
+
+CREATE INDEX order_items_order_idx ON order_items (order_id);
+
+CREATE UNIQUE INDEX orders_external_ref_uq
+  ON orders (customer_id, (metadata->>'external_ref'))
+  WHERE metadata ? 'external_ref';
+```
+
+`orders_customer_recent_idx` supports `WHERE customer_id = $1 ORDER BY created_at DESC, id DESC LIMIT 20` with a single index scan and no sort. The partial index is smaller and hotter because it contains only unpaid orders; the query must include the same predicate to use it. The unique partial index makes webhook retries safe without preventing rows that have no external reference. The foreign-key index on `order_items(order_id)` is not optional: without it, deleting an order or joining items forces a sequential scan.
+
+Prove usage:
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT id, total_cents, created_at
+  FROM orders
+ WHERE customer_id = 42
+ ORDER BY created_at DESC, id DESC
+ LIMIT 20;
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT id FROM orders
+ WHERE status = 'pending'
+ ORDER BY created_at DESC, id DESC
+ LIMIT 50;
+```
+
+Expect `Index Scan using orders_customer_recent_idx` and `Index Scan using orders_pending_idx`; a `Seq Scan` or `Sort` means the index does not match. Check real traffic with:
+
+```sql
+SELECT indexrelname, idx_scan, idx_tup_read
+  FROM pg_stat_user_indexes
+ WHERE relname IN ('orders', 'order_items')
+ ORDER BY idx_scan;
+```
+
+An index with zero scans after a week is a write cost with no reader; drop it. Create indexes on live tables with `CREATE INDEX CONCURRENTLY` outside a transaction, and consider `INCLUDE (total_cents)` on the customer index if the planner can then answer the page with an index-only scan. Keep the primary keys and foreign keys as `bigint`; do not use `timestamp` without time zone.
+@@@ END
+
+@@@ USER
+Show a money transfer in Postgres using SERIALIZABLE isolation with retry on serialization failure. Explain why READ COMMITTED alone is risky and give a concurrent test that proves the balances stay consistent.
+@@@ ASSISTANT
+Wrap the debit, credit, and ledger insert in one transaction. Use a guarded debit so funds cannot go negative, set `SERIALIZABLE`, and retry the whole transaction on SQLSTATE `40001`.
+
+```python
+import time
+import psycopg
+
+class InsufficientFunds(Exception):
+    pass
+
+def transfer(conn, src: int, dst: int, cents: int) -> None:
+    for attempt in range(6):
+        try:
+            with conn.transaction():
+                with conn.cursor() as cur:
+                    cur.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+                    cur.execute(
+                        """UPDATE accounts SET balance = balance - %s
+                           WHERE id = %s AND balance >= %s""",
+                        (cents, src, cents),
+                    )
+                    if cur.rowcount != 1:
+                        raise InsufficientFunds(src)
+                    cur.execute(
+                        "UPDATE accounts SET balance = balance + %s WHERE id = %s",
+                        (cents, dst),
+                    )
+                    cur.execute(
+                        """INSERT INTO transfers (src_id, dst_id, cents)
+                           VALUES (%s, %s, %s)""",
+                        (src, dst, cents),
+                    )
+            return
+        except psycopg.errors.SerializationFailure:
+            if attempt == 5:
+                raise
+            time.sleep(0.02 * (2 ** attempt))
+```
+
+`conn.transaction()` commits on normal exit and rolls back on any exception, including `InsufficientFunds`, so a failed debit cannot leave a partial transfer. The `balance >= %s` predicate plus the row-count check is what prevents overdrafts even if the isolation level is lowered later.
+
+READ COMMITTED is the Postgres default and each statement sees a fresh snapshot. Two concurrent transfers can both read balance 100, both decide a 90 transfer is allowed, and serialize their writes into -80 unless the debit is guarded. `SELECT ... FOR UPDATE` plus a guarded update is a valid alternative at READ COMMITTED. SERIALIZABLE catches broader anomalies such as write skew, at the cost of possible `40001` errors that callers must retry. Do not retry `InsufficientFunds`; that is a business outcome.
+
+Concurrency test with a real pool:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+def one_transfer(pool, _):
+    with pool.connection() as conn:
+        transfer(conn, 1, 2, 100)
+
+def test_concurrent_transfers(pool):
+    with pool.connection() as conn:
+        conn.execute("UPDATE accounts SET balance = 10000 WHERE id IN (1, 2)")
+        conn.execute("DELETE FROM transfers")
+        conn.commit()
+    with ThreadPoolExecutor(max_workers=8) as pool_exec:
+        list(pool_exec.map(lambda _: one_transfer(pool, _), range(50)))
+    with pool.connection() as conn:
+        balances = conn.execute(
+            "SELECT sum(balance) FROM accounts WHERE id IN (1, 2)"
+        ).fetchone()[0]
+        count = conn.execute("SELECT count(*) FROM transfers").fetchone()[0]
+    assert balances == 20000
+    assert count == 50
+```
+
+Run `pytest -q` against a disposable database. A broken implementation typically fails with a negative balance or a sum below 20000. Log retries with the transaction id; a high `40001` rate means hot rows and should drive redesign, not an infinite retry loop.
+@@@ END
+
+@@@ USER
+My SQLAlchemy API issues one query per order to fetch items. Show the N+1 problem, the eager-loading fix, and a test that counts SQL statements so the regression cannot return.
+@@@ ASSISTANT
+With lazy loading, `orders` is one query and each `order.items` access is another: 1 + N. SQLAlchemy 2.0 gives you `selectinload` for collections and `raiseload` to make accidental lazy loads fail loudly.
+
+```python
+from sqlalchemy import ForeignKey, event, select
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, selectinload
+
+class Base(DeclarativeBase):
+    pass
+
+class Order(Base):
+    __tablename__ = "orders"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int]
+    items: Mapped[list["Item"]] = relationship(
+        back_populates="order", lazy="raise"
+    )
+
+class Item(Base):
+    __tablename__ = "items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"))
+    sku: Mapped[str]
+    order: Mapped[Order] = relationship(back_populates="items")
+
+engine = create_async_engine("postgresql+asyncpg://app:app@localhost/app")
+statements: list[str] = []
+
+@event.listens_for(engine.sync_engine, "before_cursor_execute")
+def record(conn, cursor, statement, parameters, context, executemany):
+    statements.append(statement)
+
+async def orders_for_customer(session: AsyncSession, customer_id: int):
+    stmt = (
+        select(Order)
+        .where(Order.customer_id == customer_id)
+        .options(selectinload(Order.items))
+        .order_by(Order.id)
+    )
+    return (await session.scalars(stmt)).all()
+```
+
+`selectinload` emits two queries regardless of the number of orders: one for orders and one `WHERE items.order_id IN (...)`. `joinedload` emits one query but duplicates order columns per item; it is better for many-to-one relationships. Use `selectinload(Order.items).selectinload(Item.product)` for nested collections.
+
+The test pins the query count:
+
+```python
+import pytest
+
+@pytest.mark.asyncio
+async def test_eager_loading_uses_two_queries(session):
+    statements.clear()
+    orders = await orders_for_customer(session, 1)
+    assert len(statements) == 2
+    assert len(orders) == 3
+    assert all(order.items for order in orders)
+```
+
+Before the fix, with `lazy="select"`, the same loop would append N additional statements and the assertion would fail. After the fix it stays at two. With `lazy="raise"`, forgetting `selectinload` raises `InvalidRequestError` immediately instead of silently issuing N+1 queries. Run the test with `pytest -q`; for ad hoc checks, enable `echo=True` on the engine and count the logged statements, or assert on `len(statements)` around any endpoint that serializes a collection.
+@@@ END
+
+@@@ USER
+Design a Redis cache for a product endpoint with cache-aside, TTL jitter, stampede protection, negative caching, and invalidation after writes. Include a concurrency test using a fake Redis.
+@@@ ASSISTANT
+Use versioned keys, populate on miss, and serialize miss handling with a short distributed lock so 50 concurrent requests do not all hit Postgres.
+
+```python
+import asyncio, json, random
+from redis.asyncio import Redis
+
+redis = Redis.from_url("redis://localhost:6379", decode_responses=True)
+
+async def get_product(pool, product_id: int):
+    key = f"product:v1:{product_id}"
+    for _ in range(40):
+        cached = await redis.get(key)
+        if cached is not None:
+            return None if cached == "null" else json.loads(cached)
+
+        lock_key = f"lock:{key}"
+        if await redis.set(lock_key, "1", nx=True, ex=5):
+            try:
+                cached = await redis.get(key)
+                if cached is not None:
+                    return None if cached == "null" else json.loads(cached)
+                row = await pool.fetchrow(
+                    "SELECT id, name, price_cents FROM products WHERE id = $1",
+                    product_id,
+                )
+                if row is None:
+                    await redis.set(key, "null", ex=30)
+                    return None
+                data = dict(row)
+                ttl = 300 + random.randint(0, 60)
+                await redis.set(key, json.dumps(data), ex=ttl)
+                return data
+            finally:
+                await redis.delete(lock_key)
+
+        await asyncio.sleep(0.05)
+
+    row = await pool.fetchrow(
+        "SELECT id, name, price_cents FROM products WHERE id = $1", product_id
+    )
+    return dict(row) if row else None
+
+async def update_product(pool, product_id: int, name: str):
+    await pool.execute("UPDATE products SET name = $2 WHERE id = $1", product_id, name)
+    await redis.delete(f"product:v1:{product_id}")
+```
+
+The loop double-checks after acquiring the lock, which closes the race between the first miss and lock acquisition. TTL jitter prevents synchronized expiry. A missing row is cached as the literal `"null"` for 30 seconds, which stops repeated queries for deleted products without hiding a newly created row for long. Delete the key after the database commit, not before; delete-on-write is safer than update-in-place because a failed cache write must not change the source of truth.
+
+Test the stampede behavior with `fakeredis` and a fake pool that counts calls:
+
+```python
+import asyncio, json
+import fakeredis.aioredis
+import pytest
+
+class FakePool:
+    def __init__(self):
+        self.calls = 0
+    async def fetchrow(self, query, product_id):
+        self.calls += 1
+        await asyncio.sleep(0.1)
+        return {"id": product_id, "name": "Desk", "price_cents": 24900}
+
+@pytest.mark.asyncio
+async def test_one_database_read_for_many_concurrent_requests(monkeypatch):
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr("app.redis", fake)
+    pool = FakePool()
+    results = await asyncio.gather(*(get_product(pool, 1) for _ in range(20)))
+    assert pool.calls == 1
+    assert all(r == results[0] for r in results)
+    assert await fake.ttl("product:v1:1") > 0
+```
+
+Run `pytest -q`; `calls == 1` proves the lock plus double-check worked. Also test invalidation: cache the product, call `update_product`, assert `get_product` reads the new name and the pool call count increases. Monitor hit rate with `redis-cli info stats` and size keys with a scan, not `KEYS *`.
+@@@ END
+
+@@@ USER
+Implement a Redis sliding-window rate limiter with an atomic Lua script and use it on a FastAPI search route. It should return 429 with Retry-After and pass a test that the limit is enforced across concurrent requests.
+@@@ ASSISTANT
+A sorted set per key stores request timestamps; one Lua script removes expired members, counts, and inserts, so the check and write are atomic.
+
+```lua
+-- KEYS[1] = limiter key
+-- ARGV: now_ms, window_ms, limit, member
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, now - window)
+local count = redis.call('ZCARD', KEYS[1])
+if count >= limit then
+  local oldest = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+  return {0, tonumber(oldest[2])}
+end
+redis.call('ZADD', KEYS[1], now, ARGV[4])
+redis.call('PEXPIRE', KEYS[1], window)
+return {1, 0}
+```
+
+```python
+import time, uuid
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from redis.asyncio import Redis
+
+app = FastAPI()
+redis = Redis.from_url("redis://localhost:6379", decode_responses=True)
+
+with open("limiter.lua") as fh:
+    LUA = fh.read()
+
+def limiter(limit: int, window_ms: int):
+    async def dependency(request: Request, response: Response):
+        now = int(time.time() * 1000)
+        client = request.client.host if request.client else "unknown"
+        key = f"rl:{request.url.path}:{client}"
+        member = f"{now}-{uuid.uuid4()}"
+        allowed, oldest = await redis.eval(
+            LUA, 1, key, now, window_ms, limit, member
+        )
+        if not allowed:
+            retry_after = max(1, int((int(oldest) + window_ms - now) / 1000) + 1)
+            raise HTTPException(
+                status_code=429,
+                detail="rate_limited",
+                headers={"Retry-After": str(retry_after), "X-RateLimit-Limit": str(limit)},
+            )
+        response.headers["X-RateLimit-Limit"] = str(limit)
+    return dependency
+
+@app.get("/search", dependencies=[Depends(limiter(limit=30, window_ms=60_000))])
+async def search(q: str):
+    return {"query": q, "results": []}
+```
+
+The script returns the oldest timestamp only on rejection, which is enough to compute a correct `Retry-After`. The unique `member` prevents two requests in the same millisecond from overwriting each other in the sorted set. Behind a proxy, take the client IP from a trusted `X-Forwarded-For` hop, never from a header the public can spoof. Key by user id when authenticated, otherwise by IP plus route.
+
+Test with ASGI transport and a small window; fire requests concurrently:
+
+```python
+import asyncio, httpx, pytest
+
+@pytest.mark.asyncio
+async def test_limit_and_retry_after(monkeypatch):
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        results = await asyncio.gather(
+            *(client.get("/search", params={"q": "x"}) for _ in range(40))
+        )
+    codes = [r.status_code for r in results]
+    rejected = [r for r in results if r.status_code == 429]
+    assert codes.count(200) == 30
+    assert codes.count(429) == 10
+    assert rejected[0].headers["retry-after"].isdigit()
+```
+
+With `limit=30`, the first 30 win and the rest are 429. Run `redis-cli --scan --pattern 'rl:*'` to inspect keys; they expire automatically after the window. This is a sliding log, so memory is O(limit) per key; for very high limits switch to a token bucket script, which is O(1).
+@@@ END
+
+@@@ USER
+Set up a BullMQ background email queue in TypeScript with retries, exponential backoff, deduplication by job id, and a worker. Show how to enqueue and verify the job lifecycle from the command line.
+@@@ ASSISTANT
+Keep the queue connection in one module, give every job a deterministic id so double-clicks do not send two emails, and make the worker idempotent as well because Redis persistence is not a business guarantee.
+
+```ts
+// src/queue.ts
+import { Queue, type ConnectionOptions } from "bullmq";
+
+export const connection: ConnectionOptions = {
+  host: process.env.REDIS_HOST ?? "127.0.0.1",
+  port: Number(process.env.REDIS_PORT ?? 6379),
+  maxRetriesPerRequest: null,
+};
+
+export const emailQueue = new Queue("email", {
+  connection,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff: { type: "exponential", delay: 1000 },
+    removeOnComplete: { age: 3600, count: 1000 },
+    removeOnFail: { age: 24 * 3600 },
+  },
+});
+
+export async function enqueueWelcome(userId: string) {
+  return emailQueue.add(
+    "welcome",
+    { userId },
+    { jobId: `welcome-${userId}` }
+  );
+}
+```
+
+```ts
+// src/worker.ts
+import { Worker } from "bullmq";
+import { connection } from "./queue.js";
+import { sendWelcomeEmail } from "./mailer.js";
+
+const worker = new Worker(
+  "email",
+  async (job) => {
+    if (job.name !== "welcome") throw new Error(`unknown job ${job.name}`);
+    await sendWelcomeEmail(job.data.userId);
+    return { sentAt: new Date().toISOString() };
+  },
+  { connection, concurrency: 5 }
+);
+
+worker.on("failed", (job, err) => {
+  console.error({ jobId: job?.id, attempts: job?.attemptsMade, err: err.message });
+});
+
+process.on("SIGTERM", async () => {
+  await worker.close();
+  process.exit(0);
+});
+```
+
+Run Redis, then `npx tsx src/worker.ts` in one terminal. In another, enqueue twice with the same id and inspect:
+
+```bash
+npx tsx -e "import('./src/queue.ts').then(async m => { await m.enqueueWelcome('42'); await m.enqueueWelcome('42'); console.log(await m.emailQueue.getJobCounts('waiting','active','completed','failed')); process.exit(0); })"
+redis-cli ZCARD bull:email:completed
+redis-cli HGETALL bull:email:welcome-42
+```
+
+The two `add` calls produce one job because BullMQ deduplicates on `jobId`; counts should show one completed job. If `sendWelcomeEmail` throws, BullMQ retries after 1s, 2s, 4s, 8s, up to five attempts, then moves the job to failed. Keep completed jobs long enough for deduplication; `removeOnComplete` eventually removes the id, so a much later replay can enqueue again. For a hard guarantee, insert `(user_id, template)` into a unique table inside the worker and let the database reject a duplicate send.
+@@@ END
+
+@@@ USER
+Implement an idempotent Stripe payment webhook in FastAPI. Verify the raw-body signature, store event ids uniquely, update an order exactly once, and handle duplicate deliveries. Include a test that signs and sends the same payload twice.
+@@@ ASSISTANT
+Read the raw bytes before any JSON parser, verify the signature, then insert the event id with `ON CONFLICT DO NOTHING` in the same transaction as the business update. A duplicate delivery rolls through the insert, sees no returned row, and exits without touching the order.
+
+```python
+import json, os
+import stripe
+from fastapi import FastAPI, HTTPException, Request
+
+app = FastAPI()
+
+@app.post("/webhooks/stripe")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature", "")
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, signature, os.environ["STRIPE_WEBHOOK_SECRET"]
+        )
+    except (ValueError, stripe.SignatureVerificationError):
+        raise HTTPException(status_code=400, detail="invalid_signature")
+
+    async with app.state.pool.acquire() as conn:
+        async with conn.transaction():
+            inserted = await conn.fetchrow(
+                """INSERT INTO webhook_events (event_id, type, payload)
+                   VALUES ($1, $2, $3::jsonb)
+                   ON CONFLICT (event_id) DO NOTHING
+                   RETURNING event_id""",
+                event["id"], event["type"], json.dumps(event),
+            )
+            if inserted is None:
+                return {"received": True, "duplicate": True}
+
+            if event["type"] == "payment_intent.succeeded":
+                intent = event["data"]["object"]
+                await conn.execute(
+                    """UPDATE orders
+                          SET status = 'paid', paid_at = now()
+                        WHERE stripe_pi_id = $1 AND status = 'pending'""",
+                    intent["id"],
+                )
+            elif event["type"] == "payment_intent.payment_failed":
+                intent = event["data"]["object"]
+                await conn.execute(
+                    """UPDATE orders SET status = 'payment_failed'
+                        WHERE stripe_pi_id = $1 AND status = 'pending'""",
+                    intent["id"],
+                )
+    return {"received": True}
+```
+
+```sql
+CREATE TABLE webhook_events (
+  event_id text PRIMARY KEY,
+  type text NOT NULL,
+  payload jsonb NOT NULL,
+  received_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX orders_stripe_pi_uq ON orders (stripe_pi_id)
+  WHERE stripe_pi_id IS NOT NULL;
+```
+
+Both statements are in one transaction: if the order update fails, the event row rolls back too, and Stripe's retry can process it. Returning 200 for unhandled event types marks them consumed. The endpoint must do fast work; enqueue slow fulfillment after the transaction commits.
+
+Test with a computed signature and two identical posts:
+
+```python
+import hashlib, hmac, json, time
+import httpx, pytest
+
+def sign(payload: bytes, secret: str) -> str:
+    ts = int(time.time())
+    mac = hmac.new(secret.encode(), f"{ts}.".encode() + payload, hashlib.sha256).hexdigest()
+    return f"t={ts},v1={mac}"
+
+@pytest.mark.asyncio
+async def test_duplicate_delivery(client, monkeypatch):
+    secret = "whsec_test"
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", secret)
+    body = json.dumps({
+        "id": "evt_1", "type": "payment_intent.succeeded",
+        "data": {"object": {"id": "pi_123"}},
+    }).encode()
+    headers = {"stripe-signature": sign(body, secret), "content-type": "application/json"}
+    first = await client.post("/webhooks/stripe", content=body, headers=headers)
+    second = await client.post("/webhooks/stripe", content=body, headers=headers)
+    assert first.json() == {"received": True}
+    assert second.json() == {"received": True, "duplicate": True}
+```
+
+Then assert the order is `paid` and `count(*) FROM webhook_events WHERE event_id='evt_1'` is 1. In real testing, use `stripe listen --forward-to localhost:8000/webhooks/stripe` and `stripe trigger payment_intent.succeeded`.
+@@@ END
+
+@@@ USER
+Implement browser image uploads to S3-compatible storage (MinIO locally) using presigned POST. Enforce content type and a 10 MB limit, generate unguessable keys, and include a confirm endpoint plus a curl test.
+@@@ ASSISTANT
+The API never proxies bytes: it returns a presigned POST with conditions, the browser uploads directly, then confirms the object.
+
+```python
+import os, uuid
+import boto3
+from botocore.exceptions import ClientError
+from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel
+
+app = FastAPI()
+BUCKET = os.environ.get("S3_BUCKET", "uploads")
+ALLOWED = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url=os.environ["S3_ENDPOINT"],          # http://localhost:9000
+    aws_access_key_id=os.environ["S3_ACCESS_KEY"],
+    aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+)
+
+class UploadRequest(BaseModel):
+    content_type: str
+
+@app.post("/uploads")
+async def create_upload(body: UploadRequest, user=Depends(current_user)):
+    if body.content_type not in ALLOWED:
+        raise HTTPException(415, "unsupported_media_type")
+    key = f"u/{user.id}/{uuid.uuid4().hex}.{ALLOWED[body.content_type]}"
+    post = s3.generate_presigned_post(
+        Bucket=BUCKET,
+        Key=key,
+        Fields={"Content-Type": body.content_type},
+        Conditions=[
+            {"Content-Type": body.content_type},
+            ["content-length-range", 1, 10 * 1024 * 1024],
+        ],
+        ExpiresIn=300,
+    )
+    return {"key": key, "url": post["url"], "fields": post["fields"]}
+
+@app.post("/uploads/confirm")
+async def confirm_upload(key: str, user=Depends(current_user)):
+    if not key.startswith(f"u/{user.id}/"):
+        raise HTTPException(403, "not_your_key")
+    try:
+        head = s3.head_object(Bucket=BUCKET, Key=key)
+    except ClientError:
+        raise HTTPException(404, "not_uploaded")
+    return {"key": key, "bytes": head["ContentLength"], "type": head["ContentType"]}
+```
+
+The storage service enforces `content-length-range`, not the client. The key's user prefix proves ownership, and the bucket stays private behind short-lived presigned GETs.
+
+Start MinIO and create the bucket:
+
+```bash
+docker run -d --name minio -p 9000:9000 -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+  -v minio-data:/data minio/minio server /data --console-address ":9001"
+docker run --rm --network container:minio --entrypoint sh minio/mc -c \
+  "mc alias set local http://localhost:9000 minioadmin minioadmin && mc mb --ignore-existing local/uploads"
+```
+
+Upload with the returned form:
+
+```bash
+curl -s -X POST localhost:8000/uploads -H 'content-type: application/json' \
+  -d '{"content_type":"image/png"}' > presign.json
+python -c "import json,requests; p=json.load(open('presign.json')); r=requests.post(p['url'],data=p['fields'],files={'file':('x.png',b'\x89PNG\r\n\x1a\n'+b'0'*100,'image/png')}); print(r.status_code)"
+KEY=$(python -c "import json; print(json.load(open('presign.json'))['key'])")
+curl -s -X POST "localhost:8000/uploads/confirm?key=$KEY" -b jar.txt
+```
+
+A 204 from storage and a 200 from confirm prove the object exists. Test a `text/html` type (415 before signing) and an 11 MB file (storage rejects `EntityTooLarge`). Add a bucket CORS rule for browser POSTs.
+@@@ END
+
+@@@ USER
+Build a Socket.IO server with authenticated rooms so only members of a document receive its edits. Include join, broadcast, a membership check, and a client test proving a non-member receives nothing.
+@@@ ASSISTANT
+Authenticate during the handshake, authorize each room join, and broadcast with `socket.to(room)` so senders do not echo to themselves. Check membership server-side on every join.
+
+```ts
+import { createServer } from "node:http";
+import { Server } from "socket.io";
+import { canEditDocument, userIdForSession } from "./auth.js";
+
+const httpServer = createServer((req, res) => {
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+});
+
+const io = new Server(httpServer, {
+  cors: { origin: process.env.APP_ORIGIN, credentials: true },
+});
+
+io.use(async (socket, next) => {
+  const token = socket.handshake.auth?.token;
+  const userId = typeof token === "string" ? await userIdForSession(token) : null;
+  if (!userId) return next(new Error("unauthorized"));
+  socket.data.userId = userId;
+  next();
+});
+
+io.on("connection", (socket) => {
+  socket.on("room:join", async (docId: string, ack) => {
+    if (!(await canEditDocument(socket.data.userId, docId))) {
+      return ack({ error: "forbidden" });
+    }
+    await socket.join(`doc:${docId}`);
+    socket.to(`doc:${docId}`).emit("presence:join", { userId: socket.data.userId });
+    ack({ ok: true, room: `doc:${docId}` });
+  });
+
+  socket.on("doc:ops", ({ docId, ops }, ack) => {
+    const room = `doc:${docId}`;
+    if (!socket.rooms.has(room)) return ack({ error: "not_in_room" });
+    socket.to(room).emit("doc:ops", { userId: socket.data.userId, ops });
+    ack({ ok: true });
+  });
+
+  socket.on("disconnecting", () => {
+    for (const room of socket.rooms) {
+      if (room !== socket.id) socket.to(room).emit("presence:leave", { userId: socket.data.userId });
+    }
+  });
+});
+
+httpServer.listen(3000, () => console.log("ws on :3000"));
+```
+
+`socket.rooms` includes the socket's own id and every joined room, so the guard blocks clients that emit edits before a successful join. The auth check runs once per connection, so force-disconnect on revocation.
+
+Run the server with `npx tsx server.ts`, then verify with three clients:
+
+```ts
+import { io } from "socket.io-client";
+
+const connect = (token: string) => io("http://localhost:3000", { auth: { token } });
+
+const a = connect("token-alice");
+const b = connect("token-bob");
+const c = connect("token-carol");
+const got: string[] = [];
+b.on("doc:ops", () => got.push("bob"));
+c.on("doc:ops", () => got.push("carol"));
+
+await Promise.all([a, b, c].map((s) => new Promise((r) => s.on("connect", r))));
+await new Promise((r) => a.emit("room:join", "doc-1", r));
+await new Promise((r) => c.emit("room:join", "doc-1", r));
+await new Promise((r) => a.emit("doc:ops", { docId: "doc-1", ops: ["insert:1"] }, r));
+
+setTimeout(() => {
+  console.log(got); // ["carol"]
+  process.exit(got.length === 1 && got[0] === "carol" ? 0 : 1);
+}, 300);
+```
+
+Only Carol may be in the room, depending on your fixtures; Bob is authenticated but not a member, and receives nothing. Test the forbidden path by joining a document Carol cannot edit and asserting the ack contains `error: "forbidden"`. With multiple server instances, add `@socket.io/redis-adapter` so broadcasts cross processes; otherwise rooms are local to one Node process.
+@@@ END
+
+@@@ USER
+Write a production multi-stage Dockerfile for a TypeScript Node 20 service. It should install reproducibly, build, prune dev dependencies, run as non-root, include a healthcheck, and show commands that verify image size and user.
+@@@ ASSISTANT
+```dockerfile
+# syntax=docker/dockerfile:1.7
+FROM node:20-bookworm-slim AS base
+WORKDIR /app
+ENV NODE_ENV=production
+
+FROM base AS deps
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM deps AS build
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build && npm prune --omit=dev
+
+FROM base AS runtime
+ENV PORT=3000
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --chown=node:node package.json ./
+USER node
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "dist/server.js"]
+```
+
+`.dockerignore` keeps secrets and local build output out of the build context:
+
+```text
+node_modules
+dist
+.git
+.env*
+npm-debug.log*
+coverage
+```
+
+`npm ci` respects the lockfile and fails if `package.json` and the lock disagree. Building in its own stage means TypeScript and test tooling never reach the runtime image; `npm prune --omit=dev` leaves only production modules. The final stage copies artifacts rather than reinstalling, and `USER node` drops root.
+
+Build and inspect:
+
+```bash
+docker build -t tickets-api:local .
+docker image inspect tickets-api:local --format '{{.Size}}'
+docker run --rm tickets-api:local id
+docker run -d --name tickets-api -p 3000:3000 --env-file .env tickets-api:local
+curl -i http://localhost:3000/health
+docker run --rm --entrypoint sh tickets-api:local -c 'ls dist && test ! -d src'
+```
+
+The `id` output must be `uid=1000(node)`, not root. The final command succeeds only when compiled output exists and source was not copied. The healthcheck reports healthy after the start period; `docker inspect --format '{{json .State.Health}}' tickets-api` shows the probe history. For an even smaller attack surface, use `gcr.io/distroless/nodejs20-debian12` as the runtime stage, but keep the same non-root user and healthcheck.
+@@@ END
+
+@@@ USER
+Write a docker-compose.yml for local development with the API, Postgres, Redis, MinIO, and a bucket initializer. Use healthchecks and startup ordering so the API does not boot before its dependencies, and show the commands that verify the stack.
+@@@ ASSISTANT
+```yaml
+services:
+  api:
+    image: node:20-bookworm-slim
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://app:app@db:5432/app
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: uploads
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done;
+      mc mb --ignore-existing local/uploads;
+      mc anonymous set none local/uploads;
+      "
+
+volumes:
+  pgdata:
+  miniodata:
+  node_modules:
+```
+
+`depends_on` with `condition: service_healthy` waits for `pg_isready` and `redis-cli ping`, not just a started container. `minio-init` runs to completion and exits zero, which is why the API uses `service_completed_successfully`. The named `node_modules` volume keeps container modules from overwriting the host directory, so a Windows or macOS host does not break native modules.
+
+Verify:
+
+```bash
+docker compose up -d
+docker compose ps
+docker compose logs -f api
+curl -i http://localhost:3000/health
+docker compose exec db psql -U app -d app -c '\dt'
+docker compose exec redis redis-cli ping
+curl -s http://localhost:9001 | head -n 1
+docker compose down
+```
+
+All services should be `running` or `healthy`, `psql` should list your migrated tables, and the MinIO console should answer on 9001. Run migrations with `docker compose exec api npm run db:migrate`. Use a `compose.override.yml` for test-only ports, and never commit real credentials; the values above are local-only defaults.
+@@@ END
+
+@@@ USER
+Create a GitHub Actions CI pipeline that runs lint, migrations, and tests against real Postgres and Redis services, then builds the Docker image. Include the service health options and the exact environment variables.
+@@@ ASSISTANT
+```yaml
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://app:app@localhost:5432/app
+      REDIS_URL: redis://localhost:6379
+      NODE_ENV: test
+      JWT_SECRET: test-only-secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run db:migrate
+      - run: npm test -- --coverage
+      - run: npm run build
+      - run: docker build -t app:${{ github.sha }} .
+```
+
+The `services` block starts Postgres and Redis as sidecars on `localhost`; the health options prevent the first step from racing an unready database. `npm ci` uses the lockfile, and `npm run db:migrate` runs the same migration command as production, so schema drift fails CI.
+
+Verify the pipeline locally before pushing:
+
+```bash
+act pull_request -j test
+```
+
+If `act` is unavailable, push a branch and open a draft PR; the job should show migrations applied and a green test run. To prove the tests really use Postgres, add a test that fails on SQLite-only behavior, such as a partial unique index or `ON CONFLICT`; it should pass here. Cache the Docker layers with `docker/setup-buildx-action` and `docker/build-push-action` once build time matters:
+
+```yaml
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+```
+
+Require the `test` job in branch protection so a red pipeline cannot merge. Keep migrations backward compatible with the currently deployed release; CI only proves the new schema applies, not that old code survives it.
+@@@ END
+
+@@@ USER
+Add structured JSON logging with request IDs to an Express service using pino. Propagate the id into service logs and background jobs, redact secrets, and show how to verify the output with curl and jq.
+@@@ ASSISTANT
+```ts
+import express from "express";
+import pino from "pino";
+import pinoHttp from "pino-http";
+import { randomUUID } from "node:crypto";
+
+export const logger = pino({
+  level: process.env.LOG_LEVEL ?? "info",
+  base: { service: "tickets-api", env: process.env.NODE_ENV ?? "development" },
+  redact: {
+    paths: [
+      "req.headers.authorization",
+      "req.headers.cookie",
+      "password",
+      "*.password",
+      "*.token",
+    ],
+    censor: "[redacted]",
+  },
+});
+
+const app = express();
+app.use(express.json());
+
+app.use(
+  pinoHttp({
+    logger,
+    genReqId(req, res) {
+      const incoming = req.headers["x-request-id"];
+      const id = typeof incoming === "string" && incoming.length <= 128
+        ? incoming
+        : randomUUID();
+      res.setHeader("x-request-id", id);
+      return id;
+    },
+    customProps: (req) => ({ requestId: req.id }),
+    customLogLevel(_req, res, err) {
+      if (err || res.statusCode >= 500) return "error";
+      if (res.statusCode >= 400) return "warn";
+      return "info";
+    },
+    serializers: {
+      req: (req) => ({ method: req.method, url: req.url }),
+      res: (res) => ({ statusCode: res.statusCode }),
+    },
+  })
+);
+
+app.use((req, _res, next) => {
+  req.log = req.log.child({ requestId: req.id });
+  next();
+});
+
+app.post("/orders", async (req, res) => {
+  const orderId = 123;
+  req.log.info({ orderId, userId: req.user?.id }, "order created");
+  res.status(201).json({ id: orderId });
+});
+
+app.get("/health", (_req, res) => res.json({ ok: true }));
+app.listen(3000);
+```
+
+`pino-http` assigns `req.id`, writes the response header, and emits one completion line per request. `req.log` is a child logger carrying `req.id`, so domain logs correlate automatically. To carry the id into a queue, put it in the job payload and rebuild a child logger in the worker:
+
+```ts
+await emailQueue.add("welcome", { userId, requestId: req.id });
+// worker
+const log = logger.child({ requestId: job.data.requestId, jobId: job.id });
+log.info({ userId: job.data.userId }, "sending welcome email");
+```
+
+Verify end to end:
+
+```bash
+curl -s -H 'x-request-id: trace-abc' http://localhost:3000/health
+curl -s -H 'x-request-id: trace-abc' -H 'authorization: Bearer secret' \
+  -X POST http://localhost:3000/orders -H 'content-type: application/json' -d '{}' \
+  | jq .
+docker logs $(docker ps -lq --filter ancestor=tickets-api:local) 2>&1 | jq -c 'select(.requestId=="trace-abc") | {requestId,msg,statusCode}'
+```
+
+Every line for that request must carry `requestId: "trace-abc"`, and the Authorization header must appear as `[redacted]`. Without an incoming header, the response should contain a generated `x-request-id`. Log message strings, not interpolated values: fields stay queryable in Loki, CloudWatch, or Datadog. Do not log request bodies wholesale; they routinely contain passwords and tokens.
+@@@ END
+
+@@@ USER
+Implement graceful shutdown for a Node service that owns an HTTP server, a BullMQ worker, a Postgres pool, and a Redis client. On SIGTERM it must fail readiness, drain in-flight requests, close dependencies, and force-exit after 10 seconds. Show how to test it.
+@@@ ASSISTANT
+```ts
+import http from "node:http";
+import { logger } from "./logger.js";
+import { app } from "./app.js";
+import { pool } from "./db.js";
+import { redis } from "./cache.js";
+import { worker } from "./worker.js";
+
+const server = http.createServer(app);
+server.listen(3000, () => logger.info("listening on :3000"));
+
+let shuttingDown = false;
+app.get("/healthz", (_req, res) => {
+  res.status(shuttingDown ? 503 : 200).json({ ok: !shuttingDown });
+});
+
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info({ signal }, "shutdown started");
+
+  const force = setTimeout(() => {
+    logger.fatal("shutdown timed out");
+    process.exit(1);
+  }, 10_000);
+  force.unref();
+
+  // Give the load balancer time to observe the 503 before we stop accepting.
+  await new Promise((resolve) => setTimeout(resolve, 3_000));
+
+  server.closeIdleConnections();
+  await new Promise<void>((resolve, reject) => {
+    server.close((err) => (err ? reject(err) : resolve()));
+  });
+
+  await worker.close();
+  await pool.end();
+  await redis.quit();
+
+  clearTimeout(force);
+  logger.info("shutdown complete");
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+```
+
+Order matters: mark unready, wait for the load balancer, stop new connections, let in-flight requests finish, then close the worker so it stops taking jobs, then close database and cache clients. `server.close()` alone can hang on keep-alive sockets; `closeIdleConnections()` closes the idle ones while active requests continue. `worker.close()` waits for the current job, so a 30-second job needs either a shorter job or a longer grace period.
+
+Add `stop_grace_period: 30s` in Compose and `STOPSIGNAL SIGTERM` in the Dockerfile so the orchestrator sends the right signal and waits long enough.
+
+Test with a deliberately slow endpoint:
+
+```ts
+app.get("/slow", async (_req, res) => {
+  await new Promise((r) => setTimeout(r, 2000));
+  res.json({ done: true });
+});
+```
+
+```bash
+node dist/server.js &
+PID=$!
+sleep 1
+curl -s http://localhost:3000/slow > slow.txt &
+sleep 0.5
+kill -TERM $PID
+wait $PID; echo "exit=$?"
+cat slow.txt
+```
+
+The slow request must complete with `{"done":true}` and the process must exit 0, not be killed by the timeout. Check readiness during the drain: a concurrent `curl -i localhost:3000/healthz` should return 503. In Docker, `docker stop` sends SIGTERM; `docker inspect --format '{{.State.ExitCode}}' $(docker ps -lq)` must be 0, and `docker logs $(docker ps -lq)` should contain "shutdown complete". Handle only the first signal; a second SIGTERM must not start a parallel shutdown.
+@@@ END
+
+@@@ USER
+Explain and implement a zero-downtime Postgres migration that renames users.full_name to display_name. Give the expand, backfill, dual-write, switch, and contract steps with real SQL, plus how to verify no rows are lost during a rolling deploy.
+@@@ ASSISTANT
+Never rename the column in place: old application instances still query `full_name` and will fail for the duration of a rolling deploy. Use expand/contract across releases.
+
+Release 1, expand. Add the new nullable column and a trigger that keeps it populated for old writers:
+
+```sql
+SET lock_timeout = '3s';
+ALTER TABLE users ADD COLUMN display_name text;
+
+CREATE OR REPLACE FUNCTION sync_display_name() RETURNS trigger AS $$
+BEGIN
+  IF NEW.display_name IS NULL THEN
+    NEW.display_name := NEW.full_name;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER users_display_name_sync
+BEFORE INSERT OR UPDATE ON users
+FOR EACH ROW EXECUTE FUNCTION sync_display_name();
+
+CREATE INDEX CONCURRENTLY users_display_name_idx ON users (display_name);
+```
+
+`CREATE INDEX CONCURRENTLY` cannot run inside a transaction, so apply it as its own statement with `psql -f` or a migration marked non-transactional. Deploy code that writes both columns explicitly; the trigger covers any old instance still writing only `full_name`.
+
+Backfill in small batches while traffic runs:
+
+```bash
+while true; do
+  rows=$(psql "$DATABASE_URL" -tAc "
+    WITH batch AS (
+      SELECT id FROM users WHERE display_name IS NULL ORDER BY id LIMIT 1000
+    )
+    UPDATE users u SET display_name = u.full_name
+      FROM batch WHERE u.id = batch.id
+    RETURNING 1" | wc -l)
+  echo "updated $rows"
+  [ "$rows" -eq 0 ] && break
+  sleep 0.2
+done
+```
+
+Release 2 switches reads to `display_name` and keeps dual writes. Verify:
+
+```sql
+SELECT count(*) FROM users WHERE display_name IS NULL;
+SELECT count(*) FROM users WHERE display_name IS DISTINCT FROM full_name;
+```
+
+Both must be zero. Release 3, contract, after every instance uses the new column:
+
+```sql
+SET lock_timeout = '3s';
+DROP TRIGGER users_display_name_sync ON users;
+ALTER TABLE users ADD CONSTRAINT display_name_not_null
+  CHECK (display_name IS NOT NULL) NOT VALID;
+ALTER TABLE users VALIDATE CONSTRAINT display_name_not_null;
+ALTER TABLE users ALTER COLUMN display_name SET NOT NULL;
+ALTER TABLE users DROP COLUMN full_name;
+```
+
+Adding the check as `NOT VALID` then validating takes only a weak lock for the validation, and Postgres can use the validated check to set `NOT NULL` without a full table scan on modern versions. `DROP COLUMN` is metadata-only but breaks old code, so it waits for the final release.
+
+Verify during a rolling deploy by running a writer and the backfill concurrently:
+
+```bash
+pgbench -c 8 -T 30 -f insert_user.sql "$DATABASE_URL" &
+psql "$DATABASE_URL" -f 001_expand.sql
+```
+
+After each phase, compare checksums of the old and new columns and confirm zero lock waits longer than a second via `SELECT pid, wait_event_type, wait_event FROM pg_stat_activity WHERE state <> 'idle'`. Set `lock_timeout` on every DDL session so a blocked `ALTER TABLE` fails fast instead of queueing every query behind it. The same pattern applies to type changes and renames: add new, dual-write, backfill, switch reads, then remove old.
+@@@ END
+

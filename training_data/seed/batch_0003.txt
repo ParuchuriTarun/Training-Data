@@ -1,0 +1,329 @@
+@@@ USER
+I need to stream LLM tokens to a browser app. Server-Sent Events or WebSockets? And how do I handle the user pressing Stop?
+@@@ ASSISTANT
+For one-way token streaming, use SSE over a normal HTTP response. It survives proxies, reconnects automatically with `EventSource`, and needs no special server infrastructure. WebSockets are for bidirectional traffic (collaborative editing, presence); they add connection state and scaling work you do not need here.
+
+`EventSource` has two limitations: it only does GET and cannot send custom headers. If you need a POST body or an `Authorization` header, consume the same `text/event-stream` response with `fetch` and a stream reader.
+
+Server (Express, proxying an upstream model):
+
+```js
+app.post("/api/chat", async (req, res) => {
+  const controller = new AbortController();
+  req.on("close", () => controller.abort()); // client pressed Stop or navigated away
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const heartbeat = setInterval(() => res.write(": ping\n\n"), 15_000);
+
+  try {
+    const upstream = await fetch("https://api.example.com/v1/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.KEY}` },
+      body: JSON.stringify(req.body),
+      signal: controller.signal,
+    });
+
+    for await (const chunk of upstream.body) {
+      // Upstream may split SSE frames arbitrarily; forward bytes as-is.
+      res.write(chunk);
+    }
+  } catch (err) {
+    if (!controller.signal.aborted) {
+      res.write(`event: error\ndata: ${JSON.stringify({ message: "upstream failed" })}\n\n`);
+    }
+  } finally {
+    clearInterval(heartbeat);
+    res.end();
+  }
+});
+```
+
+Client:
+
+```js
+const controller = new AbortController();
+
+async function stream(prompt, onToken) {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+    signal: controller.signal,
+  });
+  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const line = frame.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      const payload = line.slice(6);
+      if (payload === "[DONE]") return;
+      onToken(JSON.parse(payload).token);
+    }
+  }
+}
+
+stopButton.onclick = () => controller.abort();
+```
+
+Details that matter:
+
+- **Do not parse per network chunk.** A chunk can end mid-JSON or mid-frame; keep a buffer and split on the SSE frame delimiter.
+- **Heartbeats** prevent idle proxies from closing the connection during long generations.
+- **Abort propagates.** The browser abort closes the request, `req.on("close")` fires, and the upstream fetch is cancelled, so you stop paying for tokens.
+- **Backpressure**: if you generate faster than the client reads, Node buffers in memory. For high-volume streaming, check `res.write()` return value and pause the upstream reader until `drain`. At normal token rates this is unnecessary.
+- **Compression**: disable gzip/br for `text/event-stream` (the `no-transform` header helps); buffering compression defeats streaming.
+@@@ END
+
+@@@ USER
+How do I build a RAG pipeline over our internal docs that actually retrieves the right passages, with citations? I want to avoid the usual toy demo.
+@@@ ASSISTANT
+The quality comes from four decisions: chunking, hybrid retrieval, reranking, and refusing to answer without evidence. Embeddings alone are the weakest part of most demos.
+
+**1. Chunk by structure, not by character count.** Split on headings, then pack paragraphs up to 400–700 tokens with 10–15% overlap. Keep the heading path in the chunk text so an isolated passage still has context:
+
+```
+[Handbook > Expenses > Travel]
+Employees may book economy fares for flights under six hours...
+```
+
+Store: `id`, `doc_id`, `heading_path`, `text`, `token_count`, `updated_at`, plus `tsvector` and `vector(1536)`.
+
+**2. Hybrid retrieval.** Dense vectors miss exact identifiers (error codes, policy numbers); BM25 misses paraphrase. Run both and fuse with Reciprocal Rank Fusion:
+
+```sql
+WITH dense AS (
+  SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> $1) AS rank
+  FROM chunks ORDER BY embedding <=> $1 LIMIT 50
+),
+sparse AS (
+  SELECT id, ROW_NUMBER() OVER (
+    ORDER BY ts_rank_cd(tsv, websearch_to_tsquery('english', $2)) DESC
+  ) AS rank
+  FROM chunks
+  WHERE tsv @@ websearch_to_tsquery('english', $2)
+  LIMIT 50
+)
+SELECT c.id, c.text, c.heading_path,
+       COALESCE(1.0 / (60 + d.rank), 0) + COALESCE(1.0 / (60 + s.rank), 0) AS score
+FROM chunks c
+LEFT JOIN dense d USING (id)
+LEFT JOIN sparse s USING (id)
+WHERE d.id IS NOT NULL OR s.id IS NOT NULL
+ORDER BY score DESC
+LIMIT 40;
+```
+
+**3. Rerank.** Take the top 40 fused candidates and run a cross-encoder or a rerank API; keep the top 6–8. This is usually the single largest quality gain after hybrid retrieval.
+
+**4. Answer with citations or refuse.** Number the passages in the prompt and require the model to cite the numbers it used. Validate that every cited number exists and that the answer is supported by that passage; if not, return "I could not find this in the documentation" and show the closest sources.
+
+```ts
+const context = passages
+  .map((p, i) => `[${i + 1}] ${p.heading_path}\n${p.text}`)
+  .join("\n\n");
+
+const system = `Answer only from the numbered sources below.
+Cite every claim like [2]. If the sources do not contain the answer, say so.
+Do not use outside knowledge.
+
+${context}`;
+```
+
+**5. Evaluate retrieval separately from generation.** Build 100–300 real questions with the correct `doc_id` marked. Measure recall@k and MRR for retrieval, and citation validity plus answer correctness for generation. Without this, every change is guesswork.
+
+Operational details: re-index on document updates with a stable `doc_id` and delete stale chunks; store the embedding model version and re-embed when it changes; cap context to the model window with the reranker deciding what fits; log retrieved ids and scores per request so failures are debuggable.
+
+Common failure modes: fixed 1,000-character chunks that cut sentences, no heading context, top-k=3 with no rerank, and letting the model answer from memory when retrieval returns nothing. Fix those before tuning the prompt.
+@@@ END
+
+@@@ USER
+How do I implement a tool-calling loop safely? The model can call functions, and I need validation, timeouts, and a hard stop on loops.
+@@@ ASSISTANT
+Treat the model as an untrusted planner: validate every argument, execute with a timeout, return structured errors, and cap the number of steps. Never let a tool name or argument reach a shell, filesystem, or SQL string without validation.
+
+```ts
+import { z } from "zod";
+
+const tools = {
+  get_weather: {
+    schema: z.object({ city: z.string().min(1).max(80) }),
+    run: async ({ city }: { city: string }, signal: AbortSignal) => {
+      const res = await fetch(`https://api.example.com/weather?q=${encodeURIComponent(city)}`, { signal });
+      if (!res.ok) throw new Error(`weather API ${res.status}`);
+      return res.json();
+    },
+  },
+  search_orders: {
+    schema: z.object({
+      email: z.string().email(),
+      limit: z.number().int().min(1).max(20).default(5),
+    }),
+    run: async ({ email, limit }: { email: string; limit: number }, signal: AbortSignal) => {
+      return db.query(
+        "SELECT id, status, total_cents FROM orders WHERE email = $1 ORDER BY created_at DESC LIMIT $2",
+        [email, limit],
+        { signal }
+      );
+    },
+  },
+} as const;
+
+const MAX_STEPS = 6;
+
+async function runAgent(messages: any[], model: any) {
+  for (let step = 0; step < MAX_STEPS; step++) {
+    const response = await model.chat({ messages, tools: toolSchemas });
+    messages.push(response.message);
+    if (!response.toolCalls?.length) return response.content;
+
+    for (const call of response.toolCalls) {
+      const tool = tools[call.name as keyof typeof tools];
+      if (!tool) {
+        messages.push(toolResult(call.id, { error: `unknown tool ${call.name}` }));
+        continue;
+      }
+
+      const parsed = tool.schema.safeParse(call.arguments);
+      if (!parsed.success) {
+        // Return the validation error to the model so it can correct itself.
+        messages.push(toolResult(call.id, {
+          error: "invalid arguments",
+          issues: parsed.error.issues.map((i) => ({ path: i.path, message: i.message })),
+        }));
+        continue;
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8_000);
+      try {
+        const data = await tool.run(parsed.data as any, controller.signal);
+        messages.push(toolResult(call.id, { ok: true, data: truncate(data, 4_000) }));
+      } catch (err: any) {
+        messages.push(toolResult(call.id, {
+          ok: false,
+          error: err.name === "AbortError" ? "tool timed out" : String(err.message ?? err),
+        }));
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+  return "I could not complete this within the allowed number of steps. Here is what I found so far: ...";
+}
+```
+
+Rules that prevent most incidents:
+
+- **Allowlist tools per user role.** A support agent should not inherit an admin tool because it was added to the registry.
+- **Validate types, ranges, and formats.** `limit: 100000` and `email: "'; DROP TABLE"` must fail before execution.
+- **Use parameterized queries.** Validation is not a substitute for bound parameters.
+- **Cap output size.** A tool returning a 10 MB JSON blob will blow the context window and the budget; truncate and summarize.
+- **Time out every call.** A hung dependency should become a tool error, not a hung request.
+- **Cap steps and wall-clock time.** `MAX_STEPS` plus a deadline; return partial progress instead of looping.
+- **Log arguments, latency, and errors** with a request id. Tool failures are the main source of agent regressions.
+- **Confirm destructive actions** with the user before execution; the model must not delete data on its own.
+
+Returning validation errors as tool results is important: the model can repair its own call in the next step, which is cheaper and more reliable than aborting the whole request.
+@@@ END
+
+@@@ USER
+What is the reliable way to get structured JSON out of an LLM? Parsing sometimes fails, and retries produce different shapes.
+@@@ ASSISTANT
+Use schema-constrained decoding when the provider supports it, validate locally, and keep a repair path for the cases that still fail. Never parse free text and hope.
+
+**1. Define one schema and derive everything from it.**
+
+```ts
+import { z } from "zod";
+
+const Invoice = z.object({
+  vendor: z.string().min(1),
+  invoice_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  currency: z.enum(["USD", "EUR", "GBP"]),
+  line_items: z.array(z.object({
+    description: z.string().min(1),
+    quantity: z.number().positive(),
+    unit_price_cents: z.number().int().nonnegative(),
+  })).min(1),
+  total_cents: z.number().int().nonnegative(),
+});
+```
+
+**2. Ask the model with the schema enforced.** With OpenAI-compatible APIs use `response_format: { type: "json_schema", json_schema: { name, schema, strict: true } }`; with Anthropic use a tool whose `input_schema` is the schema and force that tool. Set temperature to 0 for extraction.
+
+**3. Validate, then repair once with the error.**
+
+```ts
+async function extract(text: string) {
+  let messages = [
+    { role: "system", content: "Extract the invoice. Use only values present in the document." },
+    { role: "user", content: text },
+  ];
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const raw = await callModel({ messages, schema: Invoice });
+    const parsed = Invoice.safeParse(raw);
+    if (parsed.success) return parsed.data;
+
+    messages = [
+      ...messages,
+      { role: "assistant", content: JSON.stringify(raw) },
+      { role: "user", content:
+        `That response failed validation:\n${JSON.stringify(parsed.error.issues)}\n` +
+        "Return corrected JSON only. Do not invent values; use null where the document is silent." },
+    ];
+  }
+  throw new Error("extraction failed after repair");
+}
+```
+
+**4. Make absence explicit.** Add `.nullable()` for fields that may be missing instead of relying on the model to omit keys. "Use null when absent" is a rule the model can follow; "omit the key" is not.
+
+**5. Guard the semantics, not just the shape.** A schema can validate `total_cents: 1200` while the document says 2100. Add cross-field checks: line-item sum equals total, dates are plausible, currency matches the symbol. Reject and re-ask if they fail.
+
+**6. Keep the raw response.** Log the prompt version, model id, raw output, and validation result. When a provider changes decoding behavior, you need the raw text to diagnose it.
+
+Why retries sometimes produce different shapes: sampling, prompt drift, and providers that silently ignore `strict`. Set temperature 0, pin the model version, and enforce the schema locally regardless of what the API claims.
+
+For batch extraction, process items independently and record failures instead of failing the whole batch; one malformed invoice should not discard the other 999.
+@@@ END
+
+@@@ USER
+How should I evaluate an LLM feature before shipping? I want something better than "it looks good in the playground."
+@@@ ASSISTANT
+Build three layers: a golden set with known answers, task-specific automatic checks, and a small human review loop. Treat prompts and model versions like code: every change runs the suite, and regressions block the release.
+
+**1. Golden set from real usage.** Sample 150–300 real inputs, stratified by intent and difficulty, including adversarial and out-of-scope cases. Label the expected behavior, not just "good answer": exact fields for extraction, required citations for RAG, refusal for unsupported requests. Freeze it and version it.
+
+**2. Automatic checks per task.**
+
+- Extraction: field-level exact match or normalized match; report per-field precision/recall, not one aggregate.
+- RAG: retrieval recall@k, citation validity (does the cited passage exist and support the claim), and refusal rate on unanswerable questions.
+- Classification: confusion matrix and per-class F1; a 95% overall accuracy can hide a 40% F1 on a rare class.
+- Generation with rubrics: a checklist of required facts, forbidden claims, format constraints, and length bounds. Check those with code where possible.
+
+**3. LLM-as-judge, carefully.** Use pairwise comparisons rather than absolute 1–10 scores; judges are biased toward longer answers and toward the first option. Randomize order, hide model identity, and give a concrete rubric. Validate the judge against 50–100 human labels; if agreement is below roughly 80%, fix the rubric or do not trust the judge.
+
+**4. Report the right numbers.** Include sample size and confidence intervals. A 2-point difference on 100 examples is noise. Track cost and latency per request alongside quality; a better answer that triples latency may be a worse product.
+
+**5. Wire it into CI.** Run the suite on every prompt change and model upgrade. Store results in a table keyed by commit, prompt hash, and model id. Block merge if a critical slice regresses beyond a threshold, for example exact-match on currency fields dropping more than 1 point.
+
+**6. Keep a human loop for the tail.** Review a random 20–30 failures per week, plus every user thumbs-down. Add confirmed failures to the golden set. This is how the suite improves instead of fossilizing.
+
+Anti-patterns: evaluating on the same examples used to write the prompt, one aggregate score that hides slice regressions, judging with the same model that generated the answer without calibration, and shipping on vibe checks because "the demo looked great."
+@@@ END

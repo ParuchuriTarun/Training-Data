@@ -1,0 +1,1521 @@
+@@@ USER
+I'm building an analytics dashboard and I keep flip-flopping between CSS Grid and Flexbox for the main layout. The page has a fixed sidebar, a sticky header, and a content area with cards that should reflow. Which should I use where, and why?
+
+@@@ ASSISTANT
+Use both, each for what it's actually good at. The mental model: Flexbox distributes items along one axis and is content-driven; Grid defines a two-dimensional track system and is layout-driven. If you're placing things into named regions of a page, Grid. If you're distributing a row of buttons with uneven widths, Flexbox.
+
+Here's the shell:
+
+```css
+.app {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-rows: 56px 1fr;
+  grid-template-areas:
+    "sidebar header"
+    "sidebar main";
+  min-height: 100dvh;
+}
+
+.sidebar { grid-area: sidebar; overflow-y: auto; }
+.header  { grid-area: header; position: sticky; top: 0; z-index: 10; }
+.main    { grid-area: main; padding: 24px; min-width: 0; }
+```
+
+`minmax(0, 1fr)` matters: a bare `1fr` is `minmax(auto, 1fr)`, so a wide table or a long unbreakable string inside `.main` forces the column wider than the viewport and the sidebar gets squeezed or the page scrolls horizontally. Setting the min to `0` lets the content shrink and scroll internally instead.
+
+For the card grid, `auto-fit` plus `minmax` gives you reflow without media queries:
+
+```css
+.cards {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+```
+
+Autofit collapses empty tracks, so three cards on a wide screen stretch to fill the row evenly; with `auto-fill` they'd stay at 260px and leave a hole. For the card's internals — title, value, sparkline, action button pushed to the bottom — use Flexbox:
+
+```css
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.card__spacer { flex: 1 1 auto; }
+```
+
+Rules of thumb that hold up in review:
+- One-dimensional flow (nav bars, tag lists, card innards, centering a single item): Flexbox.
+- Page scaffolding, overlapping regions, anything where you'd otherwise write `margin-left: auto` hacks: Grid.
+- Don't nest Grid inside Grid to center one thing; that's what `place-items: center` on a flex or grid container is for.
+- For the header's left/right split, `display: flex; justify-content: space-between; align-items: center` is fewer lines than a two-column grid and reads better.
+
+Verification: resize from 320px to 1440px, confirm no horizontal scrollbar appears (`document.documentElement.scrollWidth <= window.innerWidth`), and tab through the sidebar to confirm it scrolls independently of `.main`.
+@@@ END
+
+@@@ USER
+My card sizes are based on viewport media queries, but the same card component sits in a wide main column and a narrow sidebar. It looks broken in one of them. How do container queries fix this?
+
+@@@ ASSISTANT
+That's the signature container-query problem: the component's layout depends on the space it's given, not the window width. A media query answers "how wide is the viewport," which is the wrong question for a reusable card.
+
+Mark the wrapper as a containment context, then query it:
+
+```css
+.card-slot {
+  container-type: inline-size;
+  container-name: card;
+}
+
+.card {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@container card (min-width: 420px) {
+  .card {
+    grid-template-columns: 96px 1fr auto;
+    align-items: center;
+  }
+}
+```
+
+`container-type: inline-size` establishes size containment on the inline axis only, which keeps block-size (height) free so the wrapper can still grow with content. If you used `size`, the element would need explicit height and collapse otherwise.
+
+There's a real gotcha: an element cannot query itself. The `@container` rule inside `.card` looks upward for the nearest ancestor with a container type, so the wrapper must be a separate element. If you put `container-type` directly on `.card`, queries for `card` will never match it — they'll resolve against some ancestor or fall back to the small-viewport default, which is exactly the "works in one place, broken in the other" symptom.
+
+Named containers help when nesting is ambiguous:
+
+```css
+.sidebar { container-type: inline-size; container-name: rail; }
+.main    { container-type: inline-size; container-name: main; }
+
+@container rail (max-width: 300px) {
+  .card__meta { display: none; }
+}
+
+@container main (min-width: 700px) {
+  .card { grid-template-columns: 96px 1fr auto; }
+}
+```
+
+Also use container query units for typography that should breathe with the component, not the screen:
+
+```css
+.card__value {
+  font-size: clamp(1.25rem, 8cqi, 2rem);
+}
+```
+
+`cqi` is 1% of the container's inline size. Inside a 280px rail that's ~22px, and inside a 900px column it clamps at 32px, with no breakpoint list to maintain.
+
+Migration plan for your case: keep media queries for page-level decisions (sidebar collapse, grid column count), move every "this component's internal arrangement changes" rule to a container query. You can find the suspects by grepping your CSS for `@media` blocks that only touch a single component's internals.
+
+Browser support is solid across Chrome, Edge, Safari 16+, and Firefox 110+, but check your actual matrix before deleting the fallback. Verification: put the same component in a 280px and 900px slot on one screen at a fixed viewport width; if the layouts differ correctly, the query is resolving against the container and not the viewport. `@container` rules are visible in DevTools' Styles pane with the resolved container size, which makes debugging quick.
+@@@ END
+
+@@@ USER
+I have a React `useEffect` that subscribes to a WebSocket and updates state on messages. It leaks connections when I navigate away fast, and I get "state update on unmounted component" warnings. What's the correct cleanup pattern?
+
+@@@ ASSISTANT
+Two separate problems: the socket outlives the component, and a late message calls `setState` after teardown. A correct effect returns a cleanup function that closes the socket and invalidates any in-flight callbacks.
+
+```jsx
+import { useEffect, useState } from "react";
+
+export function LiveFeed({ url }) {
+  const [messages, setMessages] = useState([]);
+  const [status, setStatus] = useState("connecting");
+
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    let closedByUs = false;
+
+    socket.addEventListener("open", () => setStatus("open"));
+
+    socket.addEventListener("message", (event) => {
+      const payload = JSON.parse(event.data);
+      setMessages((prev) => [...prev.slice(-199), payload]);
+    });
+
+    socket.addEventListener("close", () => {
+      if (!closedByUs) setStatus("disconnected");
+    });
+
+    socket.addEventListener("error", () => setStatus("error"));
+
+    return () => {
+      closedByUs = true;
+      socket.close();
+    };
+  }, [url]);
+
+  return (
+    <ul>
+      {messages.map((m, i) => (
+        <li key={i}>{m.text}</li>
+      ))}
+      <li aria-live="polite">status: {status}</li>
+    </ul>
+  );
+}
+```
+
+Why each piece:
+- `url` in the dependency array: change the prop and React tears down the old effect before running the new one, so you never have two live sockets.
+- The `closedByUs` flag distinguishes an intentional teardown from a network drop, so you don't flash "disconnected" during normal navigation.
+- Cleanup runs on unmount and before every re-run. It's the only place that should close the socket.
+
+The unmounted-component warning was removed in React 18; if you still see it you're on React 17 or a library that warns. Either way, don't let a stale callback touch state — for `fetch`, pass an `AbortController` signal and call `abort()` in cleanup, which cancels the request rather than only ignoring the result.
+
+Two pitfalls: `useEffect(async () => {...})` returns a Promise that React ignores as cleanup, so define an inner async function and return a synchronous cleanup; and reconnect timers need `clearTimeout`, or they fire after unmount.
+
+Verification: mount, unmount within a second, and check the WS panel shows close code 1000. Repeat ten times; open sockets should stay at zero.
+@@@ USER
+So my effect cleanup shouldn't try to "cancel" the setState — it should prevent the work from completing. Is there a case where the guard is still needed?
+
+@@@ ASSISTANT
+Yes — when the async work can't be aborted. `fetch` and WebSocket support cancellation, but a third-party SDK callback, `navigator.geolocation.getCurrentPosition`, or an IntersectionObserver callback generally don't. There you either detach the listener or keep a mounted flag.
+
+```jsx
+useEffect(() => {
+  let active = true;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => active && setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+    (err) => active && setError(err.message)
+  );
+  return () => {
+    active = false;
+  };
+}, []);
+```
+
+The flag isn't "cancelling setState" magically — the callback simply exits before reaching React. React 18 already ignores the update, but the guard still prevents wasted parsing, downstream effects, and cache writes from a stale response.
+
+Prefer real cancellation when available: `AbortController` for fetch, `observer.disconnect()` for observers, `socket.close()` for sockets, `removeEventListener` for DOM listeners, and a mounted flag as the last resort.
+
+One more nuance: in development StrictMode mounts, unmounts, and remounts, so a socket opening twice in dev and once in production means your cleanup is correct — don't patch it with a ref guard.
+@@@ END
+
+@@@ USER
+Our app is a mid-size React SPA. We've got Context for auth, some Redux Toolkit for a complex editor, and local state everywhere. It's a mess. How do I decide where state should live?
+
+@@@ ASSISTANT
+The mess usually comes from not classifying state by *ownership* and *lifetime*. Sort every piece of state into one of five buckets, and the tool choice mostly falls out.
+
+1. **Local UI state** — a dropdown open, an input draft. `useState` in the component that owns it. If two siblings need it, lift to the parent; don't reach for a global store to avoid one prop.
+2. **Server state** — anything fetched from an API: user profile, order list, editor document. This is a cache, not application state. Use React Query or SWR. Copying server data into Redux is the single most common source of desync bugs: you now have two sources of truth, and you must hand-write loading, error, refetch, and invalidation.
+3. **URL state** — filters, pagination, selected tab. Put it in the query string. It's shareable, survives reload, and the back button works for free. `useSearchParams` in Next.js or `useSearchParams` from react-router.
+4. **Global client state** — theme, sidebar collapsed, the current user's id. Context is fine *if* it changes rarely. A Context value that changes on every keystroke re-renders every consumer.
+5. **Complex domain state with many transitions** — your editor. That's where a reducer or Redux Toolkit earns its keep: undo/redo, serializable actions, time-travel debugging, middleware.
+
+For your editor specifically, Redux Toolkit is defensible; for the rest of the app it probably isn't. A migration path that doesn't require a rewrite:
+
+- Leave Redux in place for the editor slice.
+- Move every other slice that is really server data to React Query, deleting the thunks and reducers.
+- Replace auth Context with a React Query `useQuery(['me'])` plus a thin `<AuthProvider>` that only exposes `user` and `login/logout`. Session data is server state; caching it centrally is what React Query does.
+- Keep a single `UIContext` for theme and layout flags, and split it so a theme change doesn't re-render components that only read `sidebarCollapsed`. Two providers, or `useSyncExternalStore` with selectors, both work.
+
+```jsx
+// server state
+const { data: orders } = useQuery({
+  queryKey: ["orders", { status: filter }],
+  queryFn: () => api.orders({ status: filter }),
+  staleTime: 30_000,
+});
+
+// URL state
+const [params, setParams] = useSearchParams();
+const filter = params.get("status") ?? "all";
+```
+
+The diagnostic question for any new state: *if I close the tab and reopen it, should this survive?* Yes and it came from the server → server state. Yes and the user chose it → URL state. No → local or UI state.
+
+Red flags to hunt for: `useEffect` that copies props into state, a Context provider wrapping the whole app whose value is a new object each render, and the same array of orders existing in both Redux and React Query.
+
+Verification: React DevTools Profiler with "record why each component rendered." If a typing keystroke re-renders your header and sidebar, you have a context or store subscription problem, not a rendering-performance problem. Fix ownership first.
+@@@ END
+
+@@@ USER
+We're on Next.js 14 App Router. I put `useState` and `onClick` in a page component and got an error. What's the actual rule, and where should the boundary be?
+
+@@@ ASSISTANT
+In the App Router, every component is a Server Component by default. Server Components render on the server, are never shipped to the browser, and therefore can't hold state, run effects, or attach event handlers. That's why `useState` and `onClick` error out.
+
+The rule: add `"use client"` at the top of a file when that component needs browser interactivity, and keep the directive as low in the tree as possible. Marking a page client-side pulls its whole import graph into the client bundle.
+
+Structure a page as a server shell that fetches data and composes small client islands:
+
+```jsx
+// app/products/page.jsx — Server Component
+import { getProducts } from "@/lib/db";
+import { ProductFilters } from "./product-filters";
+
+export default async function ProductsPage({ searchParams }) {
+  const category = searchParams.category ?? "all";
+  const products = await getProducts({ category });
+  return (
+    <main>
+      <ProductFilters selected={category} />
+      <ul>{products.map((p) => <li key={p.id}>{p.name}</li>)}</ul>
+    </main>
+  );
+}
+```
+
+`ProductFilters` lives in its own file starting with `"use client"`; it reads `useSearchParams`, copies them with `next.set("category", e.target.value)`, and calls `router.push` to update the URL. That way only the select ships as client code while the product list stays server-rendered.
+
+Key mechanics:
+- `"use client"` defines a boundary, not a single file. Everything imported by a client component becomes client code, so a heavy charting library imported there ships to the browser. Keep data-heavy rendering in the server shell and pass plain JSON props down.
+- Server → client props must be serializable. No functions, no class instances. Server Actions are the exception: they can be passed as props.
+- A client component can't import a server component. Compose on the server and pass it as `children` into a client wrapper: `<CollapsiblePanel>{serverRenderedTree}</CollapsiblePanel>`. `children` crosses the boundary already rendered, so it stays server-rendered.
+
+When in doubt: read the database, use secrets, render static markup → Server. Need `useState`, `useEffect`, handlers, or browser APIs → Client. Verify with `next build`: the route's First Load JS is the client bundle, so moving one heavy child to the server should shrink it.
+@@@ USER
+Does that mean `fetch` in a Server Component is different from `fetch` in a client component? And how does caching work now?
+
+@@@ ASSISTANT
+Yes, meaningfully. In a Server Component, `fetch` runs on the server at render time; the request never leaves your infrastructure for the browser, no CORS applies, and you can call internal APIs or the database directly. Next.js also extends `fetch` with caching and deduplication. In Next 14 the default is `force-cache`; in 15 it flipped to `no-store`. Be explicit:
+
+```jsx
+await fetch(url, { next: { revalidate: 60 } });          // revalidate every 60s
+await fetch(url, { cache: "no-store" });                  // never cache
+await fetch(url, { next: { tags: ["orders"] } });         // tag it, then:
+revalidateTag("orders");                                  // invalidate on demand
+```
+
+In a client component, `fetch` is the browser's `fetch`: no framework caching, no dedup, CORS applies. Route it through React Query or SWR (`useQuery` with a `queryKey` and `staleTime`) for caching, dedup, retries, and revalidation.
+
+Fetch on the server by default. Drop to the client when data is user-specific and interactive (infinite scroll, polling, optimistic updates). For mutations, Server Actions replace the hand-written API route: a `"use server"` function that writes to the database and calls `revalidatePath("/orders")`.
+@@@ END
+
+@@@ USER
+My `<Select>` component loses its generic type — `value` comes back as `string` even when I pass a union. How do I type props so the generic flows through?
+
+@@@ ASSISTANT
+The generic has to be declared on the component function and then used in every prop that depends on it. The common failure is typing `value: string` or using a non-generic `React.FC`.
+
+```tsx
+type Option<T extends string> = {
+  value: T;
+  label: string;
+};
+
+type SelectProps<T extends string> = {
+  options: readonly Option<T>[];
+  value: T;
+  onChange: (next: T) => void;
+  placeholder?: string;
+};
+
+export function Select<T extends string>({
+  options,
+  value,
+  onChange,
+  placeholder,
+}: SelectProps<T>) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as T)}
+      aria-label={placeholder}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+```
+
+Now inference works end to end:
+
+```tsx
+const sizes = [
+  { value: "sm", label: "Small" },
+  { value: "md", label: "Medium" },
+  { value: "lg", label: "Large" },
+] as const;
+
+const [size, setSize] = useState<"sm" | "md" | "lg">("md");
+
+<Select options={sizes} value={size} onChange={setSize} />;
+```
+
+Three details that make or break it:
+
+**`as const` on the options array.** Without it, `value` widens to `string` and `T` infers as `string`, silently defeating the whole thing. `as const` makes the values literal types. Alternatively annotate the array as `readonly Option<Size>[]`, with `type Size = "sm" | "md" | "lg"`.
+
+**`T extends string`.** Constraining to string keeps `option value` valid as an HTML attribute and prevents someone passing `T = object`.
+
+**The `as T` cast in the handler.** `e.target.value` is `string`; the DOM can't know your union. One cast at the boundary is fine and is the only place you're lying. Everything downstream is checked.
+
+For a wrapper that forwards refs and stays generic, `React.forwardRef` loses generics, so either cast or use the modern ref-as-prop approach in React 19:
+
+```tsx
+type InputProps<T extends string> = SelectProps<T> & { ref?: React.Ref<HTMLSelectElement> };
+
+export function Select<T extends string>({ ref, ...props }: InputProps<T>) {
+  return <select ref={ref} {...props} />;
+}
+```
+
+Two more patterns worth knowing. A generic hook:
+
+```tsx
+function useLocalStorage<T>(key: string, initial: T) {
+  const [value, setValue] = useState<T>(() => {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : initial;
+  });
+  useEffect(() => {
+    localStorage.setItem(key, JSON.stringify(value));
+  }, [key, value]);
+  return [value, setValue] as const;
+}
+```
+
+Note the `as const` on the return, which gives a tuple instead of an array of the union.
+
+And a generic context factory, where `createContext` can't infer:
+
+```tsx
+function createCtx<T>() {
+  const Ctx = createContext<T | null>(null);
+  function useCtx() {
+    const v = useContext(Ctx);
+    if (v === null) throw new Error("useCtx must be used within its provider");
+    return v;
+  }
+  return [Ctx.Provider, useCtx] as const;
+}
+```
+
+Verification: hover `value` inside `onChange` in your editor; it should show the literal union, not `string`. Then pass `value="xl"` and confirm `tsc --noEmit` errors with "not assignable."
+@@@ END
+
+@@@ USER
+I need to build an accessible modal from scratch — we can't add a dependency. Focus must be trapped, Escape must close, and screen readers shouldn't reach the background.
+
+@@@ ASSISTANT
+Use the native `<dialog>` element with `showModal()`. It gives you the top layer, an inert background, Escape handling, and focus containment for free — far less code than a div-based implementation and more correct.
+
+```jsx
+import { useEffect, useRef } from "react";
+
+export function Modal({ open, onClose, title, children }) {
+  const ref = useRef(null);
+  const lastFocused = useRef(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+
+    if (open && !dialog.open) {
+      lastFocused.current = document.activeElement;
+      dialog.showModal();
+    } else if (!open && dialog.open) {
+      dialog.close();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+
+    function onCancel(e) {
+      e.preventDefault();
+      onClose();
+    }
+    function onCloseEvent() {
+      if (lastFocused.current instanceof HTMLElement) {
+        lastFocused.current.focus();
+      }
+    }
+
+    dialog.addEventListener("cancel", onCancel);
+    dialog.addEventListener("close", onCloseEvent);
+    return () => {
+      dialog.removeEventListener("cancel", onCancel);
+      dialog.removeEventListener("close", onCloseEvent);
+    };
+  }, [onClose]);
+
+  return (
+    <dialog ref={ref} aria-labelledby="modal-title" className="modal">
+      <h2 id="modal-title">{title}</h2>
+      <div>{children}</div>
+      <button type="button" onClick={onClose}>
+        Close
+      </button>
+    </dialog>
+  );
+}
+```
+
+What you get from `showModal()`: the dialog renders in the top layer above all `z-index` stacking contexts, the rest of the document becomes inert so Tab can't leave and screen readers can't reach it, and Escape fires `cancel`. `preventDefault()` on `cancel` lets you route closing through your own handler so React state stays in sync.
+
+Focus containment: browsers cycle Tab within a modal dialog. If you open with no focusable element inside, focus lands on the dialog itself. Set an explicit initial focus by adding `autoFocus` to the most useful control:
+
+```jsx
+<dialog ref={ref} aria-labelledby="modal-title">
+  <h2 id="modal-title">{title}</h2>
+  <input autoFocus aria-label="Search" />
+```
+
+Restoring focus on close is on you — that's the `lastFocused` ref plus the `close` listener.
+
+If you truly can't use `<dialog>` (must support very old browsers), the manual version needs: `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `inert` on the app root or `aria-hidden` on siblings, a Tab/Shift+Tab handler that wraps at the first and last focusable element, an Escape listener on `document`, and focus restore. That's roughly 80 lines with edge cases around shadow DOM and iframes; the native element is the better call.
+
+Two CSS notes: `dialog::backdrop` styles the overlay, and don't animate with `display: none` transitions — use `@starting-style` or a class toggle with `transition-behavior: allow-discrete` if you want a fade.
+
+Verification: open the modal, press Tab 20 times — focus must never land on the page behind. Press Escape — it closes and focus returns to the trigger. Run axe DevTools; there should be no modal-related violations. With VoiceOver or NVDA, the background content should be unreachable while open.
+@@@ END
+
+@@@ USER
+Now forms. We have a signup form with email, password, and a confirm-password field. Client-side validation feels brittle and duplicated with the server. What's a sane structure?
+
+@@@ ASSISTANT
+Treat the browser and the server as two layers with different jobs: the browser gives fast feedback, the server is the authority. Share the *rules*, not the implementation, and never trust the client.
+
+Start with native constraints, which give you free accessibility (the browser announces errors, `:invalid` styling, correct mobile keyboards):
+
+```jsx
+<form noValidate onSubmit={handleSubmit}>
+  <label htmlFor="email">Email</label>
+  <input
+    id="email"
+    name="email"
+    type="email"
+    autoComplete="email"
+    required
+    aria-describedby="email-error"
+  />
+  {errors.email && <p id="email-error" role="alert">{errors.email}</p>}
+
+  <label htmlFor="password">Password</label>
+  <input
+    id="password"
+    name="password"
+    type="password"
+    autoComplete="new-password"
+    minLength={12}
+    required
+    aria-describedby="password-error"
+  />
+  {errors.password && <p id="password-error" role="alert">{errors.password}</p>}
+
+  <button type="submit" disabled={pending}>Create account</button>
+</form>
+```
+
+`noValidate` disables the browser's blocking bubble UI while keeping the constraint semantics you can query. You control the message rendering.
+
+A small pure validator, usable on both sides and easy to unit test:
+
+```js
+export function validateSignup(values) {
+  const errors = {};
+  if (!values.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+    errors.email = "Enter a valid email address.";
+  }
+  if (!values.password || values.password.length < 12) {
+    errors.password = "Use at least 12 characters.";
+  }
+  if (values.confirm !== values.password) {
+    errors.confirm = "Passwords do not match.";
+  }
+  return errors;
+}
+```
+
+```jsx
+const [errors, setErrors] = useState({});
+const [pending, startTransition] = useTransition();
+
+function handleSubmit(e) {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.currentTarget));
+  const next = validateSignup(data);
+  setErrors(next);
+  if (Object.keys(next).length) {
+    e.currentTarget.querySelector("[aria-invalid='true']")?.focus();
+    return;
+  }
+  startTransition(async () => {
+    const res = await fetch("/api/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: data.email, password: data.password }),
+    });
+    if (!res.ok) {
+      setErrors(await res.json()); // server-returned field errors
+      return;
+    }
+    router.push("/welcome");
+  });
+}
+```
+
+Key decisions:
+- Only send `email` and `password` to the server. `confirm` is a UI concern.
+- Render server field errors into the same `errors` object so the UI has one error path. Server wins on conflict.
+- Focus the first invalid field on submit failure. Screen reader users otherwise hear nothing.
+- Use `role="alert"` sparingly — one per field is noisy on submit. A better pattern is a summary at the top with links to fields, or `role="alert"` only on the first error.
+- Set `aria-invalid` when a field has an error, and keep `aria-describedby` pointing at the error node id.
+- Disable the submit button *and* guard in the handler; a double-click can slip through between renders.
+
+On the server, re-run the same `validateSignup` plus checks the client can't do (email already registered, rate limiting). Return `422` with `{ "email": "That address is already registered." }`.
+
+Verification: submit empty, confirm focus moves to the email field and the message is announced. Disable JavaScript and submit; the server must still reject invalid input — that's the test that proves the client isn't the authority.
+@@@ END
+
+@@@ USER
+LCP on our marketing page is 4.2s on mobile. The hero is a big background image. What do I actually do, in order?
+
+@@@ ASSISTANT
+Diagnose before optimizing. LCP has four subparts: time to first byte, resource load delay, resource load duration, and element render delay. The Chrome DevTools Performance panel annotates the LCP element with those four phases. Optimizing the wrong phase is why people "fix" LCP and see nothing.
+
+Given a large hero image, the ranked checklist:
+
+**1. Don't use a CSS `background-image` for the LCP element.** Background images are discovered late — only after CSS is fetched and parsed, and they're invisible to the preload scanner. Use an `<img>` with `fetchpriority="high"`:
+
+```html
+<img
+  src="/hero-1200.avif"
+  srcset="/hero-600.avif 600w, /hero-1200.avif 1200w, /hero-1800.avif 1800w"
+  sizes="100vw"
+  width="1200"
+  height="600"
+  alt="Team collaborating in the studio"
+  fetchpriority="high"
+  decoding="async"
+/>
+```
+
+`fetchpriority="high"` bumps it above other requests; without it, the browser may deprioritize a large image behind fonts and JS. Do **not** add `loading="lazy"` — laziness delays the LCP image and is the most common self-inflicted LCP regression.
+
+**2. Make sure it's in the initial HTML.** In a client-rendered SPA the hero doesn't exist until JS runs, so LCP can't start until hydration. Server-render it, or put a static `<img>` in `index.html`.
+
+**3. Preload it if it's discovered late** — e.g. injected by JS or referenced in CSS you can't change:
+
+```html
+<link rel="preload" as="image" href="/hero-1200.avif"
+      imagesrcset="/hero-600.avif 600w, /hero-1200.avif 1200w"
+      imagesizes="100vw" fetchpriority="high" />
+```
+
+In Next.js, `next/image` with `priority` emits the preload for you.
+
+**4. Cut the bytes.** AVIF at quality ~50 typically beats JPEG by 50%+ for photography. Serve from a CDN with `Cache-Control: public, max-age=31536000, immutable` and hashed filenames; a 1.8MB hero is the whole problem.
+
+**5. Remove render blockers ahead of it.** A synchronous `<script>` in `<head>`, a blocking font stylesheet, or a 300KB CSS file all delay discovery or paint. Inline critical CSS, defer the rest.
+
+**6. Fix the font.** If the LCP element is a heading, `font-display: swap` plus preloading the one weight used above the fold cuts the delay from FOIT.
+
+```css
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+0000-00FF;
+}
+```
+
+**7. Don't animate the hero in.** A fade-in with `opacity: 0` start delays the LCP paint until the animation completes. If you must, animate `transform` only and start visible.
+
+Measure with field data, not just lab: send `web-vitals` to your analytics for p75 by device type, and use CrUX in PageSpeed Insights. Lighthouse is for iterating; field data is for proving.
+
+```js
+import { onLCP } from "web-vitals";
+onLCP(({ value, attribution }) => {
+  navigator.sendBeacon("/vitals", JSON.stringify({ lcp: value, element: attribution.element }));
+});
+```
+
+Verification: DevTools Performance, reload with cache disabled, look at the LCP marker and the four phases. On a throttled "Slow 4G" profile, the resource load delay should be near zero after the preload/fetchpriority fix.
+@@@ END
+
+@@@ USER
+Related: our images are served at full resolution and our fonts cause layout shift and flash. What's the right setup for images and fonts in a Next.js app?
+
+@@@ ASSISTANT
+Both problems come from shipping more than the device needs and from not reserving space. `next/image` and `next/font` handle most of it, but the details matter.
+
+**Images.** `next/image` requires intrinsic dimensions so it can reserve space and emit a correct `srcset`:
+
+```jsx
+import Image from "next/image";
+
+export function ProductCard({ product }) {
+  return (
+    <article>
+      <Image
+        src={product.imageUrl}
+        alt={product.name}
+        width={640}
+        height={480}
+        sizes="(max-width: 640px) 100vw, (max-width: 1200px) 50vw, 33vw"
+        className="card-img"
+        placeholder="blur"
+        blurDataURL={product.blurhash}
+      />
+    </article>
+  );
+}
+```
+
+`width`/`height` are the intrinsic aspect ratio, not the rendered size; CSS controls display size, and the ratio prevents CLS. `sizes` tells the browser how wide the image will render at each breakpoint so it picks a sensible source from the generated `srcset`. Omit `sizes` and it assumes `100vw`, downloading a 1920px image for a 300px card.
+
+For a full-bleed hero where you don't know the exact crop:
+
+```jsx
+<Image src={hero} alt="" fill priority sizes="100vw"
+       style={{ objectFit: "cover" }} />
+```
+
+`fill` requires a positioned parent with a defined size:
+
+```css
+.hero { position: relative; height: min(70vh, 640px); }
+```
+
+Use `priority` only on the LCP image. Everything else stays lazy by default; adding `loading="eager"` across a grid delays the one image that matters.
+
+`alt=""` for decorative images (empty string, not omitted — empty marks it decorative and skips it for screen readers). Meaningful images get a description.
+
+The optimizer needs an allowlist for remote hosts in `next.config.js`:
+
+```js
+module.exports = {
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "cdn.example.com", pathname: "/products/**" },
+    ],
+    formats: ["image/avif", "image/webp"],
+  },
+};
+```
+
+**Fonts.** `next/font` self-hosts at build time — no request to Google, no extra DNS/TLS, and it generates a `size-adjust`-matched fallback to reduce shift.
+
+```jsx
+// app/layout.jsx
+import { Inter } from "next/font/google";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+  weight: ["400", "600"],
+});
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en" className={inter.variable}>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+```css
+:root { --font-sans: var(--font-inter), system-ui, sans-serif; }
+body { font-family: var(--font-sans); }
+```
+
+Two or three weights max. Every weight is a separate file; six weights on a marketing page is usually a design decision nobody measured.
+
+For a local variable font, same idea with `next/font/local`, one file covering all weights.
+
+CLS from fonts happens when the fallback and the loaded font have different metrics. `display: "swap"` prevents invisible text but allows reflow; Next's generated fallback with `adjustFontFallback` (on by default) sizes the fallback to match, which removes most of the shift.
+
+Verification: run a Lighthouse mobile pass and confirm "Properly size images" and "Serve images in modern formats" are gone. Throttle to Slow 4G and reload — watch for the hero jumping; the CLS score should be under 0.1. Then check the Network panel: font requests should be same-origin, and each image should be near the rendered size, not 4x it.
+@@@ END
+
+@@@ USER
+I want a subtle entrance animation on cards and a pulsing "live" dot. How do I do this without hurting people who get motion sickness, and without tanking performance?
+
+@@@ ASSISTANT
+Animate `transform` and `opacity` only — those run on the compositor and skip layout and paint. Avoid animating `width`, `height`, `top`, `left`, or `box-shadow`; those force layout or paint every frame.
+
+```css
+.card {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: card-in 400ms cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+@keyframes card-in {
+  to { opacity: 1; transform: none; }
+}
+
+.card:nth-child(2) { animation-delay: 60ms; }
+.card:nth-child(3) { animation-delay: 120ms; }
+```
+
+Staggering with `nth-child` is fine for a handful of cards; for a list, set a custom property inline:
+
+```jsx
+{items.map((item, i) => (
+  <li key={item.id} style={{ "--i": i }} className="card">{item.name}</li>
+))}
+```
+
+```css
+.card { animation-delay: calc(var(--i) * 60ms); }
+```
+
+Cap the stagger so the 40th item doesn't wait 2.4s: `calc(min(var(--i), 8) * 60ms)`.
+
+The pulse:
+
+```css
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  position: relative;
+}
+
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: inherit;
+  animation: pulse 2s ease-out infinite;
+}
+
+@keyframes pulse {
+  from { transform: scale(1); opacity: 0.6; }
+  to   { transform: scale(2.6); opacity: 0; }
+}
+```
+
+`transform` + `opacity` means the pulse is composited, no repaint. Don't animate `box-shadow` spread for this; it repaints a growing area every frame.
+
+**Reduced motion.** `prefers-reduced-motion: reduce` means the user has asked the OS to minimize non-essential animation. Honor it for anything decorative, and keep essential state changes visible:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .live-dot::after {
+    animation: none;
+    opacity: 0.35;
+  }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+```
+
+The global override is a blunt instrument — good as a safety net, but it also kills animations that carry meaning (a progress bar). Prefer targeted rules for components you own, and use the global one for third-party CSS you can't edit.
+
+Note: `animation: none` in the reduced-motion block leaves the card at `opacity: 1` only because you also set it explicitly. If the base state is `opacity: 0` and you only kill the animation, the content stays invisible. Always set the final state.
+
+For JS-driven animation (a library, or an intersection observer), check the preference:
+
+```js
+const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+```
+
+Re-read it on change if the user can toggle it live — `mql.addEventListener("change", ...)`.
+
+Verification: DevTools → Rendering → "Emulate CSS prefers-reduced-motion: reduce" — cards should appear instantly and the dot should sit still. Then check the Performance panel: the animation should show no layout or paint work, only composite.
+@@@ END
+
+@@@ USER
+We need dark mode. Our designers gave us two palettes, and we have a "system" option plus a manual toggle. What's the cleanest CSS-variable setup that avoids a flash of wrong theme?
+
+@@@ ASSISTANT
+Define semantic tokens on `:root`, override them under a data attribute, and resolve "system" in CSS before paint. The flash comes from JavaScript setting the attribute after first paint; the fix is an inline script in `<head>` that runs synchronously before the body renders.
+
+```css
+:root {
+  --bg: #ffffff;
+  --surface: #f7f7f8;
+  --text: #18181b;
+  --muted: #52525b;
+  --border: #e4e4e7;
+  --accent: #2563eb;
+  --accent-contrast: #ffffff;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #0b0b0f;
+  --surface: #16161c;
+  --text: #f4f4f5;
+  --muted: #a1a1aa;
+  --border: #27272a;
+  --accent: #60a5fa;
+  --accent-contrast: #0b0b0f;
+  color-scheme: dark;
+}
+```
+
+`color-scheme` is the part people forget: it makes form controls, scrollbars, and the canvas match, and it prevents a white flash on overscroll in mobile Safari.
+
+To honor the OS by default, repeat the dark token block inside `@media (prefers-color-scheme: dark)` scoped to `:root:not([data-theme="light"])`. Eight duplicated lines are cheaper than a build step, and the `:not()` guard ensures an explicit light choice always wins over the media query.
+
+The no-flash script:
+
+```html
+<script>
+  (function () {
+    try {
+      var stored = localStorage.getItem("theme");
+      var theme = stored === "light" || stored === "dark"
+        ? stored
+        : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+    } catch (e) {}
+  })();
+</script>
+```
+
+Place it in `<head>` before any stylesheet that paints, and keep it tiny and inline — an external script is a network round trip and reintroduces the flash. Store the *resolved* theme, not `"system"`, or store both: a `theme` key with `"light" | "dark" | "system"` and resolve at paint.
+
+React side:
+
+```jsx
+function setTheme(next) {
+  const resolved = next === "system"
+    ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+    : next;
+  document.documentElement.dataset.theme = resolved;
+  localStorage.setItem("theme", next);
+}
+```
+
+If `next` is `"system"`, also subscribe to `matchMedia` change so it follows the OS while the tab is open.
+
+Component code should never branch on theme. Use tokens:
+
+```css
+.card {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+```
+
+That's the payoff: one rule, both themes, and a new theme is one attribute block.
+
+Contrast: verify both palettes meet 4.5:1 for body text and 3:1 for large text and UI borders. The common dark-mode failure is using the light palette's muted gray on a dark surface — it looks fine to the designer on a good monitor and fails on a laptop at 40% brightness.
+
+Verification: hard reload with the dark preference stored; the page should never paint light. Test with `prefers-color-scheme: dark` emulated and no stored value. Then run axe in both themes.
+@@@ END
+
+@@@ USER
+We're adding a settings area with tabs — account, billing, notifications. Should these be routes or component state? And how do I make back/forward behave sanely?
+
+@@@ ASSISTANT
+Make them routes. A tab is a place; users bookmark it, share it, and expect Back to undo a tab change. Component state gives you none of that.
+
+With React Router:
+
+```jsx
+import { NavLink, Outlet } from "react-router-dom";
+
+const tabs = [
+  { to: "account", label: "Account" },
+  { to: "billing", label: "Billing" },
+  { to: "notifications", label: "Notifications" },
+];
+
+export function SettingsLayout() {
+  return (
+    <section>
+      <h1>Settings</h1>
+      <nav aria-label="Settings sections">
+        {tabs.map((t) => (
+          <NavLink
+            key={t.to}
+            to={t.to}
+            className={({ isActive }) => (isActive ? "tab tab--active" : "tab")}
+          >
+            {t.label}
+          </NavLink>
+        ))}
+      </nav>
+      <Outlet />
+    </section>
+  );
+}
+```
+
+```jsx
+// routes
+{
+  path: "settings",
+  element: <SettingsLayout />,
+  children: [
+    { index: true, element: <Navigate to="account" replace /> },
+    { path: "account", element: <AccountPanel /> },
+    { path: "billing", element: <BillingPanel /> },
+    { path: "notifications", element: <NotificationsPanel /> },
+  ],
+}
+```
+
+The `index` redirect with `replace` matters: without `replace`, visiting `/settings` pushes a redirect entry, so Back from Account goes to `/settings` which immediately redirects forward again — a back-button trap.
+
+`NavLink` gives you `isActive` for free; `aria-current="page"` is applied by React Router's `NavLink` when active (or add it manually). That's the accessibility cue that tells screen readers which tab is current.
+
+If you build a real ARIA tablist (with arrow-key navigation), the pattern is more involved: `role="tablist"`, `role="tab"` with `aria-selected` and `aria-controls`, `role="tabpanel"` with `aria-labelledby`, arrow keys to move, Home/End, and roving `tabIndex`. For settings where each tab is a full page with its own URL, plain links are better — the tablist pattern is for in-page panels where routing isn't involved. Don't mix the two.
+
+Back/forward sanity checklist:
+- Scroll restoration: React Router's `ScrollRestoration` restores position on POP. For tabs, you probably want to scroll to top on PUSH: `useEffect(() => window.scrollTo(0, 0), [location.pathname])` in the layout, but only when `location.action !== "POP"`.
+- Unsaved changes: if a panel has a dirty form, block navigation with `useBlocker` (data router) rather than silently discarding.
+- Deep link: `/settings/billing` must render with the billing tab active and the correct panel. Test by pasting the URL in a fresh tab.
+- 404 inside settings: an unknown child path should hit a child `*` route with a helpful message, not blow up the whole app.
+
+```jsx
+{ path: "*", element: <p>That settings page doesn't exist.</p> }
+```
+
+Preserving state across tab switches is a tradeoff: unmounting the panel resets scroll and form state. If a panel must keep state, either lift it to the layout or use `<Outlet context>` — but don't cache routes with `display: none` hacks unless you've measured a real cost, since hidden panels stay mounted and keep running effects.
+
+Verification: click Account → Billing → Notifications, then press Back three times; URL and active tab must track exactly. Reload on each URL and confirm the right panel renders. Tab to the nav and confirm screen readers announce the current page.
+@@@ END
+
+@@@ USER
+We keep hand-rolling `useEffect` + `fetch` + loading/error booleans. It's buggy — duplicate requests, no retry, stale data when switching filters fast. What's the right data-fetching layer?
+
+@@@ ASSISTANT
+That pattern re-implements a cache badly. The three bugs you named are the classic symptoms: no deduplication, no cancellation, no cache keying. React Query (or SWR, same shape) solves them as a unit.
+
+```jsx
+import { useQuery } from "@tanstack/react-query";
+
+function useOrders({ status, page }) {
+  return useQuery({
+    queryKey: ["orders", { status, page }],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/orders?status=${status}&page=${page}`, { signal });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      return res.json();
+    },
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  });
+}
+```
+
+What each piece buys you:
+
+- **`queryKey`** is the cache identity. `["orders", {status, page}]` means switching filters creates a new entry instead of overwriting a shared blob. The object is hashed deterministically, so key order doesn't matter but values do.
+- **`queryFn` with `signal`** — React Query passes an `AbortSignal`; when the component unmounts or the key changes, the in-flight request is aborted. That kills your stale-data race: a slow request for `status=open` can't land after `status=closed`.
+- **Deduplication** — two components mounting with the same key share one request, and within `staleTime` a remount serves cache without a network call.
+- **Retries** — default 3 with exponential backoff, configurable per query, disabled for 4xx.
+
+`placeholderData: (prev) => prev` keeps the previous page visible while the next loads, which avoids the layout jump and the spinner flash when paginating.
+
+Mutations and invalidation:
+
+```jsx
+const queryClient = useQueryClient();
+
+const cancel = useMutation({
+  mutationFn: (id) => fetch(`/api/orders/${id}/cancel`, { method: "POST" }).then(r => {
+    if (!r.ok) throw new Error("Cancel failed");
+    return r.json();
+  }),
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["orders"] });
+  },
+});
+```
+
+For optimistic UI, `onMutate` snapshots the cache, updates it, and returns a rollback context that `onError` restores. Do that only where the latency is visible; invalidation is simpler and correct by default.
+
+Setup once at the root:
+
+```jsx
+const client = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: (count, error) => count < 3 && !(error.status >= 400 && error.status < 500),
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+<QueryClientProvider client={client}>{children}</QueryClientProvider>
+```
+
+`refetchOnWindowFocus: false` for internal dashboards that poll; leave it on for feeds where freshness matters. It's a product decision, not a default to accept blindly.
+
+Where this fits with your earlier state question: React Query owns server state. Don't copy `data` into `useState`. Derive from `data` during render; that's what removes the desync class of bug entirely.
+
+SWR equivalent: `useSWR(['orders', status, page], fetcher, { keepPreviousData: true })`. Same concepts, different names; SWR is lighter, React Query has a richer mutation and invalidation API.
+
+Verification: React Query Devtools shows the cache, key, and state per entry. Switch filters rapidly and watch for `fetching` entries that cancel rather than complete. Then check the Network panel — requests for superseded keys should show as cancelled.
+@@@ END
+
+@@@ USER
+Security review flagged us for XSS. We render user comments that can contain basic formatting, and we have no CSP. What's the correct approach for both?
+
+@@@ ASSISTANT
+Two separate defenses: never inject untrusted HTML, and add a CSP as a second layer for when you inevitably miss something.
+
+**Don't use `dangerouslySetInnerHTML` on user content.** React escapes text by default, so `<p>{comment}</p>` is safe. The danger is exactly the name: `dangerouslySetInnerHTML` writes raw HTML into the DOM, and any `<img onerror>` or `<script>` inside executes.
+
+If comments support basic formatting, don't parse HTML at all — store and render Markdown, and sanitize the output:
+
+```jsx
+import { marked } from "marked";
+import DOMPurify from "dompurify";
+
+const ALLOWED = {
+  ALLOWED_TAGS: ["b", "i", "em", "strong", "a", "p", "br", "code", "pre", "ul", "ol", "li"],
+  ALLOWED_ATTR: ["href", "title"],
+  ALLOW_DATA_ATTR: false,
+};
+
+function Comment({ markdown }) {
+  const html = DOMPurify.sanitize(marked.parse(markdown), ALLOWED);
+  return <div className="comment" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+```
+
+DOMPurify runs in the browser and strips scripts, event handlers, and `javascript:` URLs. Two things to get right: sanitize on every render path (including edits and previews), and if you sanitize on the server with `isomorphic-dompurify`, do it there too — never trust a client-sanitized payload that a different client will render.
+
+For links, add `rel="noopener noreferrer"` and consider a URL scheme allowlist; DOMPurify blocks `javascript:` by default.
+
+The stronger approach: don't store HTML at all. Store structured data (a subset of Markdown) and render with React components — escaped by construction, no sanitizer to misconfigure.
+
+**CSP.** Start in report-only, then enforce:
+
+```
+Content-Security-Policy:
+  default-src 'self';
+  script-src 'self' 'nonce-<random>' 'strict-dynamic';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: https://cdn.example.com;
+  font-src 'self';
+  connect-src 'self' https://api.example.com;
+  object-src 'none';
+  base-uri 'none';
+  frame-ancestors 'none';
+  form-action 'self';
+  upgrade-insecure-requests
+```
+
+Notes that matter in practice:
+- `'unsafe-inline'` in `script-src` defeats much of the point. Use a per-request nonce and `'strict-dynamic'`, which lets your nonce'd bootstrap script load further scripts. This requires server-rendered HTML with a fresh nonce per response.
+- In Next.js, set the header in middleware and read the nonce in your root layout; be aware that `next/script` and some bundler-injected inline scripts need the nonce propagated.
+- `'unsafe-inline'` for styles is usually unavoidable with CSS-in-JS. If you can, use hashes or move to static CSS.
+- `frame-ancestors 'none'` replaces `X-Frame-Options` for clickjacking.
+
+Rollout: deploy as `Content-Security-Policy-Report-Only` with a `report-uri`, watch violations for a week, fix the legitimate ones, then enforce. Enforcing blind breaks analytics and third-party widgets and gets reverted, which is worse.
+
+Also set cookie flags for the session: `HttpOnly; Secure; SameSite=Lax` (or `Strict` for admin). XSS that steals a cookie is the payoff an attacker wants; `HttpOnly` removes that.
+
+Verification: try `<img src=x onerror=alert(1)>` and `<a href="javascript:alert(1)">x</a>` as a comment; nothing should execute. Check response headers with `curl -sI` and confirm CSP is present and has no `unsafe-inline` in `script-src`. Run it through Google's CSP Evaluator too.
+@@@ END
+
+@@@ USER
+And CSRF — we use cookie-based sessions. What actually protects us, and what's theater?
+
+@@@ ASSISTANT
+CSRF is an attacker's page causing your users' browsers to send authenticated requests to your site. The attack works because browsers attach cookies automatically to cross-site requests. The defense is making the request something an attacker's page can't forge.
+
+**The modern baseline: `SameSite=Lax` cookies.** Set on the session cookie:
+
+```
+Set-Cookie: session=...; HttpOnly; Secure; SameSite=Lax; Path=/
+```
+
+`Lax` means the cookie is sent on top-level GET navigations but not on cross-site POSTs, iframes, or `fetch`/XHR. That alone blocks the classic form-post CSRF. `Strict` is stronger but breaks inbound links — a user clicking a link from an email arrives logged out. `None` is only for genuine cross-site embedding and requires `Secure`.
+
+**Then defense in depth: a CSRF token.** SameSite has gaps — older browsers, some proxy setups, and any endpoint where you deliberately allow cross-site embedding. A synchronizer token is still the right belt:
+
+```js
+// server: issue a random token per session, store it server-side
+// render it into the page
+<meta name="csrf-token" content={csrfToken} />
+```
+
+```js
+// client
+const token = document.querySelector('meta[name="csrf-token"]').content;
+
+await fetch("/api/orders", {
+  method: "POST",
+  credentials: "same-origin",
+  headers: {
+    "Content-Type": "application/json",
+    "X-CSRF-Token": token,
+  },
+  body: JSON.stringify(payload),
+});
+```
+
+The server compares the header to the session's stored token with a timing-safe comparison. The key property: a cross-origin page can send the cookie but cannot read the token (same-origin policy blocks reading your HTML), so it can't set the header.
+
+The double-submit cookie variant stores the token in a non-`HttpOnly` cookie and requires the same value in a header. It's stateless and easier to scale, but weaker if an attacker can set cookies on a subdomain — a common misconfiguration. Prefer the session-bound token if you have server sessions anyway.
+
+**What's theater:**
+- `Origin`/`Referer` checks alone — useful as an extra signal, but `Referer` is often stripped by privacy settings, so reject only on a *present and mismatched* `Origin`, not on absence.
+- Custom headers alone (`X-Requested-With`) — an attacker can't set arbitrary headers cross-origin without a CORS preflight, so this does help, but only if your CORS policy doesn't allow `*` with credentials. If it does, you've undone it.
+- Checking `Content-Type: application/json` alone — this blocks simple form posts but is not a substitute for a token.
+- Hiding the token in a JS variable only — still readable by same-origin XSS, but that's XSS, a different problem.
+
+**CORS interaction, the subtle one:** `Access-Control-Allow-Origin: *` with `Access-Control-Allow-Credentials: true` is invalid and browsers reject it. But a permissive origin reflection with credentials is a real CSRF bypass — reflect only known origins, and only where you need cross-origin calls.
+
+**State-changing GETs** are unfixable with tokens — a `<img src="/api/delete?id=3">` is a GET. Every mutation must be POST/PUT/DELETE with a token check. Audit for this; it's the most common real-world hole.
+
+Verification: from a different origin, submit a form POST to your endpoint with the session cookie — it should 403. Then `curl` with a valid token but no `Origin` header — behavior should match your intended policy. Finally, check the cookie in DevTools → Application → Cookies shows `HttpOnly`, `Secure`, `SameSite=Lax`.
+@@@ END
+
+@@@ USER
+We have a filter panel component with debounced input and an async search. I want real tests, not smoke tests. How do I test it with Vitest and Testing Library without flaky timers?
+
+@@@ ASSISTANT
+Test behavior, use fake timers deliberately, and mock the network at the boundary. The flakiness comes from mixing real and fake timers or asserting on intermediate states.
+
+```js
+// filters.test.jsx
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { vi, beforeEach, afterEach, expect, test } from "vitest";
+import { FilterPanel } from "./FilterPanel";
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.runOnlyPendingTimers();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+test("debounces search and renders results", async () => {
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const search = vi.fn().mockResolvedValue([{ id: 1, name: "Alpha" }]);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+    ok: true,
+    json: () => Promise.resolve([{ id: 1, name: "Alpha" }]),
+  }));
+
+  render(<FilterPanel onSearch={search} debounceMs={300} />);
+
+  const input = screen.getByRole("searchbox", { name: /search/i });
+  await user.type(input, "alpha");
+
+  expect(search).not.toHaveBeenCalled();
+
+  await vi.advanceTimersByTimeAsync(300);
+  expect(search).toHaveBeenCalledTimes(1);
+  expect(search).toHaveBeenCalledWith("alpha");
+
+  expect(await screen.findByText("Alpha")).toBeInTheDocument();
+});
+```
+
+The critical details:
+
+- `userEvent.setup({ advanceTimers: vi.advanceTimersByTime })` is what makes `userEvent` work with fake timers. Without it you get hangs or real delays. This is the #1 cause of "fake timers broke my test."
+- `advanceTimersByTimeAsync` (not the sync version) flushes microtasks after advancing, so promise chains resolve. Use the sync one only when there's no async work behind the timer.
+- `findBy*` uses `waitFor` internally; don't wrap it in another `waitFor`.
+
+Test the debounce behavior itself, not just the happy path:
+
+```js
+test("only the last keystroke triggers a search", async () => {
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const search = vi.fn().mockResolvedValue([]);
+
+  render(<FilterPanel onSearch={search} debounceMs={300} />);
+  const input = screen.getByRole("searchbox", { name: /search/i });
+
+  await user.type(input, "a");
+  await vi.advanceTimersByTimeAsync(100);
+  await user.type(input, "b");
+  await vi.advanceTimersByTimeAsync(300);
+
+  expect(search).toHaveBeenCalledTimes(1);
+  expect(search).toHaveBeenCalledWith("ab");
+});
+```
+
+Test the error and empty states explicitly — that's where real bugs live. Mock a 500 on the first call and a result on the second, assert the `role="alert"` message renders, click retry, and assert the results appear. Same shape as above, so it fits in a dozen lines.
+
+Query by role and accessible name, not `data-testid`, unless nothing semantic exists. If you can't find a role for something, that's often a real accessibility gap in the component.
+
+Prefer `vi.stubGlobal` with `vi.unstubAllGlobals()` in `afterEach`, or use MSW when you have many endpoints — it intercepts at the network layer and keeps the fetch code under test honest.
+
+Config detail: `test.environment: "jsdom"` in `vitest.config.js`, and import `@testing-library/jest-dom/vitest` in a setup file to get `toBeInTheDocument`.
+
+Verification: run the suite 20 times in a loop; `--retry` hides flakes rather than fixing them. Zero failures across runs means you've removed the timing coupling.
+@@@ END
+
+@@@ USER
+Now end-to-end. I want Playwright to test our signup flow: visit, fill the form, submit, land on the dashboard. It's flaky in CI. How do I write it properly?
+
+@@@ ASSISTANT
+Flakiness in E2E comes from racing the app: asserting before the network settles or using fixed waits. Playwright's auto-waiting handles most of it — the rule is never `waitForTimeout`.
+
+```js
+// tests/signup.spec.js
+import { test, expect } from "@playwright/test";
+
+test.describe("signup", () => {
+  test("creates an account and lands on the dashboard", async ({ page }) => {
+    await page.goto("/signup");
+
+    await page.getByLabel("Email").fill(`user-${Date.now()}@example.com`);
+    await page.getByLabel("Password", { exact: true }).fill("correct horse battery staple");
+    await page.getByLabel("Confirm password").fill("correct horse battery staple");
+
+    await page.getByRole("button", { name: "Create account" }).click();
+
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("heading", { name: /welcome/i })).toBeVisible();
+  });
+});
+```
+
+Why each line:
+- `getByLabel` ties the test to the accessible name, which also proves the label association works; `getByPlaceholder` breaks when design changes the hint.
+- `{ exact: true }` on Password avoids matching "Confirm password" and "Password" both — a classic strict-mode violation.
+- `toHaveURL` and `toBeVisible` auto-retry until the timeout; fixed sleeps are the biggest source of both flakiness and slow suites.
+
+**Isolate test data.** `Date.now()` in the email is a hack that mostly works; better is calling a guarded reset endpoint from `test.beforeEach` via the `request` fixture, so each test starts clean:
+
+```js
+test.beforeEach(async ({ request }) => {
+  await request.post("/api/test/reset");
+});
+```
+
+That endpoint must not exist in production — an unauthenticated reset route is a real vulnerability.
+
+**Configuration for CI:**
+
+```js
+// playwright.config.js
+import { defineConfig, devices } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./tests",
+  fullyParallel: true,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 2 : undefined,
+  use: {
+    baseURL: process.env.BASE_URL ?? "http://localhost:3000",
+    trace: "on-first-retry",
+  },
+  webServer: {
+    command: "npm run start",
+    url: "http://localhost:3000",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "mobile", use: { ...devices["iPhone 13"] } },
+  ],
+});
+```
+
+`trace: "on-first-retry"` is the highest-value line — it records DOM snapshots, network, and console at every step, turning a flaky failure into a diagnosis. CI retries hide flakes, so keep a nightly job that runs without them.
+
+**Auth state, reused:** don't log in through the UI in every test. A `setup` project navigates to `/login` once, fills the fields, asserts the dashboard URL, then saves `await page.context().storageState({ path: "tests/.auth/user.json" })`. Point `use.storageState` at that file for authenticated projects; setup runs once, not per test.
+
+**Network-dependent assertions:** if the dashboard shows data from an API, assert on the UI that proves the data arrived, not on a spinner disappearing. Prefer `route.fulfill` for tests that shouldn't depend on a live backend; keep one thin smoke test against the real API.
+
+Verification: run with `--repeat-each=10` locally. Any test that fails once in ten is racing something — open the trace and assert on the actual signal instead of adding a sleep.
+@@@ END
+
+@@@ USER
+We just adopted Tailwind. Our components now look like `class="flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 ..."` repeated 15 times. How do we structure this without abandoning utilities?
+
+@@@ ASSISTANT
+Long class strings are fine; duplicated class strings are the problem — they mean the design decision lives in 15 places. Extract at three levels, in this order.
+
+**1. Extract components, not CSS classes.** A button is a component:
+
+```jsx
+const variants = {
+  primary: "bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-500",
+  secondary: "bg-white text-slate-900 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 focus-visible:ring-blue-500",
+};
+const sizes = {
+  sm: "h-8 px-3 text-sm",
+  md: "h-10 px-4 text-sm",
+  lg: "h-12 px-6 text-base",
+};
+
+export function Button({ variant = "primary", size = "md", className = "", ...props }) {
+  return (
+    <button
+      className={[
+        "inline-flex items-center justify-center gap-2 rounded-md font-medium",
+        "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+        "disabled:pointer-events-none disabled:opacity-50",
+        variants[variant],
+        sizes[size],
+        className,
+      ].join(" ")}
+      {...props}
+    />
+  );
+}
+```
+
+`tailwind-merge` resolves conflicts deterministically:
+
+```js
+import { twMerge } from "tailwind-merge";
+import clsx from "clsx";
+const cn = (...inputs) => twMerge(clsx(inputs));
+```
+
+Then `className={cn("px-4", props.className)}` — the later class wins. Without it, both `px-4` and `px-8` land in the class list and stylesheet order decides, unpredictably.
+
+**2. Put design tokens in the config, not in arbitrary values.** Colors, spacing steps, radii, and shadows used more than once belong in `tailwind.config.js`:
+
+```js
+module.exports = {
+  content: ["./app/**/*.{js,jsx,ts,tsx}", "./components/**/*.{js,jsx,ts,tsx}"],
+  theme: {
+    extend: {
+      colors: {
+        brand: {
+          50: "#eff6ff",
+          500: "#3b82f6",
+          600: "#2563eb",
+          700: "#1d4ed8",
+        },
+      },
+    },
+  },
+};
+```
+
+Then `bg-brand-600` instead of `bg-[#2563eb]` — arbitrary values are an escape hatch, not a system. If a hex appears twice, it's a token.
+
+**3. Reserve `@apply` for non-component CSS** — base typography, third-party markup, prose:
+
+```css
+@layer base {
+  h1 { @apply text-3xl font-semibold tracking-tight text-slate-900; }
+  a { @apply text-brand-600 underline-offset-2 hover:underline; }
+}
+```
+
+Don't build a parallel `.btn`, `.card`, `.input` stylesheet with `@apply` — that recreates the CSS architecture Tailwind replaced. For repeated multi-element patterns, prefer a `Card` component with slots over a shared `CARD_CLASS` string.
+
+Guardrails that keep this from rotting:
+- `prettier-plugin-tailwindcss` sorts classes so diffs are stable.
+- ESLint's `eslint-plugin-tailwindcss/no-contradicting-classname` catches `p-4 p-6`.
+- Keep the built CSS under a budget in CI; arbitrary values and a sprawling config can bloat it.
+
+Verification: search for the button string; it should appear once, in `Button.jsx`. Change the focus ring color in one place and confirm every button updates.
+@@@ END
+
+@@@ USER
+Last one: I want the app to work offline and load instantly on repeat visits. Do I need a full PWA or just a service worker? And how do I avoid shipping a stale app forever?
+
+@@@ ASSISTANT
+"Works offline" and "loads instantly on repeat visits" are both service worker problems; "installable" is the PWA layer on top (manifest, icons, display mode). You can have the first without the second.
+
+The decision is a caching strategy per resource type, not one global "cache everything":
+
+```js
+// sw.js
+const VERSION = "v3";
+const SHELL_URLS = ["/", "/offline", "/app.css", "/app.js", "/icons/icon-192.png"];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(VERSION).then((c) => c.addAll(SHELL_URLS)).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+  if (request.method !== "GET" || url.origin !== self.location.origin) return;
+
+  // Navigations: network first, cached shell as fallback
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request).catch(async () => (await caches.match("/")) ?? caches.match("/offline"))
+    );
+    return;
+  }
+
+  // Assets: cached copy first, refreshed in the background
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      const network = fetch(request)
+        .then((res) => {
+          if (res.ok) caches.open(VERSION).then((c) => c.put(request, res.clone()));
+          return res;
+        })
+        .catch(() => cached);
+      return cached ?? network;
+    })
+  );
+});
+```
+
+Register it after load:
+
+```js
+if ("serviceWorker" in navigator) {
+  addEventListener("load", async () => {
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    reg.addEventListener("updatefound", () => {
+      const worker = reg.installing;
+      worker.addEventListener("statechange", () => {
+        if (worker.state === "installed" && navigator.serviceWorker.controller) {
+          showUpdateToast(() => { worker.postMessage({ type: "SKIP_WAITING" }); location.reload(); });
+        }
+      });
+    });
+  });
+}
+```
+
+**Avoiding a permanently stale app** — where most service workers go wrong:
+
+1. **Never cache-first the HTML shell without a network attempt.** Cache-first navigations serve the old app until you bump the version by hand; network-first with a cached fallback keeps people current and works offline.
+2. **Version the cache and delete old ones on activate**, or storage grows and old assets linger.
+3. **Don't `skipWaiting` silently.** On a breaking change, an immediate takeover can break a session mid-use; show a toast and let the user choose.
+4. **Hashed filenames** (`app.4f2a1.js`) let you cache static assets forever — new deploy, new name, no stale asset. Send `Cache-Control: no-cache` for `sw.js` itself, or the browser may not check for a new worker for 24 hours.
+5. **Know what you're caching.** Don't put authenticated JSON in a shared runtime cache — after logout it can serve another user's data; keep session data in IndexedDB with explicit invalidation.
+
+**PWA layer**, if you want installability: a `manifest.webmanifest` with `name`, `start_url`, `display: "standalone"`, and 192/512 icons. Manifest plus worker is what makes install prompts appear; Workbox generates the precache manifest from your build.
+
+Verification: check "Offline" in DevTools → Application → Service Workers and reload — the app must render. Deploy a change, reload twice, confirm the update prompt appears.
+@@@ END

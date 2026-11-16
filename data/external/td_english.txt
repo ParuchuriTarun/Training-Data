@@ -1,0 +1,2462 @@
+@@@ USER
+I never know whether to write who or whom. Is there a rule I can actually apply without guessing?
+@@@ ASSISTANT
+Use who when the pronoun is the subject of a verb, and whom when it is the object of a verb or a preposition. A reliable test is to substitute he or him: if he fits, use who; if him fits, use whom.
+
+Wrong: Whom is responsible for the schedule? Here the pronoun is the subject of is, so the formal form is who. Corrected: Who is responsible for the schedule?
+
+Wrong: The analyst who we hired last month resigned. We hired him, so the pronoun is an object. Corrected: The analyst whom we hired last month resigned.
+
+Whom is also required after a preposition in formal prose: To whom should I send the draft? In relative clauses, test the pronoun's role inside its own clause: The candidate who called is waiting (who is the subject of called); The candidate whom I called is waiting (I called him).
+
+In everyday speech, who often replaces whom when it is not directly after a preposition, and that is usually acceptable. In academic, legal, or carefully edited business writing, use whom for objects. Do not insert whom merely because it sounds formal; Whom is calling? is an overcorrection because the pronoun is the subject.
+
+Practice: choose who or whom.
+
+1. The witness ___ testified first was clearly nervous.
+2. The client ___ I telephoned yesterday has not replied.
+
+Answer: 1. who, because the witness is the subject of testified. 2. whom, because the client is the object of telephoned; I telephoned him.
+@@@ END
+
+@@@ USER
+Why does my writing sometimes sound as if an object did something no person could do? I think I have a dangling modifier problem.
+@@@ ASSISTANT
+A dangling modifier is an introductory word or phrase that does not logically modify the subject of the main clause. The reader instinctively attaches the modifier to the nearest noun, which may be the wrong one.
+
+Wrong: After finishing the report, the printer jammed. Grammatically, the printer finished the report. Corrected: After finishing the report, I found that the printer had jammed. Alternatively: After I finished the report, the printer jammed.
+
+Wrong: To reduce costs, the software should be updated. The software cannot intend to reduce costs. Corrected: To reduce costs, we should update the software.
+
+The fix is usually to name the true actor as the subject of the main clause, or to turn the modifier into a full clause with its own subject. Ask: Who is doing the action in the opening phrase? That person or thing must appear immediately after the comma.
+
+Dangling modifiers are especially common with present participles (walking, reviewing, using), past participles (written, exhausted), and infinitives (to improve, to qualify). They are not the same as misplaced modifiers, which sit next to the wrong word but still have a plausible subject. A dangling modifier has no stated subject in the main clause for the opening phrase to modify.
+
+Practice: correct the sentence. "Walking through the archive, the missing file was discovered by the researcher."
+
+Answer: Walking through the archive, the researcher discovered the missing file. The researcher is now the subject of the main clause, so the opening phrase has someone to modify.
+@@@ END
+
+@@@ USER
+Does a collective noun like team take a singular or plural verb? I see both, and I want to be consistent.
+@@@ ASSISTANT
+Collective nouns name a group: team, committee, jury, family, government, audience, staff. In American English, they usually take a singular verb when the group acts as one unit: The committee has issued its report. The jury is deliberating.
+
+A plural verb is appropriate when the members are acting separately or are divided: The committee are arguing among themselves over the budget. British English uses this plural construction more readily than American English. The important point is to keep the verb and any pronoun consistent with the meaning you intend.
+
+Wrong: The jury have reached its verdict. The verb is plural, but the pronoun is singular. Corrected as a unit: The jury has reached its verdict. Corrected as individuals: The jury have reached their verdict. The second is unusual in American English, so the singular version is usually the safer choice there.
+
+Watch for related nouns. Police normally takes a plural verb: The police are investigating. Staff can be singular or plural depending on whether you mean the body or its members. The number of applicants is singular, but a number of applicants is plural. Do not let a prepositional phrase between the noun and verb confuse you: The board of directors has approved the plan.
+
+Practice: choose the verb and pronoun that fit the intended meaning.
+
+1. The staff ___ (is/are) arguing among themselves.
+2. The staff ___ (is/are) preparing its annual report.
+
+Answer: 1. are, because the members are acting individually; use their if a pronoun follows. 2. is, because the staff acts as one body and the pronoun its confirms singular agreement.
+@@@ END
+
+@@@ USER
+My short story switches between past and present tense without meaning to. How do I keep tense consistent in a narrative?
+@@@ ASSISTANT
+Establish a baseline tense, usually simple past for narration, and change tense only for a clear reason. Keep the action in the foreground in that baseline. Use past perfect for events that happened before the main timeline, present tense for timeless truths or habitual facts, and present tense for a character's direct thoughts or dialogue if that is your convention.
+
+Wrong: She walked into the room, sees the letter, and froze. Walked establishes past, but sees jumps to present. Corrected: She walked into the room, saw the letter, and froze.
+
+Tense shifts can be legitimate. In She opened the box. Inside lay a letter she had written years earlier, had written is past perfect because the writing occurred before the opening. In Water boils at 100°C, the present tense expresses a general truth inside a past narrative. A flashback may use past perfect to signal the earlier layer, then return to simple past.
+
+Do not overuse past perfect. A page of had done, had seen, had thought becomes heavy. Establish the earlier time, then let simple past carry the scene until you signal the return. Also check embedded clauses: He said he was leaving refers to past speech and a contemporaneous action; He says he is leaving is present narration.
+
+Practice: repair the inconsistent verbs. "Maya opens the letter and read the first line. She recognizes the handwriting and started to cry."
+
+Answer: Maya opened the letter and read the first line. She recognized the handwriting and started to cry. If you want present-tense narration, the whole sequence should be opens, reads, recognizes, starts.
+@@@ END
+
+@@@ USER
+I need to ask my professor for an extension, but my email sounds too casual. How do I shift into a formal register without sounding stiff?
+@@@ ASSISTANT
+Register is the level of formality you choose for an audience and situation. Formal academic writing tends to use complete sentences, standard vocabulary, fewer contractions, explicit transitions, and a respectful distance. Informal writing uses contractions, phrasal verbs, slang, and direct personal phrasing. Neither is inherently better; the mistake is using the wrong register for the occasion.
+
+Wrong, in an email to a professor: Hey Prof, I'm swamped and can't finish the paper by Friday. Can I get a few more days? The contractions, slang, and demands are too casual for a formal request. Corrected: Dear Professor Lee, I am writing to request a short extension on the seminar paper. An unexpected conflict this week has limited my preparation time, and I would be grateful for three additional days. I understand that an extension may not be possible; if not, I will submit the paper by Friday.
+
+The revision is formal without being ornate. It uses a salutation, a clear request, a brief reason, a specific new deadline, and an acknowledgment of the professor's discretion. It avoids fake formality such as "I am endeavoring to ascertain whether you might possibly be inclined to consider." Plain standard English is usually more respectful than inflated vocabulary.
+
+Practice: rewrite this message for a formal email. "Hey, can you send me the file ASAP?"
+
+Answer: "Could you please send me the file by Friday?" Add a greeting, a subject line, and a courteous close if the message stands alone. The exact deadline should reflect what you actually need.
+@@@ END
+
+@@@ USER
+Please make this email shorter and more professional without making it rude. "Dear Ms. Patel, I am writing to follow up in regard to the proposal that we had the opportunity to discuss during our meeting on Monday. At that time, you mentioned that you would be able to provide your feedback at your earliest convenience. I wanted to reach out to see if you might possibly have any updates that you could share with me at this point in time. Thank you in advance for your time and consideration. Best regards, Jordan"
+@@@ ASSISTANT
+Revised email:
+
+Dear Ms. Patel,
+
+I am following up on Monday's meeting. Do you have feedback on the proposal? If possible, please send it by Friday so we can finalize the timeline.
+
+Thank you,
+Jordan
+
+The original is not grammatically wrong, but it buries the request under formal padding. I removed "I am writing to," "in regard to," "had the opportunity to," "at your earliest convenience," "I wanted to reach out," "might possibly," and "at this point in time." I also added a concrete deadline, which makes the request easier to answer and reduces another round of email.
+
+Concision in business writing usually means leading with the purpose, keeping one clear ask, and cutting nominalizations such as "provide your feedback" when a direct verb works: "send feedback." Courtesy does not require length. A short email can still be warm if it uses a greeting, a polite request, and a thank-you.
+
+Practice: revise this sentence. "Due to the fact that the client has not yet provided approval, we are not in a position to move forward with the launch at this time."
+
+Answer: "Because the client has not approved the launch, we cannot proceed." The revision replaces a wordy prepositional phrase and a nominalization with a direct cause and a direct verb. If the date matters, add it: "Because the client has not approved the launch, we cannot proceed on Monday."
+@@@ END
+
+@@@ USER
+This paragraph is too wordy for a customer-facing notice. Can you edit it and explain what you cut? "It is important to note that in the event that a customer is not satisfied with their purchase, they should not hesitate to get in touch with our support team for the purpose of requesting a refund."
+@@@ ASSISTANT
+Revised: Customers who are unhappy with a purchase should contact support to request a refund.
+
+The original uses 37 words to say something that fits in 14. I removed the empty opener "It is important to note that," replaced "in the event that" with "who are," cut "not hesitate to get in touch with" to "contact," and reduced "for the purpose of requesting" to "to request." None of the meaning changes: the customer is dissatisfied, the action is contacting support, and the goal is a refund.
+
+Wordiness often comes from four habits. First, expletive openers such as "It is important to note that" delay the point. Second, nominalizations turn verbs into nouns: "provide notification" instead of "notify." Third, prepositional chains pile up: "in regard to the matter of." Fourth, redundant pairs repeat an idea: "each and every," "future plans," "close proximity." Cut these unless they carry real emphasis or legal precision.
+
+Editing for concision is not just deleting words. Keep the sentence's actor, action, and condition. In the revision, Customers is the actor, contact is the action, and who are unhappy with a purchase is the condition. That structure is easier to scan and harder to misread.
+
+Practice: revise this sentence. "There are a number of employees who have a tendency to arrive late on a regular basis."
+
+Answer: "Several employees often arrive late." The revision removes the expletive "There are," the inflated "a number of," and the redundant "have a tendency to ... on a regular basis."
+@@@ END
+
+@@@ USER
+Why is this sentence ambiguous? "She served cake to the children on paper plates." I meant that the cake was on the plates, but my reader thought the children were.
+@@@ ASSISTANT
+The phrase on paper plates is a misplaced modifier: it sits next to the children, so readers naturally attach it to them. English readers expect a modifier to be as close as possible to the word or phrase it describes.
+
+Wrong: She served cake to the children on paper plates. Corrected: She served cake on paper plates to the children. Now the phrase follows cake, the thing actually on the plates.
+
+Misplaced modifiers often involve prepositional phrases, adverbs, and the word only. Wrong: I almost read every chapter in the book. This says you nearly read all of it. Corrected: I read almost every chapter in the book. Wrong: The museum displayed a dinosaur skeleton that was discovered in 1998 in the main hall. The final phrase could describe where the discovery happened or where the skeleton is displayed. Corrected: In the main hall, the museum displayed a dinosaur skeleton discovered in 1998.
+
+Scope words deserve special attention. "Only the manager approved the request" means no one else approved it. "The manager only approved the request" suggests she did nothing else to it. "The manager approved only the request" means she approved nothing else. Place only immediately before the word it limits.
+
+Revision usually means moving the modifier, not adding commas. A comma cannot repair a phrase that is attached to the wrong noun. Read the sentence and ask which word the modifier explains; if it is not adjacent, move it.
+
+Practice: repair the scope ambiguity. "I only need to revise the introduction and conclusion."
+
+Answer: "I need to revise only the introduction and conclusion." This means those two sections are the only ones needing revision, which is probably the intended meaning. If you mean you need to do nothing except revise, say "All I need to do is revise the introduction and conclusion."
+@@@ END
+
+@@@ USER
+How should I organize a paragraph so it feels unified instead of like a pile of related facts?
+@@@ ASSISTANT
+A unified paragraph develops one controlling idea. It usually opens with a topic sentence that states that idea, follows with supporting details or evidence, explains how the evidence connects to the claim, and closes with a sentence that draws out the significance or transitions to the next point. Not every paragraph needs a formal conclusion, but every sentence should serve the same idea.
+
+Weak paragraph: Public libraries have changed. My aunt visits one every week. Many now lend laptops and offer job-search workshops. The building downtown was renovated last year. These services help residents without home internet.
+
+The paragraph has a promising idea, but "My aunt visits one every week" is personal filler, and the renovation detail is not connected to the claim. The order also jumps from examples to an unrelated fact. Revised: Public libraries now offer more than books. Many lend laptops, and others run job-search workshops. These services matter because residents without home internet can still apply for jobs and complete coursework. For a modest investment, the library extends opportunity to people who might otherwise be excluded.
+
+The revision has a topic sentence, two supporting examples, an explanation of why they matter, and a closing implication. Each sentence earns its place.
+
+When revising, underline the topic sentence's key terms. Then ask of every other sentence: Does this support, explain, qualify, or illustrate that idea? If not, cut it or move it. Also check order: general to specific, cause to effect, or chronological sequence usually reads more smoothly than random association.
+
+Practice: which sentence is irrelevant? "Online reviews influence purchases. A recent survey found that most shoppers read reviews before buying. The company redesigned its logo in 2019. Shoppers often trust detailed reviews more than advertisements."
+
+Answer: "The company redesigned its logo in 2019" is irrelevant to the paragraph's claim about reviews and purchasing. The other sentences support the same idea.
+@@@ END
+
+@@@ USER
+What makes a topic sentence effective? Mine often sound like announcements: "This paragraph is about..."
+@@@ ASSISTANT
+An effective topic sentence makes a specific, supportable claim and establishes the paragraph's direction. It should be more than an announcement of the subject and more than a broad fact. The rest of the paragraph should be able to demonstrate, explain, or qualify that claim.
+
+Weak: This paragraph is about why cities should fund night buses. The sentence announces a topic but takes no position. Corrected: Cities should fund night buses because they connect low-wage workers to jobs that start before dawn. The revision states a position and previews a reason the paragraph can develop.
+
+Another weak version is too broad: Public transportation is important. It is hard to disagree with, and it gives the paragraph no focus. A stronger sentence narrows the scope: Reliable night buses reduce the number of missed shifts among hospital and restaurant workers.
+
+A topic sentence does not have to be the first sentence in every kind of writing. In narrative or descriptive prose, it may be implied or delayed for effect. In academic and business paragraphs, placing it first is usually the clearest choice because readers can immediately see the paragraph's purpose. It also helps the writer test unity.
+
+Avoid making the topic sentence a fact that requires no argument: The library opens at nine. That may be a supporting detail, not a controlling idea. Avoid a question unless you immediately answer it, and avoid a claim so large that one paragraph cannot support it.
+
+Practice: write a topic sentence for a paragraph explaining how public libraries help people find jobs.
+
+Answer: A defensible version is "Public libraries help job seekers by providing free internet access, résumé workshops, and staff who can guide them through online applications." It makes a claim and previews three supports that the paragraph can develop in order.
+@@@ END
+
+@@@ USER
+How do I use transitions without making my writing sound like a template? My paragraphs feel choppy even when I add words like also and furthermore.
+@@@ ASSISTANT
+Transitions are signposts that show the relationship between ideas: addition, contrast, cause, example, sequence, concession, or conclusion. The problem with "also" and "furthermore" is that they mark addition vaguely and can be repeated until they stop carrying information. Choose a transition that names the actual logical move.
+
+Weak: The city added bike lanes. Bike ridership rose. Store owners complained about parking. The policy had mixed results. The sentences are accurate, but the reader has to infer every connection.
+
+Revised: The city added protected bike lanes last year. Ridership rose 18 percent, but some store owners complained that parking became harder to find. The policy therefore produced both environmental gains and political friction.
+
+Here but signals contrast, and therefore signals a conclusion drawn from the two facts. Notice that cohesion also comes from repeating key terms (bike lanes, parking, policy) and from putting old information before new information. A pronoun such as this or these can point back, but only if the referent is unmistakable.
+
+Do not sprinkle in transitions as decoration. If two sentences already flow in chronological order, next may be unnecessary. If the relationship is addition, and can be enough. If the relationship is cause, use because or as a result, not also. Conjunctive adverbs such as however and therefore need a semicolon or a period before them, not a comma joining two independent clauses.
+
+Practice: choose however, therefore, or for example.
+
+"The new schedule reduced overtime costs. ___, it made weekend coverage more difficult."
+
+Answer: However. The second sentence contrasts a benefit with a drawback. Therefore would imply the difficulty was a result of the savings, and for example would introduce an illustration, not an opposing point.
+@@@ END
+
+@@@ USER
+My draft has several instances of it's, and I am not sure which ones should be its. How can I tell them apart quickly?
+@@@ ASSISTANT
+It's is a contraction: it means it is or it has. Its is a possessive pronoun: it means belonging to it. The test is mechanical. Replace the word with it is or it has. If the sentence still works, write it's. If not, write its. Possessive pronouns do not take apostrophes, just as his, hers, ours, and theirs do not.
+
+Wrong: The company changed it's policy after it's board meeting. Expanding gives "it is policy" and "it is board meeting," both impossible. Corrected: The company changed its policy after its board meeting.
+
+Correct uses of the contraction: It's clear that the deadline has moved. It's been a difficult quarter. In both, it is or it has fits.
+
+A common trap is the phrase its own. The committee revised its own proposal. Here its means the committee's; there is no omitted is or has, so no apostrophe.
+
+Do not rely on sound alone, because its and it's sound identical. Apply the expansion test every time, especially in short sentences where the missing verb is easy to overlook.
+
+Practice: fill each blank with its or it's.
+
+1. ___ clear that the dog has lost ___ collar.
+2. ___ been three weeks since the office changed ___ schedule.
+
+Answer: 1. It's clear that the dog has lost its collar. 2. It's been three weeks since the office changed its schedule.
+@@@ END
+
+@@@ USER
+What is the difference between connotation and denotation? I want my word choice to be precise, not just technically correct.
+@@@ ASSISTANT
+Denotation is a word's literal, dictionary meaning. Connotation is the set of associations, feelings, and evaluations the word carries. Two words can share a denotation while differing sharply in connotation.
+
+Cheap and affordable both denote a low price, but cheap often suggests poor quality or stinginess, while affordable suggests a reasonable price within reach. A nonprofit would probably write "affordable housing," not "cheap housing," even if both are literally accurate. Similarly, slender, thin, and skinny all describe low body weight, but slender is often approving, thin is neutral, and skinny can be critical.
+
+Wrong, in a grant proposal: The program provides cheap housing for low-income families. The sentence risks sounding dismissive of the people it intends to help. Corrected: The program provides affordable housing for low-income families. The denotation is similar; the connotation is more respectful and professional.
+
+Connotation is context-dependent. Regime can be a neutral term for a system of government, but it often carries a negative charge. A "childlike sense of wonder" is a compliment; "childish behavior" is not. Words also carry associations that vary by culture, region, and generation, so a dictionary alone cannot settle every choice.
+
+To edit for connotation, identify the attitude you want readers to take toward the subject, then check whether each loaded word supports that attitude. Do not use a euphemism to obscure a real problem, and do not use a harsh word when a neutral one is more accurate.
+
+Practice: choose childlike or childish. "Her ___ curiosity made the interview delightful."
+
+Answer: childlike. It suggests innocent, open curiosity, which fits the positive sentence. Childish would imply immaturity and would clash with "delightful."
+@@@ END
+
+@@@ USER
+I always second-guess complement and compliment, principal and principle, and stationary and stationery. Can you give me the distinctions and a way to remember them?
+@@@ ASSISTANT
+Complement means to complete, match, or go well with something; as a noun, it means something that completes another thing. Compliment means praise or a courteous expression. The memory hook is that complement contains complete: the pieces complement each other and make a complete whole. "The colors complement the furniture." "She paid him a compliment."
+
+Principal can be an adjective meaning main, a noun meaning a school leader, or a noun meaning a sum of money. Principle is a rule, belief, or fundamental law. A principal is often your pal at school, which links the -pal ending to the person; principle ends in -ple, like rule. "The principal goal is retention." "The school principal announced the policy." "She refused on principle."
+
+Stationary means not moving. Stationery means paper, envelopes, and writing supplies. Stationery has an e, as in envelope; stationary has an a, as in stay. "The bike remained stationary." "The office ordered new stationery."
+
+Wrong paragraph: The new principal's principle goal was to improve morale. She complimented the staff, and the colors in the lobby compliment the new furniture. The supply closet is full of stationary. Corrected: The new principal's principal goal was to improve morale. She complimented the staff, and the colors in the lobby complement the new furniture. The supply closet is full of stationery.
+
+Practice: fill each blank. 1. The two software tools ___ each other. 2. He received a ___ on his presentation. 3. The ___ of least surprise is a design guideline. 4. The car stayed ___ at the light. 5. We need to order more ___.
+
+Answer: 1. complement. 2. compliment. 3. principle. 4. stationary. 5. stationery.
+@@@ END
+
+@@@ USER
+How do I read an academic article actively and then summarize it without copying the author's sentences?
+@@@ ASSISTANT
+Active reading is a deliberate conversation with the text. Preview the title, abstract, headings, and conclusion first, then turn the headings into questions. As you read, annotate the author's central claim, the evidence for it, key definitions, and any limitations. After each section, close the article and say the main point in your own words. That retrieval step exposes whether you understood the argument or merely recognized the words.
+
+A good summary is shorter than the source, accurate, objective, and focused on the main claim and its essential support. It should not add your opinion unless the assignment asks for evaluation. It should also not be a patchwork of copied phrases. If you use an exact phrase, put it in quotation marks and cite it.
+
+Weak summary: The article is about remote work and says it is good. This is vague and evaluative; it does not identify the author's actual finding.
+
+Better: Chen (2024) finds that remote workers value flexible schedules more than office amenities, but nearly half report difficulty disconnecting after hours. The summary names the author, the year, and the two-part finding. It preserves the article's tension instead of flattening it into praise.
+
+To avoid accidental copying, take notes in bullet points without looking at the original sentences, then write the summary from those notes. Compare it with the source afterward. Check that names, numbers, and qualifications are correct. Finally, add a citation in the required style.
+
+Practice: summarize this passage in one sentence without quoting it. "A survey of 1,200 remote workers found that 62 percent valued flexible hours more than office amenities. However, 41 percent reported difficulty disconnecting after work."
+
+Answer: A survey of 1,200 remote workers found that most valued flexible hours over office amenities, though a substantial minority struggled to disconnect after work. The exact percentages can be included if they matter, but the summary should not invent a cause or a recommendation.
+@@@ END
+
+@@@ USER
+My thesis statements always feel either obvious or too broad. What makes a thesis arguable and manageable?
+@@@ ASSISTANT
+A strong thesis makes a debatable claim, narrow enough to support within the assignment, and specific enough to preview the reasoning. It is not a fact, a question, or an announcement of what the paper will do.
+
+Weak: This paper will discuss the effects of remote work. This is an announcement; it takes no position. Corrected: Remote work improves retention for experienced employees, but only when managers set clear boundaries around after-hours communication. The revision makes a claim, limits the population, and identifies a condition.
+
+Weak: Technology affects education. This is arguable in the loosest sense but too broad for a short paper. Corrected: Requiring students to submit handwritten drafts in one first-year writing course reduced editing errors and increased revision time. Now the claim is specific enough to test with evidence from that course.
+
+A useful thesis often has a main claim and a because-clause or a qualifying condition. That structure shows readers what the paper must prove. It should also be placed where readers expect it, usually at the end of the introduction, though the exact position can vary.
+
+Test your thesis with three questions. Can a reasonable person disagree? If no, it is probably a fact. Can you support it with the evidence available in the assigned length? If not, narrow it. Does it tell the reader what the body paragraphs will establish? If not, make the reasoning more explicit.
+
+Practice: write a thesis for an essay on whether cities should ban private cars downtown.
+
+Answer: Cities should restrict private cars in downtown areas because the policy reduces air pollution, supports public transit, and makes streets safer for pedestrians. A different position would need a different causal argument, not just a different opinion.
+@@@ END
+
+@@@ USER
+I need help with quotation and citation mechanics. When do I use quotation marks, and how do I integrate a quote without just dropping it into a paragraph?
+@@@ ASSISTANT
+Use quotation marks when you reproduce someone else's exact words. Quote sparingly, when the wording itself matters: a memorable phrase, a precise definition, or a claim you will analyze closely. Paraphrase when you only need the idea, but still cite the source. Summaries and paraphrases require citations too, even though they do not take quotation marks.
+
+A quotation should be integrated into your own sentence. Weak: "The policy failed." A bare quotation dropped into a paragraph has no author, context, or page, so readers cannot tell whose words it is or why it matters. Corrected: In her analysis of the program, Rivera concludes that the policy "failed to address the root causes of absenteeism" (14). The signal phrase names the author, the sentence frames the quoted claim, and the parenthetical citation gives the location in MLA style.
+
+Copy the quotation exactly. Use ellipses for omitted words, brackets for changes needed for grammar, and sic only for an error you must preserve. Do not silently alter punctuation or wording. For long quotations, follow your style guide's block-quote threshold: MLA uses more than four lines of prose, while APA uses forty or more words. A block quote is indented and usually has no quotation marks.
+
+Punctuation placement depends on the style. In MLA, the period normally follows the parenthetical citation. In APA, the period also follows the citation, while a question mark that belongs to the quotation may come before it. Follow the assigned guide consistently.
+
+Practice: repair this citation. Smith states that the results were "surprising" (Smith).
+
+Answer: Smith states that the results were "surprising" (27). Remove the repeated author from the parentheses and add the page number. If no page number exists, give the section or paragraph identifier your style requires.
+@@@ END
+
+@@@ USER
+I keep mixing up affect and effect. What is the core difference, and are there any exceptions I should know?
+@@@ ASSISTANT
+In ordinary sentences, affect is a verb meaning "to influence," and effect is a noun meaning "a result." That contrast covers most cases.
+
+Wrong: The delay had a serious affect on morale. The word is the object of had and names a result, so it must be the noun effect. Corrected: The delay had a serious effect on morale.
+
+Wrong: The delay effected morale. Here the intended meaning is influenced, so the verb must be affected. Corrected: The delay affected morale.
+
+There are two less common uses worth recognizing. Effect can be a verb meaning "to bring about or accomplish," usually in formal writing: The new director effected sweeping changes. That means she caused the changes, not that she influenced them. Affect can be a noun in psychology, where it means an observable emotional state: The patient displayed a flat affect. Outside that technical context, use effect for the noun.
+
+A useful memory aid is that affect starts with an a, as do action and influence, while effect starts with an e, as do end and result. The aid is not a substitute for checking the sentence's grammar, because the rare verb effect breaks the pattern.
+
+Practice: choose affect or effect.
+
+1. The medication's most common side ___ was drowsiness.
+2. Fatigue can ___ a driver's judgment.
+3. The reform ___ real change in how permits were issued.
+
+Answer: 1. effect, a noun meaning result. 2. affect, a verb meaning influence. 3. effected, a verb meaning brought about.
+@@@ END
+
+@@@ USER
+Should I write lay down or lie down? I also get confused about laid and lain.
+@@@ ASSISTANT
+The difference is transitivity: lay takes a direct object, and lie does not. Lay means "to put or place something." Its forms are lay, laid, laid, laying. Lie means "to recline or rest." Its forms are lie, lay, lain, lying. A separate verb, lie meaning "to tell a falsehood," is lie, lied, lied, lying.
+
+Wrong: I am going to lay down for a few minutes. There is no object; the person is reclining. Corrected: I am going to lie down for a few minutes.
+
+Correct: She laid the folder on the desk. The folder is the object. Correct: The folder lay on the desk all morning. Lay here is the past tense of lie, not the transitive verb lay.
+
+The most common error is using laid when no object follows: He laid on the couch. Corrected: He lay on the couch. If you can ask "laid what?", you need lay or laid. If you cannot, use a form of lie.
+
+Practice: choose the correct verb.
+
+1. Yesterday the cat ___ in the sun for hours.
+2. Please ___ the packages by the door.
+3. The letters have ___ unopened since Monday.
+
+Answer: 1. lay, the past tense of lie. 2. lay, the base form of the transitive verb. 3. lain, the past participle of lie.
+@@@ END
+
+@@@ USER
+When should I use fewer instead of less? I have seen less used with numbers, which makes the rule seem unreliable.
+@@@ ASSISTANT
+Use fewer with plural countable nouns and less with mass nouns, measurements, and abstract quantities. Fewer answers "how many?"; less answers "how much?"
+
+Wrong: There were less people at the workshop than last year. People is a plural count noun, so use fewer. Corrected: There were fewer people at the workshop than last year.
+
+Wrong: The project requires fewer time than expected. Time is treated as a mass quantity here. Corrected: The project requires less time than expected.
+
+The apparent exceptions usually involve a measurement treated as a single amount. Idiomatic English says less than five miles, less than twenty dollars, and less than three hours, even though miles, dollars, and hours are countable, because the phrase expresses a quantity on a scale. Standard usage also accepts one less problem and similar fixed expressions.
+
+In edited writing, apply the basic distinction unless a measurement or established idiom calls for less. Grocery signs that say "ten items or less" are common, but "ten items or fewer" is the more defensible formal version. Do not use fewer with a singular mass noun: fewer traffic, fewer equipment, and fewer information are all wrong.
+
+Practice: choose fewer or less.
+
+1. The venue has ___ chairs than we need.
+2. There is ___ noise in the new office.
+3. The drive takes ___ than twenty minutes.
+
+Answer: 1. fewer, because chairs are countable. 2. less, because noise is a mass noun. 3. less, because the phrase is a measurement of time.
+@@@ END
+
+@@@ USER
+Should I use the Oxford comma? People tell me it is required, but other people tell me it is wrong.
+@@@ ASSISTANT
+The Oxford comma is the comma before and or or in a list of three or more items: We studied grammar, punctuation, and style. It is not a universal law. Many publishers require it; others, including the Associated Press, normally omit it unless it prevents misreading. The defensible rule is to follow the required style guide and to use the comma whenever it makes the list clearer.
+
+Use it when the final item could otherwise be read as part of the previous item. Wrong: I want to thank my parents, Ayn Rand and God. Without the comma, the sentence implies that your parents are Ayn Rand and God. Corrected: I want to thank my parents, Ayn Rand, and God. The comma separates the final item from the appositive-like phrase.
+
+Avoid the comma in a two-item list: bread and butter, not bread, and butter. Avoid it when a style guide forbids it and no ambiguity results. Also avoid forcing it into a list whose items already contain commas; use semicolons instead: The panel included Rivera, a biologist; Chen, an engineer; and Okafor, a teacher. Here semicolons separate the major items, so an Oxford comma would be confusing.
+
+Consistency matters more than dogma. Choose a policy, apply it throughout a document, and make an exception when clarity demands one.
+
+Practice: add the Oxford comma only where it prevents misreading. "She interviewed the CEO, a former senator and an author."
+
+Answer: If she interviewed three separate people, write "She interviewed the CEO, a former senator, and an author." If the CEO is the former senator and author, rewrite the sentence to say that directly instead of relying on commas.
+@@@ END
+
+@@@ USER
+When should I use a semicolon instead of a dash? They both seem to connect ideas.
+@@@ ASSISTANT
+A semicolon joins two independent clauses that are closely related and roughly equal in importance: The deadline is Friday; the client needs the files by noon. It signals a measured connection, often contrast or consequence, without the stronger interruption of a dash. A dash is more dramatic. It can introduce an explanation, mark an abrupt turn, set off a parenthetical remark, or summarize what came before: The team had one weakness—its testing process.
+
+Neither mark can join an independent clause to a dependent clause. Wrong: The launch failed; because testing was incomplete. The because-clause cannot stand alone. Corrected: The launch failed because testing was incomplete. Alternatively: The launch failed; testing was incomplete.
+
+A semicolon also separates items in a list when the items contain commas: The committee included Rivera, a biologist; Chen, an engineer; and Okafor, a teacher. A semicolon is not a substitute for a colon before a list. Wrong: We need three supplies; paper, ink, and staples. The words after the semicolon are not an independent clause. Corrected: We need three supplies: paper, ink, and staples.
+
+Use dashes sparingly in formal prose. One well-placed dash can emphasize a contrast; several in a paragraph make the writing feel breathless. Use a semicolon when the relationship is calm and logical, and a dash when you deliberately want emphasis or interruption.
+
+Practice: choose a semicolon or a dash.
+
+1. The team was exhausted ___ it had worked all night.
+2. Only one thing worried her ___ the deadline.
+
+Answer: 1. The team was exhausted; it had worked all night. A semicolon suits the neutral cause-and-effect relationship. 2. Only one thing worried her—the deadline. A dash gives the revelation emphasis.
+@@@ END
+
+@@@ USER
+My editor keeps marking passive voice, but sometimes it seems like the only reasonable choice. When is passive voice actually correct?
+@@@ ASSISTANT
+Passive voice has the form be or get plus a past participle: The report was written. It makes the receiver of the action the subject and often omits the actor. Active voice is usually stronger when the actor matters: The finance team wrote the report. But passive voice is not an error, and it is the right choice in several situations.
+
+Use passive when the actor is unknown or irrelevant: The server was patched overnight. Use it when the receiver is the topic you are developing: The vaccine was administered to 200 participants; each dose was recorded. Use it in technical and scientific procedures where the method, not the technician, is the focus: Samples were heated to 80°C for ten minutes. It can also be appropriate in official records or when a statement must avoid assigning blame prematurely.
+
+The problem arises when passive voice hides responsibility or adds empty words. Wrong: Mistakes were made in the refund process. If the writer knows who made them, this construction evades accountability. Corrected: The finance team miscalculated several refunds.
+
+A passive sentence is not automatically wordy, but adding by someone often is. The report was written by me is better as I wrote the report unless the report is the paragraph's topic. Test each passive sentence by asking: Does the reader need to know the actor? If yes, name the actor and use active voice. If no, keep the passive.
+
+Practice: rewrite the euphemistic sentence. "The decision was made to cancel the pilot."
+
+Answer: If a specific group decided, name it: The research committee canceled the pilot. If the actor is genuinely unknown, keep the passive but add the relevant detail: The pilot was canceled after the funding was withdrawn.
+@@@ END
+
+@@@ USER
+What exactly is parallel structure, and how do I fix a sentence that is not parallel?
+@@@ ASSISTANT
+Parallel structure means that items joined by a list, a comparison, or a correlative pair use the same grammatical form. If the first item is a gerund, the others should be gerunds; if one is an infinitive, the others should be infinitives.
+
+Wrong: The internship involves researching cases, drafting memos, and to attend hearings. The first two items are gerunds, but the third is an infinitive. Corrected: The internship involves researching cases, drafting memos, and attending hearings.
+
+Wrong: The new plan is not only cheaper but also it saves time. The correlative pair not only ... but also should join matching forms. Corrected: The new plan is not only cheaper but also faster.
+
+Comparisons also need matching structures. Wrong: Her proposal was clearer and more detailed than her colleague. The comparison is between a proposal and a colleague. Corrected: Her proposal was clearer and more detailed than her colleague's proposal.
+
+Parallelism is not only a matter of elegance; it helps readers see which ideas belong together. Check every list, every comparison using than or as, and every pair such as either ... or, neither ... nor, and both ... and. Do not mix a noun with a clause or an adjective with a verb phrase.
+
+Practice: repair the list. "The workshop teaches students to plan projects, manage deadlines, and they learn how to communicate with clients."
+
+Answer: The workshop teaches students to plan projects, manage deadlines, and communicate with clients. All three items are bare infinitives after to.
+@@@ END
+
+@@@ USER
+My manager says my reports are full of nominalizations. What does that mean, and how do I fix them?
+@@@ ASSISTANT
+A nominalization is a verb or adjective turned into a noun: decide becomes decision, analyze becomes analysis, comply becomes compliance, and able becomes ability. The habit usually arrives with a weak verb, as in make a decision, conduct an analysis, or ensure compliance. The action is buried in an abstract noun, the actor often disappears, and the sentence gets longer without becoming more precise.
+
+To find nominalizations, look for endings such as -tion, -sion, -ment, -ance, -ence, -ity, and -ness. Then ask who does what. If the noun hides a specific action, rebuild the sentence around the underlying verb and name the actor.
+
+Weak: An evaluation of the proposal was undertaken by the committee, and a recommendation for its approval was made.
+Strong: The committee evaluated the proposal and recommended that we approve it.
+
+The strong version restores the actors, turns evaluation into evaluated and recommendation into recommended, and removes the empty verbs was undertaken and was made.
+
+Do not ban every nominalization. Some name established things rather than hidden actions: authentication, inflation, legislation, and infrastructure may be the precise concept you need. The problem is a noun that could easily be a verb, especially when it is propped up by make, do, give, or conduct.
+
+Practice: revise this sentence. The implementation of the new policy was carried out by HR after an assessment of its impact.
+Answer: HR implemented the new policy after assessing its impact.
+@@@ END
+
+@@@ USER
+I never know whether to write numbers as digits or words, and where to put units. What are the conventions?
+@@@ ASSISTANT
+In general prose, spell out zero through nine and use numerals for 10 and above: three meetings, 12 meetings. Always use numerals for measurements, percentages, decimals, money, and page or section numbers when a unit or symbol follows: 5 kg, 3.5%, $40, page 7. Scientific and technical styles often use numerals for all measurements, including those below 10; choose that system when precision matters more than prose rhythm, and apply it consistently.
+
+Put a space between a number and a unit symbol: 5 kg, 90 °C, 12 V. Do not pluralize the symbol: 5 kg, not 5 kgs. When you write the unit as a word, pluralize normally: five kilograms. Use a nonbreaking space in final layout so the number and unit do not split across lines.
+
+Use an en dash for ranges: 10–12 participants, pages 4–8. Do not repeat the unit unnecessarily: 5–10 kg, not 5 kg–10 kg. Avoid starting a sentence with a numeral; spell it out or recast: Twelve samples were tested, not 12 samples were tested.
+
+Keep significant figures honest. If a scale measures to the nearest gram, 5.0 kg implies more precision than you have. Match the number of decimals to the instrument and to the uncertainty you can defend.
+
+Weak: We ran 9 tests; 4 failed after 2 hrs at 90 degrees Celsius.
+Strong: We ran nine tests; four failed after two hours at 90 °C.
+
+Practice: revise this sentence for general prose. The pump moved 3,000 liters in 6 hours.
+Answer: The pump moved 3,000 liters in six hours. If the style uses numerals for all measurements, 6 hours is also acceptable, but do not mix systems.
+@@@ END
+
+@@@ USER
+What does inclusive language actually require, beyond avoiding obviously offensive words?
+@@@ ASSISTANT
+Inclusive language treats people as individuals rather than as members of a stereotype, and it avoids language that excludes people without a good reason. It is not a list of forbidden words; it is a habit of asking who is included, who is assumed, and whether a detail is relevant.
+
+Use gender-neutral terms for roles and groups unless gender is relevant: chair or chairperson, not chairman; flight attendant, not stewardess; first-year students, not freshmen when the institution uses that term. Singular they is standard for a person of unknown or nonbinary gender: Each applicant should submit their portfolio. Rewrite to the plural when it reads more naturally: Applicants should submit their portfolios.
+
+Describe disability with the terminology the person or community prefers. Person-first language (a person with a disability) is common in some contexts; identity-first language (a disabled person) is preferred by many disabled people. Avoid euphemisms and metaphors such as wheelchair-bound, suffers from, or crippled by unless you are quoting. "Wheelchair user" is usually clearer.
+
+Do not assume a spouse, parent, or family structure. Use partner or spouse when either is possible. Avoid "guys" for a mixed group in formal writing; use everyone, team, or colleagues.
+
+Weak: Each developer must install his tools; the wheelchair-bound tester will verify the build.
+Strong: Each developer must install their tools; the tester who uses a wheelchair will verify the build.
+
+Practice: revise this sentence. A good secretary always keeps her calendar up to date.
+Answer: A good assistant always keeps their calendar up to date. Or, for a group: Assistants keep their calendars up to date.
+@@@ END
+
+@@@ USER
+My paragraphs are twice as long as they need to be. How do I cut wordiness without losing meaning?
+@@@ ASSISTANT
+Wordiness is not just long sentences; it is words that do no work. Common sources are empty phrases, repeated ideas, expletive constructions, prepositional chains, and a weak verb paired with an abstract noun. Cut the phrase, then check whether the sentence still says the same thing.
+
+Empty phrases to delete: at this point in time (now), due to the fact that (because), in the event that (if), in order to (to), it is important to note that (usually nothing), and prior to (before). Redundancies to remove: advance planning (planning), end result (result), future plans (plans), completely eliminate (eliminate), return back (return), and each individual (each or individual).
+
+Expletive constructions beginning with there is or it is often hide the real subject. "There are three reasons why the plan failed" becomes "The plan failed for three reasons." Prepositional chains become possessives or direct objects: "the report of the committee on safety" becomes "the safety committee's report."
+
+Weak: At this point in time, due to the fact that the team is in the process of finalizing the report, we will postpone the meeting until a later date.
+Strong: Because the team is finalizing the report, we will postpone the meeting.
+
+The strong version is shorter but not less precise. It keeps the cause, the action, and the decision. It removes only ceremony.
+
+Do not cut so aggressively that you lose necessary qualification, agency, or evidence. Wordiness is excess, not length itself. A long sentence with several real ideas can be efficient; a short sentence with three empty phrases is not.
+
+Practice: revise this sentence. In the event that you are unable to attend, please provide notification at your earliest convenience.
+Answer: If you cannot attend, please let us know by Friday. Use the actual deadline rather than at your earliest convenience.
+@@@ END
+
+@@@ USER
+My writing teacher says I rely on adverbs instead of strong verbs. Does that mean I should delete every adverb?
+@@@ ASSISTANT
+No. The advice targets a common weakness: using an ordinary verb plus an adverb when one precise verb would do the work. "Walked quickly" can become hurried or strode; "said loudly" can become shouted; "looked briefly" can become glanced. The verb carries the action, so the sentence becomes more vivid and usually shorter.
+
+Adverbs are still necessary. They express degree, frequency, time, and manner when no single verb captures the meaning: almost finished, often arrives early, spoke quietly because the baby was asleep. "Very" and "really" are the usual culprits because they intensify without adding information. Delete them first and see whether the sentence loses anything.
+
+Do not replace every adverb with a flashy verb. "She expostulated" is not better than "she argued" if the reader has to reach for a dictionary. The goal is precision, not vocabulary display. Also avoid a chain of adverbs: "He quickly and quietly and carefully closed the door" makes the reader work too hard. Choose the one detail that matters and let the verb carry it.
+
+Weak: The team worked very hard to quickly finish the report before the absolutely final deadline.
+Strong: The team worked through the night to finish the report before the deadline.
+
+Practice: revise this sentence with a stronger verb. She closed the door loudly and walked quickly away.
+Answer: She slammed the door and strode away.
+@@@ END
+
+@@@ USER
+I know I should be more concrete, but my writing still sounds abstract. How do I move from general claims to details readers can see?
+@@@ ASSISTANT
+Abstract language names concepts, qualities, or categories: efficiency, accountability, innovation, stakeholder value. Concrete language names things a reader can see, count, or verify: a 12-minute wait, a missing signature, 40 failed payments, a cracked screen. Abstract terms are useful for framing, but they cannot carry an argument alone. A concrete detail turns a claim into evidence.
+
+One reliable method is to descend the ladder of abstraction. Start with the general claim, then ask: who did what, to what, how often, by how much, and compared with what? Add a specific actor, object, action, number, or scene. Do not add decoration; add information.
+
+Weak: We improved operational efficiency and enhanced stakeholder value.
+Strong: We cut the average support response from 18 hours to 3 by routing tickets to the team that owned the issue. Customer satisfaction rose from 72% to 81% over the same quarter.
+
+The strong version can be checked. It names the action, the before-and-after numbers, and the mechanism. It also avoids claiming that one change caused everything without evidence.
+
+Use abstractions when you need a summary or a category, then anchor them immediately. "The policy improved retention" is a claim; "the policy improved retention: first-year turnover fell from 24% to 17%" is an argument. If you cannot supply a concrete example, ask whether you actually know what you mean.
+
+Practice: make this sentence concrete. The company is committed to sustainability.
+Answer: The company plans to cut fleet emissions 30% by 2028 by replacing 120 diesel vans with electric models.
+@@@ END
+
+@@@ USER
+How do I analyze my audience before writing, instead of just guessing what sounds professional?
+@@@ ASSISTANT
+Audience analysis means identifying the reader's knowledge, role, needs, constraints, and likely response before you choose what to include. Ask five questions: What does this reader already know? What decision or action do I want? What will they do with the document? What objections or risks will they see? How much time and attention will they give it?
+
+Then adjust more than tone. A senior executive needs the decision, cost, risk, and recommendation early; an engineer needs the mechanism, edge cases, and test evidence. A customer needs the outcome and next step; a regulator needs the precise scope, method, and compliance record. The same facts can be organized differently for each.
+
+Weak, for executives: The migration introduced a quorum-based consensus layer that reduced split-brain risk across shards.
+Strong, for executives: We changed how the database handles a data-center failure. If one site goes offline, the other two keep serving customers without losing data. This removes the failure that caused two outages last year.
+
+The strong version does not dumb down the idea. It translates the consequence and keeps the relevant history. It also avoids unexplained jargon.
+
+Do not confuse audience analysis with manipulation. You are choosing the most useful entry point and level of detail, not hiding material facts. If a reader needs a caveat to make a sound decision, include it even when it complicates the message. When you are unsure, ask a representative reader or study a document they already use.
+
+Practice: rewrite this for customer-support agents. The API returns 429 when the rate limit is exceeded.
+Answer: When a customer makes too many requests too quickly, the system pauses them temporarily. Ask them to wait for the time shown in the Retry-After header, then try again.
+@@@ END
+
+@@@ USER
+I want to spot logical fallacies in arguments, including my own. Which ones matter most, and how do I repair them?
+@@@ ASSISTANT
+A logical fallacy is a pattern of reasoning in which the premises do not adequately support the conclusion. Spotting the label is less important than explaining the gap and repairing it. Four patterns cover many everyday cases.
+
+Ad hominem attacks the person instead of the argument: "Her proposal cannot work because she was fired from her last job." The repair is to examine the proposal's costs, evidence, and risks.
+
+Straw man replaces an opponent's claim with a weaker version: "They want to delay the launch, so they must not care about customers." The repair is to state the strongest version of the opposing view and answer that.
+
+False dilemma presents two options when more exist: "Either we cut the budget or we cancel the project." The repair is to identify the missing options, such as reducing scope or phasing the work.
+
+Hasty generalization draws a broad conclusion from too little evidence: "Two users hated the redesign, so the redesign is a failure." The repair is to describe the sample, the selection method, and the limits of the inference.
+
+Other common patterns include slippery slope (one step will inevitably cause an extreme outcome), appeal to popularity (everyone believes it, so it is true), post hoc reasoning (it happened after X, so X caused it), and circular reasoning (the conclusion restates the premise).
+
+Weak: Everyone is switching to this framework, so it must be the right choice.
+Strong: The framework is worth testing because three teams cut build times by about 40%, but those teams had small codebases; we should pilot it on one service before committing.
+
+The strong version uses evidence, qualifies the sample, and proposes a proportionate next step.
+
+Practice: name the fallacy and repair it. If we allow remote work on Fridays, soon no one will come to the office at all.
+Answer: Slippery slope. Repair: We can allow Friday remote work as a trial and measure attendance, collaboration, and results before deciding whether to expand it.
+@@@ END
+
+@@@ USER
+How do I include counterarguments without weakening my own position?
+@@@ ASSISTANT
+A counterargument makes your position stronger when you treat the opposing view fairly. It shows that you understand the issue, gives you a chance to answer the strongest objection, and prevents readers from thinking you have ignored obvious problems. Concession is not agreement; it is an accurate statement of what the other side gets right.
+
+Use a three-part move: state the objection in its strongest form, concede whatever is valid, then rebut or qualify it with evidence. Signal the structure clearly: Although, Admittedly, Critics argue that, Even if, However, Yet, and That said. Do not set up a weak version of the objection just to knock it down; that is a straw man.
+
+Weak: Some people say remote work is bad, but they are wrong.
+Strong: Remote work can weaken informal mentoring, especially for junior employees. Admittedly, our own survey found that new hires who never met their team in person asked fewer questions in their first month. Yet structured weekly pairing and clear documentation can recover much of that benefit; in the pilot, new hires with an assigned mentor reported the same confidence as office-based peers.
+
+The strong version concedes a real cost, then limits the damage with evidence. It does not pretend the cost does not exist.
+
+A concession should be proportionate. Do not spend most of the paper agreeing with the opposition, and do not qualify every claim until your thesis vanishes. State your position, acknowledge the best objection, answer it, and move on.
+
+Practice: write a concession and rebuttal for this claim. We should delay the product launch by one month.
+Answer: Delaying the launch will give competitors time to announce first, and that is a real cost. However, launching with the payment bug would damage trust and cost more to fix after customers encounter it; a one-month delay with a staged beta limits both risks.
+@@@ END
+
+@@@ USER
+What makes evidence credible in an argument, and how much citation detail does a reader need?
+@@@ ASSISTANT
+Credible evidence is relevant, representative, verifiable, and proportional to the claim. A single anecdote can illustrate a point but cannot establish a rate. A large survey can establish a pattern but may not explain why it occurs. State what the evidence can and cannot support.
+
+For data, give the reader enough context to judge it: who collected it, when, from what sample, using what method, and with what uncertainty. Cite the source so the reader can verify it. In a report, that may mean an in-text citation plus a reference entry with a DOI or URL. In a memo, a link and a one-line method note may be enough. The rule is not "more citation is better"; it is "enough detail to make the claim checkable."
+
+Distinguish correlation from causation. "Sales rose 40% after the campaign" is a sequence, not proof that the campaign caused the rise. Add the comparison: "Sales rose 40% in the campaign region, compared with 8% in the control region." Then name the source and period.
+
+Weak: Studies show that 73% of users prefer our app.
+Strong: In a March 2026 survey of 412 active users (18% response rate), 73% said they preferred the new interface; the margin of error is about plus or minus 5 percentage points. The survey was conducted by our research team, and the full instrument is linked in Appendix B.
+
+The strong version lets the reader see the denominator, date, method, and uncertainty. It also avoids the vague authority of "studies show."
+
+Practice: improve this sentence. Sales grew 40% after the campaign.
+Answer: Sales grew 40% in the campaign region between March and May 2026, compared with 8% in the control region, according to the company's regional sales report.
+@@@ END
+
+@@@ USER
+I have to summarize a long technical document for executives who are not engineers. How do I keep it accurate without drowning them in detail?
+@@@ ASSISTANT
+Start with the decision or consequence, not the document's chronology. An executive summary should answer: What changed? Why does it matter? What is the risk or cost? What do you need the reader to decide or do? Put those answers in the first paragraph, then add only the detail needed to support them.
+
+Translate mechanism into effect, but do not remove material caveats. An analogy can help if it is accurate and clearly labeled; it should not replace the actual limit. Define a technical term only when the reader needs it to understand the consequence. If a term appears once, explain it in plain words instead of introducing an abbreviation.
+
+Weak: The service now uses an event-driven architecture with idempotent consumers and a dead-letter queue.
+Strong: A failed payment will no longer be charged twice. The system now records each payment attempt once and retries safely. If a retry still fails, it alerts support instead of silently dropping the payment. This reduces duplicate charges, but it does not eliminate the brief delay customers may see during a retry.
+
+The strong version leads with the customer outcome, explains the mechanism in functional terms, and keeps the remaining limitation. It does not pretend the change is risk-free.
+
+Use structure to protect accuracy: a bottom-line paragraph, three to five key points, a short "what this means for you" section, and a link to the full document. Keep numbers and dates exact; round only when the rounding does not change the decision. Have an engineer check the summary for claims that are technically true but misleading.
+
+Practice: summarize this for customer support. The cache TTL was reduced from 24 hours to 5 minutes to limit stale data.
+Answer: Customer details may update within five minutes instead of once a day. If a customer says a change has not appeared yet, ask them to wait five minutes and refresh before escalating.
+@@@ END
+
+@@@ USER
+My professor says I overclaim in essays, but when I add hedges she says I sound unsure. How much caution is appropriate in academic writing?
+@@@ ASSISTANT
+Hedging should match the strength of your evidence, not perform modesty. A hedge is a word or phrase that limits a claim: may, might, suggest, indicate, appear, tend to, in this sample, under these conditions, or among the participants studied. Strong evidence can support a direct verb such as reduced or increased. Weak evidence calls for was associated with or is consistent with.
+
+The mistake is not hedging itself; it is hedging in the wrong place or stacking hedges until the claim disappears. "The results may potentially possibly suggest that the intervention might have had some effect" gives the reader no clear finding. Decide what the data support, state that, and attach one honest limit.
+
+Weak: This survey proves that remote work destroys collaboration.
+Strong: In this sample of 84 employees, remote work was associated with fewer spontaneous conversations; the design cannot show whether it caused the decline.
+
+The strong version names the sample, uses a calibrated verb, and states the limit once. It does not apologize for having a finding.
+
+Use direct language for established facts and for your own methods: "I interviewed twelve managers" does not need "I attempted to interview." Use caution for generalization, causation, prediction, and contested interpretation. Distinguish statistical significance from practical importance as well.
+
+Practice: revise this sentence. The data possibly seem to indicate that the training program might have maybe helped some employees.
+Answer: The data suggest that the training program helped some employees, although the sample was small. Adjust the final clause to the actual limitation.
+@@@ END
+
+@@@ USER
+How should I write a product changelog that users actually understand?
+@@@ ASSISTANT
+Write for the person using the product, not for the team that built it. Lead with what changed in their workflow, name the surface where they will see it, and state the benefit or the action they need to take. Group entries under standard headings such as Added, Changed, Fixed, Deprecated, and Security. Include the version and release date, especially if customers can delay an upgrade.
+
+Each entry should be specific enough to verify. "Improved performance" tells the reader nothing. "CSV exports now finish without timing out for workspaces with more than 10,000 rows" tells them who was affected and what changed. Keep internal ticket numbers out of the customer-facing text unless your audience is developers who use them for support.
+
+Weak: Fixed bug. Improved backend. Updated auth.
+Strong: Fixed an issue where CSV exports failed for workspaces with more than 10,000 rows. Exports now stream in chunks and complete without timing out. No action is required.
+
+Mention migration steps, breaking changes, and known issues explicitly. If a change requires customers to rotate a key, update an SDK, or change a setting, put that in a short "Action required" line. Do not bury it in a paragraph. Use past tense for what shipped and present tense for current behavior, and keep the tense consistent within the release.
+
+Practice: rewrite this entry for customers. Refactored auth service; implemented JWT rotation.
+Answer: Improved sign-in security. Active sessions now refresh automatically, so most users will not need to sign in again. Integrations that validate tokens must accept the new signing key by June 30; see the migration guide.
+@@@ END
+
+@@@ USER
+What belongs in a bug report so that an engineer can act on it quickly?
+@@@ ASSISTANT
+A useful bug report is reproducible, specific, and minimal. Start with a title that names the symptom and the context: "Checkout total resets to $0 when a discount code is removed (Chrome 126, macOS 14.5)." A title like "Checkout broken" forces the engineer to ask basic questions.
+
+Then include the environment, the shortest sequence of steps that triggers the problem, the expected result, the actual result, and how often it happens. Add evidence such as a screenshot, console error, request ID, or log excerpt. State the impact and any workaround. Keep one bug per report so that fixes and verification do not get tangled.
+
+Weak: The app is broken. Please fix ASAP. It happened again today.
+Strong: Title: Checkout total resets to $0 when a discount code is removed.
+Environment: Chrome 126 on macOS 14.5; production; account 8841.
+Steps: Add item A to cart, apply code SAVE10, remove the code, observe the total.
+Expected: Total returns to $49.00.
+Actual: Total shows $0.00, and the Pay button remains enabled.
+Frequency: Every time; reproduced in three attempts.
+Evidence: Screen recording attached; request ID req_8f21.
+Impact: Customers can submit an order at the wrong price. Workaround: reload the checkout page.
+
+Do not speculate about the cause unless you label it as a hypothesis. "The cache is probably stale" may send the engineer down the wrong path. Report what you observed.
+
+Practice: write the first three lines of a bug report for this symptom: search returns no results when the query contains an apostrophe.
+Answer: Title: Search returns no results for queries containing an apostrophe. Environment: Firefox 128, production, all accounts. Steps: Search for "O'Brien" and observe an empty result list; the same search without the apostrophe returns three results.
+@@@ END
+
+@@@ USER
+What should a good pull-request description contain, beyond a title?
+@@@ ASSISTANT
+A pull request is a package for review, not a diary. The description should explain why the change exists, what behavior changes, how it was implemented, how it was tested, and what risk or migration the reviewer should watch. Link the issue so the context survives after the branch is deleted.
+
+State the user-visible effect first. Then summarize the design decision and any alternatives you rejected. Call out database migrations, configuration changes, feature flags, and rollback steps. For UI work, include before-and-after screenshots or a short recording. Keep the diff reviewable; a thousand-line refactor mixed with a bug fix is hard to review and harder to revert.
+
+Weak: fix stuff. updated code. tests pass.
+Strong: Fixes #482: prevent duplicate reminder emails.
+Behavior: a reminder is now sent at most once per user and reminder ID. The send job records the ID before dispatch and skips duplicates on retry.
+Implementation: adds a unique constraint on (user_id, reminder_id) and handles the conflict by skipping the send. The migration is reversible.
+Testing: new integration test covers a retry after a timeout; ran the reminder suite locally and in staging. Seeded 10,000 rows to check migration time.
+Risk: the constraint creates a brief write lock on deploy; expected under two seconds. Rollback is the down migration, with no data loss.
+
+The strong version gives the reviewer a reason to approve, a map of the change, and the information needed to catch problems. It does not make the reviewer reconstruct the context from the diff.
+
+Practice: improve this description. Changed cache.
+Answer: Reduced product-page cache time from 24 hours to 5 minutes so price changes appear promptly. Added a cache-busting call on price update; tested with a staged price change and confirmed the page updated within one minute. Risk: higher database load; monitored staging for 24 hours.
+@@@ END
+
+@@@ USER
+How do I document an API endpoint so another developer can use it without asking me questions?
+@@@ ASSISTANT
+Document the contract, not just the URL. A complete endpoint reference includes the method and path, a one-sentence purpose, authentication and required scopes, every path, query, and body parameter with its type, whether it is required, its default, and any constraints, plus a realistic request and response example. Then list status codes and the error schema, rate limits, pagination behavior, and idempotency rules where relevant.
+
+Weak: GET /tasks gets tasks. Returns JSON.
+Strong: GET /v1/tasks/{task_id} returns one task. Requires a bearer token with the tasks:read scope.
+Path parameter: task_id, string, required.
+Query parameter: include, string, optional; the only accepted value is assignee, which embeds the assignee object.
+Success: 200 with an object containing id, title, status, and assignee.
+Errors: 401 for a missing or invalid token; 403 when the token lacks tasks:read; 404 when no task has that ID.
+Rate limit: 100 requests per minute per token. A 429 response includes Retry-After in seconds.
+
+Use examples that actually run. Show the request headers and a complete response, not an ellipsis where the important field should be. State whether unknown fields are rejected or ignored. If the endpoint is idempotent, explain which header or key makes it so. If it paginates, show the cursor and the next-page request.
+
+Practice: name four things missing from this draft. POST /v1/tasks creates a task. Send a title. Returns the task.
+Answer: The draft omits authentication and required scope, the request body schema and required fields, a concrete request and response example, and the success and error status codes. It should also state validation rules, such as the maximum title length.
+@@@ END
+
+@@@ USER
+How do I write a meeting agenda and follow-up that people will actually use?
+@@@ ASSISTANT
+An agenda is a plan for a decision, not a list of topics. Start with the meeting objective and the desired outcome: "Decide whether to move the launch to May 12." List the attendees and their roles, the pre-reading, and each item with a time box and an owner. Mark which items require a decision and which are informational. If an item has no decision or action attached, ask whether it belongs in the meeting at all.
+
+Weak agenda: Welcome. Project update. Discussion. Next steps.
+Strong agenda: Launch decision, 30 minutes. Objective: choose between the April 28 and May 12 launch dates. Pre-read: risk memo (link). 0–10 minutes: support readiness, Priya. 10–20 minutes: payment bug status, Marcus. 20–30 minutes: decision and owner, all. Desired outcome: a date, a launch owner, and a rollback plan.
+
+Send the agenda before the meeting and invite corrections. During the meeting, record decisions and actions as they happen, not from memory afterward. A follow-up should go out within one business day and contain four things: decisions made, actions with an owner and due date, open questions, and the next meeting or checkpoint.
+
+Weak follow-up: Good meeting today. Let's keep moving.
+Strong follow-up: Decision: launch moves to May 12. Action: Marcus will confirm the payment fix by May 1. Action: Priya will update support macros by May 5. Open question: who owns the rollback drill? Next checkpoint: May 2, 10:00.
+
+Practice: turn this item into an agenda line. Talk about the launch.
+Answer: Launch readiness decision, 15 minutes. Owner: Dana. Desired outcome: confirm the May 12 date or name the blocking issue and its owner. Pre-read: launch checklist, sent the day before.
+@@@ END
+
+@@@ USER
+Where exactly do commas and periods go when I punctuate dialogue? I keep getting confused when the speech tag comes after the quotation.
+@@@ ASSISTANT
+In American style, quotation marks enclose the spoken words. When a speech tag such as she said comes before the quotation, put a comma after the tag and a capital letter at the start of the speech: She said, "The train leaves at six." The period belongs inside the closing quotation mark.
+
+When the tag follows a statement, change the period to a comma inside the quotation, then continue with a lowercase tag: "The train leaves at six," she said. Do not write a period inside the quotation and then add a tag.
+
+For a question or exclamation, keep the mark inside the quotation and do not add a comma: "Are you coming?" she asked. "Stop!" he shouted. If the quotation is a question but the whole sentence is a statement, the question mark still does the work of terminal punctuation: She asked, "Are you coming?"
+
+An action beat is not a speech tag. It gets a period, not a comma: "Wait." She checked her phone. A comma there would imply that She checked her phone is the speaker.
+
+Start a new paragraph for each new speaker. For a quotation interrupted by a tag, use commas around the interruption: "The deadline," she said, "is Friday." Keep the second part lowercase unless it begins a new sentence.
+
+Weak: "The train leaves at six", she said. "Are you sure"? he asked.
+Strong: "The train leaves at six," she said. "Are you sure?" he asked.
+
+Practice: fix the punctuation. "The keys are in the drawer" Maya said. "Did you lock the door"? asked Ben.
+Answer: "The keys are in the drawer," Maya said. "Did you lock the door?" asked Ben.
+@@@ END
+
+@@@ USER
+A reviewer marked several comma splices in my paper. What counts as a comma splice, and what are the reliable ways to fix one?
+@@@ ASSISTANT
+A comma splice joins two independent clauses with only a comma. An independent clause has a subject and a finite verb and can stand alone as a sentence. In "The deploy failed, the rollback took twenty minutes," both halves can stand alone, so the comma is not enough.
+
+A fused sentence, sometimes called a run-on, has the same problem with no punctuation at all: "The deploy failed the rollback took twenty minutes." The name run-on does not mean the sentence is long; it means the clauses are not properly joined.
+
+There are four standard repairs. Use a period: The deploy failed. The rollback took twenty minutes. Use a semicolon when the ideas are closely linked: The deploy failed; the rollback took twenty minutes. Use a comma plus a coordinating conjunction: The deploy failed, and the rollback took twenty minutes. Or subordinate one clause: Because the deploy failed, the rollback took twenty minutes.
+
+Be careful with words such as however, therefore, and nevertheless. They are conjunctive adverbs, not coordinating conjunctions. "The deploy failed, however the rollback worked" is still a comma splice. Write "The deploy failed; however, the rollback worked" or "The deploy failed. However, the rollback worked."
+
+Also check the comma-plus-conjunction pattern. The conjunction must be one of and, but, or, nor, for, so, yet, and it must join two independent clauses. "The deploy failed, and we rolled back" is correct if we rolled back can stand alone. "The deploy failed and rolled back" is a single clause with a compound predicate, so it needs no comma.
+
+Practice: repair this sentence without changing the meaning. The dashboard loads slowly, users are abandoning the page.
+Answer: The dashboard loads slowly, so users are abandoning the page. A semicolon or a period would also work.
+@@@ END
+
+@@@ USER
+I like using sentence fragments for emphasis, but my editor calls them errors. When is a fragment acceptable?
+@@@ ASSISTANT
+A fragment is a group of words that is punctuated as a sentence but lacks a subject, a finite verb, or a complete independent thought. "Because the release was delayed" is a fragment because the subordinate clause cannot stand alone. "A single expired certificate" is also a fragment: it is a noun phrase with no predicate.
+
+Fragments are acceptable when they are deliberate, clearly controlled, and appropriate to the genre. Creative nonfiction, fiction, advertising, and opinion writing often use them for rhythm or emphasis. "The release was delayed. Again." works because Again lands as a beat, and the surrounding sentences are complete. "We found the cause. A single expired certificate." works because the fragment supplies a dramatic identification.
+
+The fragment must not look like an accident. If the previous sentence grammatically demands completion, the reader will hear a mistake rather than emphasis. In academic, legal, technical, and most business writing, avoid fragments unless your publication's style explicitly permits them. Even then, use them sparingly; a page of one-line fragments feels breathless rather than emphatic.
+
+Weak, because the fragment is unintentional and subordinate: The team shipped the feature. Although the tests were incomplete.
+Strong: The team shipped the feature although the tests were incomplete.
+
+Strong deliberate use: The migration finished on time. Barely.
+
+Practice: identify the fragment and repair it. We canceled the launch. Because the login flow failed.
+Answer: Because the login flow failed is a subordinate clause fragment. Repair: We canceled the launch because the login flow failed.
+@@@ END
+
+@@@ USER
+When should I use a colon instead of a comma or semicolon? I see colons used in places that look wrong to me.
+@@@ ASSISTANT
+Use a colon after a complete independent clause to introduce an explanation, a list, a quotation, or a dramatic amplification. The clause before the colon must be able to stand alone. "We need three tools: a ladder, rope, and gloves" works because We need three tools is complete. "The tools are: a ladder, rope, and gloves" does not, because The tools are cannot stand alone as a full statement.
+
+A colon says "here is what I mean" or "here comes the specifics." It can introduce a list, but do not put it after such as, including, or a form of to be when the list completes the predicate. Write "We need a ladder, rope, and gloves," not "We need: a ladder, rope, and gloves."
+
+A semicolon joins two independent clauses and signals balance or contrast; a colon introduces and points forward. "The backup failed; the team restored from the archive" links two clauses. "The backup failed for one reason: the archive was on the same disk" explains the first clause.
+
+Capitalization after a colon depends on style. Chicago lowercases the first word unless it is a proper noun, and capitalizes when the colon introduces two or more sentences. AP capitalizes a full-sentence explanation. Pick a guide and be consistent. If a list follows, lowercase the first item unless it is a proper noun.
+
+Weak: She had one goal, finish the report before noon.
+Strong: She had one goal: finish the report before noon.
+
+Weak: The supplies we need are: rope, gloves, and a flashlight.
+Strong: We need three supplies: rope, gloves, and a flashlight.
+
+Practice: add the correct punctuation. The test failed for a simple reason the database password had expired.
+Answer: The test failed for a simple reason: the database password had expired.
+@@@ END
+
+@@@ USER
+How do I form the possessive of a name that already ends in s, such as James or the Jones family?
+@@@ ASSISTANT
+The answer depends on whether the name is singular or plural and on which style guide you follow. For singular common nouns ending in s, add apostrophe plus s: the boss's office, the class's schedule. For singular proper names ending in s, Chicago style adds apostrophe plus s: James's report, Dickens's novels, Harris's plan. AP style instead uses only the apostrophe for many such names: James' report, Dickens' novels. Both patterns appear in edited prose, so consistency matters more than finding one universal rule; follow the guide your publication uses.
+
+For a plural family name ending in s, first make the name plural, then add only the apostrophe. The Jones family becomes the Joneses, so their house is the Joneses' house. Do not write the Jones's house when you mean the whole family. For a plural name that does not end in s, add apostrophe plus s: the children's room, the Women's Club.
+
+Classical and biblical names often take only the apostrophe by convention: Jesus' teachings, Moses' law, Sophocles' plays. This is a convention, not a mathematical rule.
+
+Never use an apostrophe to form a simple plural. The Joneses arrived, not the Jones' arrived. The plural is Joneses; the possessive is Joneses'. That distinction solves most of the confusion.
+
+Weak: The Jones's car is parked outside James' office.
+Strong, Chicago: The Joneses' car is parked outside James's office.
+Strong, AP: The Joneses' car is parked outside James' office.
+
+Practice: make each phrase possessive. the report belonging to James; the driveway belonging to the Harris family.
+Answer: James's report in Chicago style, or James' report in AP style; the Harrises' driveway.
+@@@ END
+
+@@@ USER
+Capitalization feels inconsistent in my drafts. Can you give me a practical set of rules for common cases?
+@@@ ASSISTANT
+Capitalize the first word of a sentence, the pronoun I, proper nouns, and the first word of a direct quotation that is a complete sentence. Proper nouns include specific people, places, organizations, languages, nationalities, days, months, and historical periods: Tuesday, January, France, Spanish, the Renaissance.
+
+Capitalize a title when it comes directly before a name: President Lee, Professor Alvarez, Director Chen. Lowercase a title used descriptively or after a name: Lee, the president; Chen, our director. Capitalize the official name of a department or institution, but lowercase a generic reference: the Department of Transportation; the transportation department.
+
+Lowercase seasons: spring, summer, fall, winter. Lowercase academic subjects except languages and course titles: I am taking biology and French; I am taking Biology 101. Lowercase compass directions unless they name a region: drive north; the North Coast.
+
+Capitalize the first word and proper nouns in a headline according to your style, not every word automatically. In running text, do not capitalize a common noun merely because it feels important. "Our Marketing Team launched the Spring Campaign" overcapitalizes three generic terms.
+
+Weak: The Marketing Department met on tuesday to discuss the Spring Campaign.
+Strong: The marketing department met on Tuesday to discuss the spring campaign.
+
+If Marketing Department is the formally registered name of a unit, capitalize it; otherwise keep it lowercase. The key is to distinguish a name from a category.
+
+Practice: correct the capitalization. we hired a new Director of sales in january, and she starts on monday.
+Answer: We hired a new director of sales in January, and she starts on Monday.
+@@@ END
+
+@@@ USER
+My writing is cluttered with abbreviations. When should I spell a term out, and how do I handle plurals and possessives?
+@@@ ASSISTANT
+Define an abbreviation or acronym on first use when your reader may not know it: "The team uses continuous integration (CI) to test every commit." After that, CI is fine. Do not define a term your audience already knows, and do not define the same abbreviation twice in one document. If a document uses only one shortened term once, spelling it out may be simpler than introducing an abbreviation at all.
+
+Use an acronym only when it helps the reader. A page dense with API, SLO, P95, and SRE forces readers to hold a private glossary in their heads. Prefer the short, familiar term if it is genuinely familiar; otherwise write the plain phrase. Define at first use in each standalone document, because readers may encounter a section without the introduction.
+
+Watch pronunciation when choosing a or an: an MRI, a URL, an FDA rule. The choice follows the spoken sound, not the first letter.
+
+For plurals, add s without an apostrophe: APIs, CPUs, CDs, 1990s. For possessives, add apostrophe plus s to the singular form: the API's documentation, the CEO's memo. For plural possessives, add only the apostrophe: the APIs' documentation. Do not use an apostrophe just because the abbreviation contains capital letters.
+
+Weak: The SRE team paged on-call because the API's P95 latency hit the SLO.
+Strong: The site reliability team paged the on-call engineer because the API's response time was missing its target.
+
+Practice: write a first-use definition of CBT for a general audience, then use it in a second sentence.
+Answer: Cognitive behavioral therapy (CBT) is a structured talking therapy. CBT focuses on the link between thoughts, feelings, and behavior.
+@@@ END
+
+@@@ USER
+Our checkout has buttons labeled OK, Submit, and Continue. A usability reviewer called them vague. How should I write button labels?
+@@@ ASSISTANT
+Principle: a button label names the result of pressing it, not the mechanics of pressing it. Start with a verb, keep it to one to three words, use sentence case, and use the same verb for the same action everywhere. "OK", "Submit", "Yes", and "Continue" describe the click; the user has to reread the surrounding text to know what will happen.
+
+Weak: a dialog asks "Are you sure you want to remove this member from the team?" with buttons "OK" and "Cancel".
+Strong: the same dialog with "Remove member" and "Keep member". The destructive button names the action; the safe button names the alternative.
+
+Specific rules:
+- Match the label to the object. "Save changes", "Create account", "Send invoice".
+- Include the object when the action is irreversible or costs money: "Delete 3 files", "Pay $240".
+- Do not use "Yes" and "No" in dialogs. The question sits above the buttons, but each button should still make sense if read alone.
+- Use sentence case and no terminal period: "Save changes", not "Save Changes."
+- Keep one primary button per screen. Turn secondary actions into links or outlined buttons with clear labels: "Compare plans" rather than "Learn more".
+- If the action navigates, write link text that names the destination: "View invoice history", not "Click here".
+- Do not put the same word on two different actions. If "Continue" saves a draft on one screen and pays on another, users learn to distrust it.
+
+Test every label out of context. Read it alone and ask whether a new user could predict the result. "Continue" could mean save, pay, or skip, which is why it fails even when the surrounding page is clear.
+
+Exercise: a modal says "Your changes have not been saved. Do you want to leave this page?" The buttons currently read "Yes" and "No". Rewrite them.
+Answer: "Leave without saving" and "Stay on page". "Yes" forces the reader to map the answer back to the question and hides the consequence. "Leave without saving" states exactly what will be lost.
+@@@ END
+
+@@@ USER
+I need to present a project case study at a meetup. I have the facts but it comes out as a chronological list. How do I structure it as a story?
+@@@ ASSISTANT
+Principle: use situation, complication, resolution. The situation establishes the world and the stakes in a few sentences: who, what goal, what constraint. The complication is the turn: what changed, what went wrong, the tension that makes the audience wonder what happened. The resolution answers it with the choice, the action, the result, and the lesson. Chronology is not a story; the complication should arrive early, and every detail before it should raise the stakes.
+
+Weak: "In January we started the project. In February we chose a vendor. In March we built the first version. In April we launched. In May we got feedback."
+Strong: "We had eight weeks to move 40,000 customer records to a new CRM before the old contract expired. Two weeks in, the vendor's export tool silently dropped custom fields, the exact fields our sales team used for renewals. We rebuilt the export from database backups, shipped a day late, and lost 12 records out of 40,000. After that we added row-count checks to every migration."
+
+The strong version works because the complication is specific and costly. "We had some issues" is not a complication; "the tool silently dropped the fields the renewals depended on" is.
+
+For a ten-minute talk, use one slide for the situation, one or two for the complication, and two or three for the resolution and lesson. Put the timeline in an appendix for questions. Say the lesson once, at the end, and make it about a decision you would repeat, not a generic moral.
+
+Exercise: where should the complication land in a ten-minute talk, and how much situation should come first?
+Answer: within the first two minutes, after no more than about 90 seconds of situation. The audience needs enough context to feel the stakes, not a full history of the project.
+@@@ END
+
+@@@ USER
+My proposal to switch vendors keeps getting rejected. I state the benefits clearly. What is missing?
+@@@ ASSISTANT
+Principle: persuasion is claim plus reason plus evidence plus warrant, then acknowledgment of the strongest objection, then a specific ask. Benefits without evidence are assertions. Evidence needs a source, a number, and a comparison; the warrant explains why that evidence supports this claim. Match the evidence type to the claim: customer quotes for desirability, benchmarks for performance, a cost model for savings, pilot data for risk.
+
+Weak: "Switching to Vendor B will save us money and make the team more productive. Many companies use it."
+Strong: "Vendor B should cut our annual license cost by about $84,000: their quote is $36,000 versus our current $120,000 for the same 200 seats. In a four-week pilot, the two teams that used it closed tickets 18 percent faster, a median of 4.1 hours versus 5.0, though setup took 20 hours per team. Even assuming a 10 percent adoption discount, payback is under five months. The main risk is migration effort; the vendor will cover 40 hours. I am asking for approval to run a second pilot with the support team in Q1."
+
+Why the strong version is stronger: every number has a baseline, the assumption is stated, the risk is named before the audience names it, and the ask is small enough to say yes to.
+
+Avoid these failures:
+- A single anecdote presented as proof. One happy customer is an illustration, not a rate.
+- Correlation dressed as causation. "Teams that adopted it grew faster" does not show that adoption caused growth.
+- Evidence that answers a different question. A benchmark on synthetic data does not prove performance on your workload.
+- Overstating certainty. Use "the pilot suggests" when that is what the data supports.
+
+Exercise: add evidence to "Remote work improves retention."
+Answer: "In our 2025 exit survey, 31 percent of departing employees cited commute as a reason; among the 60 engineers in the remote pilot, voluntary attrition was 7 percent versus 14 percent company-wide." Add the caveat that pilot participants volunteered, so the difference is suggestive rather than proven.
+@@@ END
+
+@@@ USER
+We are launching a scheduling feature next month. How do I write the announcement so it does not sound like every other "We are thrilled to announce" post?
+@@@ ASSISTANT
+Principle: use the inverted pyramid: what it is, who it helps, why it matters, how to use it, and availability. "Thrilled to announce" delays the news. Lead with the user outcome, not the internal project name. One primary call to action. Be accurate about rollout, pricing, and limits. Do not call a checkbox "revolutionary"; readers discount everything after the first unsupported superlative.
+
+Weak: "We are thrilled to announce our game-changing new scheduling experience! This revolutionary feature will transform the way you work."
+Strong: "You can now schedule a meeting without leaving your inbox. Pick a time, add attendees, and the invite goes out with a video link, with no separate calendar tab. It is available today on all Pro plans; Team plans get it next Tuesday. [Try it now]."
+
+Structure that works for a launch post:
+- Headline: the outcome, in the reader's words. "Schedule a meeting from your inbox."
+- One paragraph: what changed and for whom.
+- Two or three short details: the parts people will actually notice.
+- Availability: plans, regions, dates, and any limits.
+- One call to action, plus a link to docs for the details.
+- For an internal launch, add enablement, support contacts, and known issues.
+
+Do not bury the availability. If the feature is behind a flag or limited to 50 users, say so in the same paragraph as the announcement, not in a footnote. Readers who cannot use it will otherwise assume the launch failed.
+
+Exercise: write the first sentence for a feature that lets people edit many invoices at once.
+Answer: "You can now update up to 200 invoices in one action instead of opening them one at a time." Use your real limit and keep the comparison; the sentence leads with the change and the time saved, not with the company's excitement.
+@@@ END
+
+@@@ USER
+Our release notes are copied from tickets: "Fixed #4821. Refactored auth service." Customers do not read them. What should end-user release notes contain?
+@@@ ASSISTANT
+Principle: write for the person using the product, not the person who filed the ticket. Each item answers three questions: what changed, why the reader cares, and whether they must do anything. Group items by area or benefit. Put breaking changes and required actions first, with dates. Keep fixes to one line, and include only bugs users noticed. Drop internal terms such as refactor, endpoint, and cache invalidation unless the audience is developers.
+
+Weak: "Fixed #4821. Refactored auth service. Updated dependencies. Misc bug fixes."
+Strong:
+"Sign in with Google: You can now use your Google account instead of a password. If your team requires SSO, nothing changes.
+Faster exports: CSV exports of more than 10,000 rows now finish in about 20 seconds instead of two minutes.
+Fixed: The date picker no longer jumps to January when you select the 31st."
+
+The strong version names the user benefit, states who is affected, and gives a measurable before and after. The ticket number disappears; it belongs in the engineering changelog, not the customer email.
+
+Rules for the fix list:
+- Describe the symptom the user saw, not the code change. "Reports no longer fail when a filter has no dates" beats "Fixed null pointer in scheduler."
+- Say if the user must act: "Reconnect your calendar by Friday to keep syncing."
+- Do not list every internal fix to look busy. A short, readable list gets read; a long one gets skipped.
+- Be honest about known issues and workarounds. "Exports over 50,000 rows may take longer this week; we are monitoring."
+
+Exercise: rewrite "Fixed null pointer in report scheduler" for end users.
+Answer: "Scheduled reports no longer fail when a report has no date filter. If you received a 'Report failed' email for this reason, the next run should succeed." It names the symptom, the condition, and what the reader should expect.
+@@@ END
+
+@@@ USER
+After our outage, the draft postmortem says "Bob deployed without running the migration check." Legal wants it factual, engineers say it is blaming. How do I write this?
+@@@ ASSISTANT
+Principle: blameless does not mean nameless; it means explaining how the system allowed the error, so the fix is systemic. Replace "who" with "what conditions." State the facts and timeline, impact, detection, contributing factors, what went well, and action items with an owner and a due date. "Human error" is a starting point, not a root cause: ask what made the mistake easy, undetected, or unrecoverable. Avoid hindsight language such as "should have known" and counterfactuals such as "if only."
+
+Weak: "Bob forgot to run the migration check, which caused the outage. We will remind the team to be more careful."
+Strong: "At 14:02 the deploy job ran without the schema-compatibility check. The check was a manual step in a wiki page, and the job had no gate for it. The migration dropped an index used by the read path, raising query latency from 40 ms to 9 s. Monitoring alerted at 14:09; the rollback completed at 14:31. Twelve percent of requests failed for 29 minutes. Contributing factors: the manual gate, no canary deploy, and an alert threshold set at 5 s. Actions: add the check to CI (Platform, due Friday); send 5 percent of traffic first (SRE, due in three weeks)."
+
+Why it is fair: it describes the action and the missing guardrail, not the person's character. It also avoids passive voice that hides decisions. "The check was manual" is a system fact; "mistakes were made" hides who chose the process.
+
+Name people only where accountability is useful, such as action-item owners. In the narrative, use roles: "the on-call engineer," "the deploy approver." If the same person appears repeatedly, that is a staffing signal, not a villain.
+
+Exercise: rewrite "Alice approved the config change too quickly" without blame.
+Answer: "The config change required one approval, and the review screen showed only the diff, not the affected services. The approver had no way to see that the change touched the checkout path." It names the condition that made the approval unreliable.
+@@@ END
+
+@@@ USER
+Our data-retention policy is a wall of "as long as necessary for legitimate business purposes." How do I rewrite it so normal employees understand it?
+@@@ ASSISTANT
+Principle: a plain-English retention policy answers six questions for each data category: what it is, how long you keep it, why, where it goes, who can see it, and what happens at the end. Replace "as long as necessary" with a concrete period or a decision rule plus examples. Define terms on first use, use short sentences, and put categories in a table if that helps. State exceptions such as legal hold, tax, and security logs explicitly. Do not promise "permanent deletion" if backups persist for 35 days.
+
+Weak: "Data will be retained for as long as necessary to fulfill legitimate business purposes and in accordance with applicable law."
+Strong: "We keep support tickets for 24 months after the ticket closes, then delete them. We keep them that long so we can resolve repeat issues and meet our two-year warranty. Backups containing tickets are deleted on a 35-day cycle after that."
+
+Include a "What this means for you" line for each section. Employees need to know what they must do, not just what the company promises. For example: "If a customer asks us to delete their account, forward the request to privacy@example.com the same day. Do not delete records yourself; we check for legal holds first."
+
+Make ownership visible. Each category should name the team that owns it and the system of record, so a reader can ask a question. State the review date, because retention rules age. Avoid copying legal definitions without translation; if you must use "personal data," define it once in a sentence a non-lawyer can apply.
+
+Exercise: rewrite "Employee records are retained per legal requirements" for a policy read by managers.
+Answer: "We keep employee records for seven years after the person leaves, because tax law requires it. After seven years, HR deletes the record. You do not need to do anything." Use your jurisdiction's actual period and confirm it with counsel.
+@@@ END
+
+@@@ USER
+We have to add a privacy notice summary at the top of a 12-page policy. What should it say without oversimplifying?
+@@@ ASSISTANT
+Principle: the summary is a layer, not a replacement. It should let a reader answer five questions in under a minute: what do you collect, why, who do you share it with, what choices do I have, and how do I contact you. Use plain language and concrete examples, not "we value your privacy." Flag surprising or sensitive collection honestly. Link each point to the full section. Keep the summary consistent with the full notice; if it says "we never sell data," the full text must define "sell" the same way.
+
+Weak: "Your privacy is important to us. We are committed to protecting your personal information and being transparent."
+Strong: "We collect your email, device type, and the pages you visit. We use this to run your account, fix bugs, and send product updates you can turn off. We share payment details with Stripe and error data with Sentry; we do not sell personal data. You can download or delete your data in Settings. Questions: privacy@example.com."
+
+What makes the strong version work: it names categories, purposes, recipients, and controls. It does not list every legal basis or every subprocessor; it gives enough for a reasonable person to decide whether to read further.
+
+Rules:
+- Use "you" and "we," and active voice: "We share..." not "Information may be shared..."
+- Do not use absolutes you cannot guarantee. "We never share data" is false if a payment processor sees it.
+- Separate "required to run the service" from "optional." A cookie banner that treats everything as required is not a summary; it is a dark pattern.
+- Say how to exercise a right concretely: "Email privacy@example.com; we respond within 30 days."
+- Date the summary and link to the full notice and the change log.
+
+Exercise: turn "We may share information with third parties for business purposes" into a summary sentence.
+Answer: "We share your name and email with the provider that sends our newsletters, and your payment details with our payment processor when you buy a plan. We do not share your data for advertising." Name the real recipients and purposes; "third parties" tells the reader nothing.
+@@@ END
+
+@@@ USER
+Our support macros open with "Dear valued customer, we sincerely apologize for the inconvenience." Customers say we sound like robots. How do I rewrite them?
+@@@ ASSISTANT
+Principle: a macro is a skeleton, not a script. Acknowledge the specific problem, say what you are doing next, give the exact steps, set a time expectation, and leave one place for the agent to add a human detail. Cut stacked apologies and "valued customer." Use contractions and the words the customer used. Never promise what you cannot do; say "here is what I can do." One idea per paragraph, short lines. Personalization is one sentence, not a fake compliment.
+
+Weak: "Dear Valued Customer, We sincerely apologize for any inconvenience this may have caused. Please be advised that your issue has been escalated. We appreciate your patience."
+Strong: "Hi Sam, I am sorry your invoice export failed. That is frustrating when you are closing the month. I have cleared the stuck job, so the export should work now. Try it once more, and reply with the time if it fails again. I am watching this ticket until 5 p.m. ET."
+
+The strong version uses the customer's name and symptom, states the fix, gives a next step, and sets a boundary. It does not over-apologize, and it does not claim the problem is permanently solved if it is not.
+
+Build macros with editable slots: [name], [specific issue], [what you did], [next step], [your hours]. Train agents to edit at least the first and last sentence, because those carry most of the human signal. Keep a short list of approved macros rather than hundreds; agents cannot find the right one under pressure.
+
+Exercise: rewrite "We apologize for the inconvenience. Your request is being processed."
+Answer: "Your refund is processing now. It usually reaches your card in three to five business days, and I will email you when it is done. If you do not see it by Friday, reply here and I will check with the payment team."
+@@@ END
+
+@@@ USER
+I am a freelancer trying to get clients. My cold emails get no replies, or people say they feel spammy. What makes outreach work?
+@@@ ASSISTANT
+Principle: cold email earns attention with relevance, not volume. The first line proves you looked at their situation specifically. Then one sentence on the problem you solve for people like them, one piece of proof, and a small, clear ask: a 15-minute call, or permission to send one example. Keep it under 120 words, use plain text, and skip images and tracking pixels where you can. The subject line should be specific and honest. Avoid fake familiarity, urgency tricks, and long life stories.
+
+Weak: "Dear Sir or Madam, I hope this email finds you well. I am a highly experienced freelance designer with a passion for excellence. We offer world-class design services at competitive rates. Please find attached my portfolio. Looking forward to hearing from you."
+Strong: "Hi Priya, your checkout page keeps the Continue button enabled when the cart is empty; I hit it twice on mobile. I fix conversion leaks like that for Shopify stores. Last month a similar fix raised checkout completion 9 percent for a 40-store client. Want me to send a two-minute video showing the fix? If not, no follow-up."
+
+The observation must be true and specific. Check the site before you send. A generic compliment ("I love your brand") reads as a template; a precise observation proves you did the work.
+
+Follow-up once, after four or five business days, with one new piece of information. Then stop. Honor any "no" immediately and keep a suppression list. Do not use a fake "Re:" subject, a fake mutual connection, or a calendar link in the first email; those raise spam suspicion and waste the reader's time.
+
+Exercise: rewrite "I would love to hop on a call to discuss synergies" as a clear ask.
+Answer: "Could I send you a one-page audit of your checkout flow? If it is useful, we can talk for 15 minutes next week." It offers value first and makes the next step small.
+@@@ END
+
+@@@ USER
+I want to speak at a conference for the first time. How do I write an abstract that gets accepted rather than one that just describes my topic?
+@@@ ASSISTANT
+Principle: a conference abstract sells a session, not a subject. A strong one names the audience, the concrete problem, what attendees will leave able to do, and why you are credible. Reviewers scan for specificity and fit with the track. Avoid "journey," "lessons learned," and "best practices" without saying which practices. Include format and duration if requested. Aim for 100 to 200 words. The title should promise a specific outcome, not a pun.
+
+Weak: "In today's fast-paced world, testing is more important than ever. In this talk, I will share my journey and lessons learned about quality. Attendees will gain valuable insights."
+Strong: "Most teams write end-to-end tests that fail for reasons unrelated to the change: flaky selectors, shared accounts, timing. This talk shows how to cut that noise without losing coverage. You will leave with three patterns: isolating test data per worker, replacing sleeps with network-idle waits, and quarantining flaky tests with an owner and an expiry date. I will show before-and-after runs from a 900-test suite whose flake rate fell from 18 percent to 2 percent over six weeks. For engineers who own CI. 25 minutes, including 5 for questions."
+
+The strong version answers the reviewer's questions: who is this for, what will change for them, and can this person deliver? The numbers make the promise credible, and the duration tells the organizer it fits.
+
+Common fixes:
+- Replace the topic with a problem. "Accessibility" becomes "Five accessibility bugs you can fix this sprint."
+- Name the takeaway as a capability, not an insight: "You will be able to test focus order," not "You will understand accessibility."
+- Drop the autobiography. One line of credibility is enough; the abstract is about the audience.
+- Match the track description. If the track asks for hands-on workshops, do not submit a lecture.
+
+Exercise: turn "I want to talk about accessibility" into a title and one learning outcome.
+Answer: "Title: Five Accessibility Bugs You Can Fix This Sprint. Outcome: attendees can test keyboard focus order and fix the three most common focus traps." It is specific, scoped, and gives the organizer a reason to schedule it.
+@@@ END
+
+@@@ USER
+Our app shows messages like "Error 422: Unprocessable Entity". Support gets tickets that just say "it doesn't work". How do I write error messages people can act on?
+@@@ ASSISTANT
+Principle: a useful error message has four parts: what happened, why in plain terms, what to do now, and how to get help if that fails. Put it where the failure occurred, keep the user's input intact, and avoid blaming them. An internal code can appear as secondary information for support, but it should never be the message.
+
+Weak: "Error: Invalid input. Please try again." It does not say which field is wrong, what valid input looks like, or what "try again" changes.
+Strong: "We couldn't save your profile because the phone number is missing an area code. Add one and select Save again."
+
+Match the message to the cause:
+- User-fixable: name the field and the fix. "That email is missing an @ symbol. Check the address and try again."
+- System fault: say it is not their fault and give a time estimate. "We couldn't load your invoices. This is on our side. Try again in a few minutes."
+- Permission: explain who can help. "You need an admin to enable exports for this workspace. Ask your admin or contact support."
+- Session: translate the jargon. "Your session timed out. Sign in again to continue." Not "Token expired".
+
+Keep one action per message. Use "try again" only when retrying can actually work. Do not stack "please" and "sorry", and do not use humor for a failure that cost someone time. If the user must contact support, give them a reference code in the last sentence: "If it still fails, contact support and mention code INV-503."
+
+Exercise: rewrite "Error 500: Internal Server Error" on a payment page.
+Answer: "Your payment didn't go through, and you haven't been charged. This is a problem on our side. Try again in a few minutes. If it happens again, contact support with reference PAY-500." It states impact, removes blame, gives a next step, and keeps the code for support.
+@@@ END
+
+@@@ USER
+I have to give a 12-minute talk and I keep reading my slides. How should I write speaker notes?
+@@@ ASSISTANT
+Principle: speaker notes are cues for a live performance, not a transcript. Write short lines you can glance at: the opening sentence, the one number that matters, the transition, and the closing ask. Put a full sentence only where the wording is delicate, such as a legal claim or a definition. Mark timing at slide boundaries. Use bold for the anchor word, not whole sentences. Notes should be readable at a glance while standing, so eight to twelve words per cue is plenty. Rehearse from the notes, then cut them in half.
+
+Weak: "As I mentioned earlier, our platform has been designed from the ground up to deliver a seamless and scalable experience for customers across a wide range of industries and use cases."
+Strong: "Point: one dashboard, three teams. Number: 40 percent less reporting time. Transition: 'That is the what. Here is how we got there.'"
+
+Also note what is on screen, because the slide and the words should not duplicate each other: "Slide 4: p99 chart. Say: 'The tail, not the average.'" Put sources and pronunciation guides in the notes, never on the slide. Add a "cut if late" marker to one section, so you have a planned way to recover.
+
+For a 12-minute talk, write roughly 1,400 to 1,700 spoken words, but do not script them unless you need exact phrasing. Rehearse with a timer twice: once to learn the shape, once to test the cuts. If a sentence is hard to say aloud, it is too long; split it.
+
+Exercise: write a note for a slide showing a 30 percent drop in cost per ticket.
+Answer: "Anchor: '30 percent lower cost per ticket.' Proof: 12 months, four teams. Transition: 'The savings came from one change.'" The note gives the speaker the number, the evidence, and the next move without a paragraph to read.
+@@@ END
+
+@@@ USER
+Our post-purchase survey asks "How much did you love our fast, friendly service?" and the results are useless. How do I write a neutral question?
+@@@ ASSISTANT
+Principle: one idea per question, neutral wording, balanced response options, and no assumed answer. Remove loaded adjectives such as "fast" and "friendly," double-barreled pairs such as service and speed, absolutes such as "always," and leading scales. Give a timeframe and a reference point. Offer "Not sure" or "Do not know" when it is a real answer, and "Prefer not to say" for sensitive items. Test the question with five people and ask what they thought it was asking.
+
+Weak: "How much did you love our fast, friendly service? [A lot / Very much / Extremely]"
+Strong: "Thinking about your most recent visit, how satisfied were you with the speed of service? [Very satisfied / Somewhat satisfied / Neither satisfied nor dissatisfied / Somewhat dissatisfied / Very dissatisfied / Do not know]"
+
+The strong version fixes four problems: it sets a timeframe, removes the compliment, asks about one attribute, and offers a full scale including a neutral midpoint and a "don't know." If you also care about friendliness, ask a separate question; combining them makes the answer uninterpretable.
+
+More fixes:
+- Replace agreement scales with frequency or satisfaction when agreement is ambiguous. "I am satisfied..." is not the same as "The checkout was fast."
+- Avoid negatives that create double negatives: "How often do you disagree that support was not helpful?"
+- Keep demographic questions optional and at the end, with a "prefer not to say" option.
+- Do not ask "Why?" as the only follow-up; pair it with a specific prompt: "What would have made that easier?"
+
+Exercise: fix "Don't you agree our new checkout is better?"
+Answer: "How would you compare the new checkout with the previous one? [Much better / Somewhat better / About the same / Somewhat worse / Much worse / Did not use the previous checkout]." It removes the presupposition and includes people who cannot compare.
+@@@ END
+
+@@@ USER
+I am running my first usability test. How do I write tasks that do not accidentally give away the answer?
+@@@ ASSISTANT
+Principle: a task states a goal and a context, not a path. Name the user's situation and what they want to achieve; never name the menu, button, or page. Do not ask a leading question such as "Isn't it easy to...?" Let the participant find the route. Keep success criteria for the moderator, not the participant. Start with an easy warm-up, then realistic tasks, and avoid tasks that depend on data the participant does not have. Pilot with one person and remove any word that points to the interface.
+
+Weak: "Click Settings, then Privacy, then toggle off marketing emails. Did you find it easily?"
+Strong: "You have been getting promotional emails and want them to stop. Show me what you would do. (Success: marketing toggle off or unsubscribe confirmed. Stop after 3 minutes.)"
+
+The strong version gives a goal and a reason, not a route. It also tells the moderator what counts as success and when to stop, so the session does not drift.
+
+Moderator behavior matters as much as the wording. Read the task exactly as written, then stay quiet. If the participant asks for help, respond neutrally: "What would you do next?" or "What are you thinking?" Do not rescue them before the time limit. After the task, ask "How easy or difficult was that?" rather than "Did you like it?"
+
+Watch for tasks that test memory of the UI rather than the design. "Find where you changed your password last week" tests recall; "Change your password" tests the interface. Also avoid tasks that require the participant to know internal names: "Use the asset manager" only works if that label is visible and familiar.
+
+Exercise: rewrite "Find the Export button in the Reports tab and download a CSV" as a task.
+Answer: "You need to send last month's report to your accountant as a spreadsheet. Show me how you would get that file." It states the goal and the format, but not the tab, button, or sequence.
+@@@ END
+
+@@@ USER
+Our team keeps arguing about "log in" versus "login" and "sign in" versus "sign on". How do I write a style guide entry that settles it?
+@@@ ASSISTANT
+Principle: a style guide entry needs a decision, not a preference. Include the term, its status (use or avoid), part of speech, definition, correct and incorrect examples, exceptions, rationale, and related terms. Pick one term per concept and use it everywhere: buttons, docs, error messages, and marketing. Record the date and owner so the decision can change. If there is a real grammatical distinction, show it; "log in" is the verb and "login" is the noun or adjective, which is a rule readers can apply.
+
+Weak: "Please use login consistently. It looks better."
+Strong:
+"sign in (verb), sign-in (noun and adjective). Use for authenticating to the product. Do not use: log in, login, sign on.
+Correct: Sign in to your account. The sign-in page is down.
+Incorrect: Login to your account. Go to the sign in page.
+Exception: 'Login' may appear inside a quoted third-party interface.
+Why: one term for one action, and 'sign in' matches our button labels. Related: sign out, account, SSO. Owner: Content design. Updated: March 2026."
+
+The strong entry settles the argument because it gives a test, not a vote. A writer can apply it without asking. The exception prevents a false correction when quoting someone else's UI.
+
+Keep entries short enough to scan. If a term needs a paragraph of history, the decision is probably not clear yet. Put disputed cases in a meeting, decide once, and write the decision down with the reason. A style guide that changes with each writer is worse than no guide, because readers cannot tell which version they are reading.
+
+Exercise: write the entry for "email" versus "e-mail".
+Answer: "email (noun, verb). Use email, no hyphen, lowercase unless it starts a sentence. Correct: Send an email. Email us. Incorrect: e-mail, E-mail. Why: it matches our interface and current usage. Related: newsletter, notification." Add an exception only if you have a real one.
+@@@ END
+
+@@@ USER
+We publish product docs translated from German by machine translation. The grammar is correct but it sounds wrong. How do I edit it into natural English?
+@@@ ASSISTANT
+Principle: machine translation preserves source structure, so the target reads as English words in German order. Edit for meaning first, then idiom, then style, not word by word. Watch for verb-final order carried over, stacked compound nouns, missing or wrong articles, literal prepositions, and false friends. Keep product terms consistent with the glossary. Do not add claims the source does not make. Check numbers, names, and units last.
+
+Weak: "The configuration can by the administrator in the settings be changed."
+Strong: "An administrator can change the configuration in Settings."
+
+Weak: "Please inform us your feedback until Friday."
+Strong: "Please send us your feedback by Friday."
+
+The first pair fixes word order and the preposition. The second fixes a literal translation: German "bis Freitag" becomes "by Friday," not "until Friday," and "inform us your feedback" needs "of" or, more naturally, "send us."
+
+A method that catches more than grammar:
+1. Read the paragraph without looking at the source and summarize it aloud.
+2. Rewrite from your summary, not from the German sentence.
+3. Compare with the source for facts, names, and numbers.
+4. Read the result aloud; if you run out of breath or stumble, the sentence is too long.
+5. Check glossary terms and UI labels against the product.
+
+Do not "improve" the content while editing. If the German says "may," do not upgrade it to "will." If a sentence is vague in the source, flag it to the author rather than inventing detail.
+
+Exercise: fix "Make a photo from the settings page and send it to us per email."
+Answer: "Take a photo of the settings page and email it to us." "Make a photo" is a Germanism; English takes a photo. "Per email" becomes "email" or "by email," and the sentence loses the unnecessary preposition.
+@@@ END
+
+@@@ USER
+New accounts see blank screens with "No data", and many people never create their first project. What should the empty state and onboarding say?
+@@@ ASSISTANT
+Principle: an empty state has three jobs: explain what will appear here, why the user should care, and offer exactly one next action. "No data" does none of them. Onboarding should get someone to first value, not tour the interface. Teach at the moment of need, keep steps short, and always allow skipping.
+
+Weak: a projects list showing "No projects yet" above an empty table with no button.
+Strong: "No projects yet. Projects hold the files your team shares, so this list stays empty until you create one. [Create a project] It takes about a minute." Add one secondary link, "See an example project", if a sample helps.
+
+For onboarding, replace the feature tour with a choice of goals:
+Weak: "Welcome! Take a tour of all our features." Then eight tooltips.
+Strong: "What do you want to do first? [Track expenses] [Send an invoice] [Just look around]". Each choice opens the real screen with one coach mark at the point of use.
+
+Rules that keep empty states honest:
+- Do not hide the action behind cute copy. The primary button should be visible without scrolling.
+- Show a sample only if it is clearly labeled "Example" and cannot be mistaken for real data.
+- If the empty state is caused by a filter, say so: "No results for 'paid'. Clear the filter to see all invoices."
+- If the user must wait for data, say when it arrives: "Your first report appears after your data syncs on Monday."
+- Measure time to first project and completion rate, not how many people clicked "Next".
+
+Exercise: write an empty state for a reports list where reports are generated weekly after a data sync.
+Answer: "No reports yet. Your first report will appear here after your data syncs on Monday. [Connect a data source] [See how reports work]". It explains the delay, gives the action that starts the process, and offers a low-cost way to learn more.
+@@@ END
+
+@@@ USER
+Our marketing team wrote the product page, and someone pasted the same copy into our help center. It reads like an ad and users can't follow it. What is the difference in tone, and how do I convert it?
+@@@ ASSISTANT
+Principle: marketing writes about the change the reader gets; documentation writes about the task the reader is doing. Marketing may use rhythm, benefit framing, and selective enthusiasm, but it should stay concrete and verifiable. Documentation should be neutral, literal, task-first, consistent in terminology, and complete: prerequisites, steps, result, and errors. Superlatives in docs raise doubt and age badly.
+
+Weak documentation: "Our revolutionary, lightning-fast dashboard lets you effortlessly unlock powerful insights and supercharge your workflow!"
+Strong documentation: "The dashboard shows usage by day for the last 30 days. Select a date range to update the chart. Data refreshes every 15 minutes."
+
+A conversion recipe:
+1. Name the task the reader is doing.
+2. State what the feature does in one literal sentence.
+3. Give the steps in order, with the exact labels on screen.
+4. State limits and prerequisites.
+5. Delete adjectives that cannot be measured.
+
+Tone can still be warm in docs. "You can export a report as CSV or PDF" is friendly without selling. What docs should avoid is evaluation ("amazing", "seamless") and promises ("works everywhere") that the next paragraph has to qualify.
+
+Marketing is not the opposite. "Cut reporting time from hours to minutes" is legitimate if a customer result supports it. Documentation would state the mechanism instead: "You can schedule a report to run every Monday at 7 a.m."
+
+Exercise: convert "Our amazing new export feature makes sharing effortless!" into documentation.
+Answer: "You can export a report as CSV or PDF. Select Export, choose a format, and select Download. The file downloads to your browser's default folder." Use your real limits and destinations; do not invent a retention period to make the sentence sound complete.
+@@@ END
+
+@@@ USER
+I am a teacher applying for a product manager role and I have never worked in tech. How do I write a cover letter that does not sound apologetic?
+@@@ ASSISTANT
+Principle: a career-change cover letter has one job: make the reader believe your past experience produces value in the new role. Do not open with an apology or a list of what you lack. Open with a concrete result that maps to their need, bridge to the transferable skill, and name the gap once, briefly, with how you are closing it. Keep it to one page, roughly 250 to 350 words.
+
+Weak: "I am writing to apply for the Product Manager position. Although I do not have direct experience in product management, I believe my background as a teacher makes me a strong candidate."
+Strong: "When I redesigned our district's assessment process, 40 teachers adopted it in one semester and average grading time fell by a third. That was product management without the title: I interviewed users, prioritized a backlog of changes, and measured adoption. I want to do that with software at [Company], whose [specific product decision] I have followed for a year."
+
+Build the middle from evidence, not adjectives. Pick two stories and give each a user, a constraint, a decision you made, and a result. A teacher can show user research (parent conferences), prioritization (curriculum under a time limit), stakeholder management (administrators and faculty), and measurement (pass rates, completion). Translate the vocabulary, but do not pretend the contexts were identical.
+
+Handle the gap in one sentence: "I am completing a course in SQL and shipped a small attendance tool used by 200 students." That is more convincing than "I am a fast learner."
+
+Close with fit, not desperation: "I want to work on [problem] because I have spent six years solving a version of it with fewer resources." Avoid "I would be grateful for the opportunity to discuss my qualifications."
+
+Exercise: rewrite the weak opening above so it leads with evidence.
+Answer: "When I redesigned our district's assessment process, 40 teachers adopted it in one semester and grading time fell by a third. I am applying for the product manager role because that work was the same job: user interviews, prioritization, and measuring whether anything changed."
+@@@ END
+
+@@@ USER
+In interviews I ramble when asked "Tell me about a time you handled conflict." How do I answer with STAR without sounding rehearsed?
+@@@ ASSISTANT
+Principle: STAR is a budget, not a script. Situation and Task together should take about 15 to 20 percent of the answer, Action about 60 percent, and Result about 20 to 25 percent with a number or an observable outcome. Use "I" for your own actions even when the team did the work; use "we" only for shared decisions. One event per question, 90 to 120 seconds. Prepare the facts and the shape, not the wording, and you will sound like yourself.
+
+Weak: ninety seconds of background, "we" throughout, ending "and it worked out well in the end."
+Strong: "Our launch was two weeks out and design and engineering disagreed about scope; I owned the release plan. I ran a 45-minute session where each side ranked its must-haves, built a one-page tradeoff table with effort and user impact, and asked the engineering lead to make the call with the table in front of us. We moved two items to the next release. We shipped on time, the deferred items landed three weeks later, and the team reused the table for the next two launches."
+
+Notice what the strong version does: it names the tension, shows one specific action, and gives a result plus what changed afterward. It does not narrate every meeting.
+
+Prepare for follow-ups. Interviewers often ask "What would you do differently?" Have one honest answer that shows judgment, not a fake weakness. Also be ready to go deeper on any Action you mention; if you cannot explain the tradeoff table, do not include it.
+
+Exercise: turn "I am good at working under pressure" into a four-line STAR skeleton with one concrete detail for each letter.
+Answer: "S: A client moved a demo forward by three days. T: I had to deliver a working prototype while keeping the current sprint on track. A: I cut the demo to one workflow, paired with a designer for a day, and moved two tickets to the next sprint with the client's agreement. R: The demo ran without a blocker, the client signed, and the sprint still met its commitment." Adjust the details to something you actually did.
+@@@ END
+
+@@@ USER
+I am submitting a systems paper and my abstract is mostly background. What belongs in 200 words?
+@@@ ASSISTANT
+Principle: an abstract is a miniature of the paper, not an introduction. It makes five moves: state the problem and why it matters, name the gap in existing work, say what you built or did, give the strongest result with a number, and state the implication. Write it last. No citations, no undefined acronyms, no "This paper is organized as follows", and no claims that the results do not support. Methods in past tense, conclusions in present tense.
+
+Weak: "Machine learning is increasingly important. In this paper, we study an important problem and propose a novel approach. Experiments show that our method is effective and outperforms baselines."
+Strong: "Existing schedulers optimize average latency, which leaves tail latency unaddressed under bursty load. We present X, a scheduler that assigns requests to queues using a short-horizon load estimate. In a 30-day trace from a 500-node cluster, X reduced p99 latency from 48 ms to 11 ms at the same throughput, a 4.4x reduction, with no increase in CPU use. These results suggest that tail-aware placement can be added to existing schedulers without new hardware."
+
+Make each number usable: metric, baseline, condition, and direction. "4.4x reduction in p99 latency at equal throughput" is stronger than "significantly faster." If the result is negative or mixed, say so; reviewers trust abstracts that admit a limit.
+
+Keep the scope honest. If you evaluated on one dataset, name it and do not generalize to "real-world systems." If the method requires a specific hardware feature, say so in the same sentence as the result.
+
+Exercise: rewrite "Our tool is fast and users like it" as an abstract sentence with a metric, a baseline, and a condition.
+Answer: "On a 10 GB dataset, our tool completed the query in 8 seconds, versus 31 seconds for PostgreSQL 16 on the same hardware, a 3.9x speedup." The claim is now checkable, and it states the condition under which it held.
+@@@ END
+
+@@@ USER
+My instructor says my literature review is "patchwriting". I change the words, so why is it still plagiarism?
+@@@ ASSISTANT
+Principle: paraphrasing means restating an idea in your own sentence structure and voice while preserving the meaning, and citing the source of the idea. Swapping synonyms while keeping the original's sentence order, clause structure, and distinctive phrasing is patchwriting. It is still too close, and it usually reads badly because the synonyms do not fit the new sentence.
+
+Weak: Original: "Because remote teams lack informal cues, coordination problems often surface only after deadlines slip." Patch: "Since distributed teams are missing casual signals, coordination issues frequently appear only once timelines have slipped." The words changed; the skeleton did not.
+Strong: "Deadline slippage is often the first sign of a coordination problem in distributed teams, which lack the informal signals that colocated teams rely on (Chen, 2023)." The order, grammar, and emphasis are new, and the idea is cited.
+
+A method that works:
+1. Read the passage until you understand it.
+2. Close the source and write the idea from memory in a different order.
+3. Compare with the original. If a distinctive phrase survives, either quote it with quotation marks or replace it.
+4. Add the citation. Citing an idea does not excuse copying its sentences.
+
+Quote any exact phrase of three or more words, and quote distinctive terms even when they are shorter. Keep a source page number for quotations. For a literature review, most sentences should be your synthesis, not a sequence of one-source summaries.
+
+Exercise: paraphrase "Students who receive feedback within 48 hours are more likely to revise their drafts than those who wait a week." Include a citation.
+Answer: "A short feedback turnaround appears to encourage revision: students given comments within two days revised more often than those who waited seven (Ibarra, 2022)." The sentence changes the structure, keeps the comparison, and attributes the finding; it does not reuse the original's opening clause.
+@@@ END
+
+@@@ USER
+My VP has two minutes and I have a dashboard with nine charts. How do I describe it without walking through every line?
+@@@ ASSISTANT
+Principle: executives need the decision, not the chart. Lead with the "so what" in one sentence, then give two or three supporting numbers, the comparison that makes them meaningful (previous period, target, or cohort), and the caveat or confidence level. Finish with a recommendation or a request. Do not narrate axes, colors, or the order of charts. Keep the detail ready for questions but do not present it.
+
+Weak: "On this slide, the x-axis is month and the y-axis is revenue. The blue line is bookings and the orange line is churn. As you can see, there are several movements in the middle of the period."
+Strong: "Revenue grew 12 percent in Q3, but almost all of it came from one enterprise deal; excluding that deal, growth was 2 percent, below our 5 percent target. Churn was flat at 1.8 percent. I recommend holding the Q4 forecast at 3 percent until mid-market pipeline improves."
+
+Habits that help:
+- One number per sentence. "Tickets rose 30 percent, from 1,200 to 1,560" is easier to absorb than four statistics in a row.
+- Always answer "compared to what?" A number without a baseline is decoration.
+- Round to the precision that supports the decision. 12 percent, not 11.7 percent, unless the decimal changes the action.
+- Say what would change your mind: "If the two late deals close, I would revise this upward."
+- Separate fact from interpretation: "The chart shows a drop; my read is that the pricing change caused it."
+
+Exercise: turn "The bar chart shows support tickets went up" into an executive sentence with a number, a cause, and an action.
+Answer: "Support tickets rose 30 percent in September, from 1,200 to 1,560, mostly from the new billing flow; I would fix the invoice page before adding agents." It gives size, source, and a recommendation in one breath.
+@@@ END
+
+@@@ USER
+How should I write button labels and calls to action so people know what will happen?
+@@@ ASSISTANT
+A button label names the result of pressing it, in one to three words, starting with a verb. The reader should be able to predict what happens without reading the surrounding paragraph.
+
+Weak:
+
+- "OK", "Submit", "Continue", "Click Here", "Yes"
+
+Strong:
+
+- "Create account", "Save draft", "Delete project", "Subscribe to newsletter", "Download invoice"
+
+Rules:
+1. **Verb + object.** "Save changes" beats "Save". "Delete project" beats "Delete" when the object is not obvious from context.
+2. **Match the confirmation.** If the button says "Delete project", the dialog title should say "Delete project?" and the confirm button should repeat "Delete project", not "Yes".
+3. **One verb per screen.** If two buttons compete, make the primary action the most specific: "Send invoice" over "Continue".
+4. **Title case is for titles, not buttons.** Sentence case ("Save changes") reads faster and matches modern style guides.
+5. **Destructive actions name the object.** "Delete" alone is ambiguous; "Delete 12 messages" is not.
+6. **Accessibility.** Screen readers announce the label alone. "Learn more" is useless out of context; "Learn more about pricing" is not.
+7. **Placeholders are not labels.** Use `<label>` with visible text; the button itself is the label.
+
+Exercise: fix these labels.
+
+1. "Click Here" on a download link
+2. "OK" on a form that creates an account
+3. "Submit"
+
+Answers:
+
+1. "Download the 2026 tax report (PDF)"
+2. "Create account"
+3. "Send message" or "Publish post" — the verb must match the action.
+@@@ END
+
+@@@ USER
+How do I write a cold outreach email that does not read as spam?
+@@@ ASSISTANT
+One specific observation, one relevant proof, and one small ask. If it cannot be about them, it is spam.
+
+Template:
+
+Subject: Your Q3 report export time
+
+"Hi Lena,
+
+I noticed your team exports the weekly usage report manually. Two similar finance teams cut that from two hours to five minutes a month by scheduling the export.
+
+Happy to send a two-minute demo showing the scheduled export, or a sample of the output. Would Tuesday at 10am work?
+
+Best,
+Tom"
+
+Rules:
+- **Personalize the first line with a verifiable fact.** Their report process, a recent hire, a public post. "I saw your blog post on X" is not personalization; it is detection.
+- **One proof point.** A number, not three. "Cut reporting from 2 hours to 5 minutes" beats a feature list.
+- **One small ask.** "Would a 2-minute demo work?" beats "Can I pick your brain about synergies?"
+- **Subject = the observation.** "Your Q3 report export time" beats "Quick question" and "Partnership opportunity".
+- **Under 100 words.** Every extra sentence lowers the reply rate.
+- **Honest opt-out.** "If this is not a priority, no need to reply" removes pressure and surprisingly improves replies.
+- **Do not fake a reply thread.** No "Re:" on a first email. No "circling back" before you have gone.
+
+Exercise: fix this opener.
+
+- "Dear Sir/Madam, I hope this email find you well. We are a leading provider of innovative solutions..."
+
+Answer: "Hi Lena, I saw your team is hiring two data engineers — that usually means reporting is becoming a bottleneck." Specific, timely, no salutation filler.
+@@@ END
+
+@@@ USER
+How do I write a conference talk abstract that an organizer will accept?
+@@@ ASSISTANT
+An abstract promises one outcome, one approach, and one proof. Organizers read hundreds; the first sentence decides.
+
+Template:
+
+Title: "Cutting p95 latency from 900ms to 120ms without rewriting the API"
+
+Abstract:
+
+"Our orders API was timing out during peak hours. We profiled the hot path, found that 70% of the time was spent in three unindexed queries and a synchronous external call, and fixed it with two composite indexes, a read replica for reporting, and an async webhook for the external dependency.
+
+You will leave with the profiling workflow we used, the exact index definitions, and the load test we now run in CI. The talk includes before/after traces and the failure modes we hit."
+
+Rules:
+1. **Title = result.** Numbers win. "How we improved performance" does not.
+2. **First sentence = the problem and the stakes.** Timeouts during peak hours is a problem; "we cared about performance" is not.
+3. **One approach, three concrete steps.** Organizers reject vague talks ("concepts for the future").
+4. **What the audience takes home.** A workflow, a checklist, or code. Promise something they can use Monday.
+5. **Under 250 words.** Longer abstracts signal unclear thinking.
+6. **No marketing.** Name tools and tradeoffs, not your company. A talk that reads as an ad will be rejected.
+7. **Speaker credibility in one line.** "I run platform infrastructure for a 40-person SaaS" beats a biography.
+
+Exercise: rewrite this abstract opening.
+
+- "In this talk we will discuss how to build scalable, reliable, and performant microservices using modern technologies."
+
+Answer: "We migrated 14 services from a shared database to per-service schemas in six weeks without downtime. This talk covers the strangler pattern we used, the dual-write reconciliation job, and the rollback plan that saved us twice."
+@@@ END
+
+@@@ USER
+How do I write speaker notes that keep a talk on time?
+@@@ ASSISTANT
+Notes are a script with time cues and fallback lines, not a copy of the slides. One card per slide: claim, evidence, transition.
+
+Per-slide card:
+
+```
+Slide 7 — "Indexes cut 70% of p95" (2 min)
+Claim: Two composite indexes took p95 from 900ms to 280ms.
+Evidence: trace before/after; point at the query plan, not the result.
+If asked: "The index is (user_id, status, created_at DESC). It serves the filter and the sort."
+Transition: "That fixed the database. The other 620ms was an external call..."
+```
+
+Rules:
+1. **One idea per card.** If a slide needs two paragraphs, it needs two slides.
+2. **Time each card.** Write the running total at the bottom. At slide 7 you should know you are at 14 minutes.
+3. **First sentence per card is the line to say.** If you forget everything, that sentence carries the talk.
+4. **Include a fallback.** "If I run short, skip this slide and keep the demo." Decide in advance what to cut.
+5. **Include the demo contingency.** "If the demo fails, show the recording at 0:40." Rehearse the failure path.
+6. **Include the question answer.** One line for the most likely question, so you do not improvise under pressure.
+7. **Write the opening and closing verbatim.** Memorize them word for word; improvise the middle.
+8. **Bold the transition sentences.** Transitions are where talks die; they must be rehearsed.
+
+Exercise: turn this slide into a card.
+
+- Slide: "Caching" with a bullet list of four cache types.
+
+Answer: "Claim: A 60-second TTL cache removed 80% of read traffic. Evidence: before/after request count. Transition: 'The cache hides reads, but writes still need invalidation — that is next.'"
+@@@ END
+
+@@@ USER
+How do I write a support macro that is helpful and not robotic?
+@@@ ASSISTANT
+A macro has placeholders for the facts and a tone for the person. Write the template once, then fill in specifics every time. Never send it unedited.
+
+Template:
+
+"Hi {first_name},
+
+Thanks for reaching out. I can see {specific_fact} on your account, and I understand that blocked {impact}.
+
+Here's what I've done so far:
+- {action_1}
+- {action_2}
+
+{Next step for the customer}
+
+I'll check back {timeframe}. If you need this sooner, reply to this email and I'll escalate it.
+
+Best,
+{agent_name}"
+
+Example filled:
+
+"Hi Maya,
+
+Thanks for reaching out. I can see your export from Tuesday is stuck at 42%, and I understand that blocked your billing run.
+
+Here's what I've done so far:
+- Restarted your export job and cleared the failed chunk.
+- Confirmed the file is under the 100 MB limit.
+
+Please try the export again in Settings → Exports. I'll check back at 3pm today. If you need it sooner, reply here and I'll escalate.
+
+Best,
+Daniel"
+
+Rules:
+- At least two fields must be specific to the account. Zero specific fields = spam.
+- Delete any sentence that is true for every customer. If it does not mention their data, cut it.
+- Keep the sign-off short. "Best, Daniel" is human; a 4-line signature is not.
+- Review macros monthly. Delete the ones that repeat the same workaround; those are product bugs.
+- Measure: macro with tweaks vs. raw macro. The tweaked version should have a measurably lower re-contact rate.
+@@@ END
+
+@@@ USER
+How do I paraphrase a source without plagiarizing it?
+@@@ ASSISTANT
+Paraphrasing changes structure and emphasis; plagiarism is reusing ideas or phrases without credit. The test: a reader who never saw the original should learn the idea from your words.
+
+Original:
+
+"Primary keys should be immutable and unique. A surrogate integer key is simple, but it requires an extra lookup for business queries, so many teams prefer a natural key."
+
+Weak paraphrase (patchwriting — plagiarizing):
+
+- "Immutable and unique primary keys are recommended. Surrogate integer keys are simple, though they need an extra lookup for business queries, so natural keys are preferred by many teams."
+
+Proper rewrite (your analysis):
+
+- "In our schema, we make the primary key a UUID generated by the database and never updated. We keep business identifiers (such as order numbers) in a separate unique column because joins on UUIDs are fast enough, and lookups by order number are handled by an index."
+
+Rules:
+1. **Read, close, write.** Close the source, then write from memory. If you can see it, you will patchwrite it.
+2. **Change the structure, not the synonyms.** Swapping "recommended" for "suggested" is not a paraphrase.
+3. **Cite anyway.** Ideas need credit even when the words are yours. "Following the guidance in [source], we chose..." is the correct form.
+4. **Add your own content.** A paraphrase that adds a decision, a number, or a tradeoff is not plagiarism; it is scholarship.
+5. **Short quotes are fine with quotation marks and a citation.** Long unmarked quotes are not.
+6. **Common knowledge does not need citation.** "Caches reduce database load" is common knowledge; a specific empirical claim needs a source.
+
+Exercise: rewrite this sentence in your own words with citation.
+
+- "Indexes should be created on the columns used in WHERE clauses."
+
+Answer: "For our orders table, we indexed `(user_id, status, created_at)` because those three columns appear together in the most common query (see "Indexing for Query Patterns", example.com). In your own schema, create indexes that match the queries you actually run."
+@@@ END
+
+@@@ USER
+How do I describe a chart or dashboard to an executive in one paragraph?
+@@@ ASSISTANT
+State the takeaway, the evidence, and the implication. Never describe the axes.
+
+Weak:
+
+- "This dashboard shows a line chart with weeks on the x-axis and revenue on the y-axis, with a blue and gray line comparing two regions."
+
+Strong:
+
+- "Revenue from the North region fell 12% in February while the South rose 5%. The decline is driven by three churned enterprise accounts. If churn stays at this rate, Q1 revenue will miss target by $180k; retaining those three accounts would close the gap."
+
+Rules:
+1. **First sentence = the takeaway.** Executives read one line. Put the conclusion first.
+2. **Evidence with numbers.** "Fell 12%", "$180k", "three accounts". No numbers = no credibility.
+3. **Implication.** What should they decide or watch? "Retaining those three accounts closes the gap."
+4. **Time frame and comparison.** "In February" and "while the South rose 5%" give the numbers meaning.
+5. **One paragraph, five sentences maximum.** A longer summary is a report, not a summary.
+6. **No jargon without a gloss.** "Churn" is fine for a CFO; "p95" is not.
+7. **Caveats belong in a second sentence, not the first.** "This excludes one-time services revenue" goes after the takeaway.
+
+Exercise: summarize this chart in one paragraph.
+
+- Chart: p95 latency by deploy, last 90 days. Flat at 800ms, then drops to 120ms after the index deploy on day 45, with a 600ms spike on day 71 during a migration.
+
+Answer: "p95 latency dropped from 800ms to 120ms after the index deploy on day 45 and has stayed there, except for a 45-minute spike to 600ms during the day-71 migration. The migration window is the only remaining risk; scheduling it off-peak removes the spike."
+@@@ END
+
+@@@ USER
+How do I write release notes for end users, not engineers?
+@@@ ASSISTANT
+Describe what the user can do now, not what changed in the codebase. One line per change: action + benefit.
+
+Weak:
+
+- "Refactored the notification service to use Redis pub/sub and removed deprecated API endpoints."
+
+Strong:
+
+- "Export any report to CSV in one click (Settings → Reports → Export)."
+- "Notifications now arrive within seconds instead of minutes."
+- "Fixed a bug where deleted projects reappeared in search results."
+
+Rules:
+1. **User verb first.** "Export", "See", "Get". The engineer verb ("Refactor", "Migrate") belongs in the changelog.
+2. **Where to find it.** Every item needs a path: "Settings → Billing". A feature the user cannot find does not exist.
+3. **One line per item.** If it needs two lines, it is two items.
+4. **Say who it helps.** "For admins:" or "For all users:" sets expectations.
+5. **Include fixes users noticed.** If users reported it, name it: "Fixed the duplicate-charge bug some users saw on November 3."
+6. **No internal codes.** No PR numbers, no tickets, no "TECH-1234".
+7. **Breaking changes go first, with a migration path.** "We removed CSV import. Use Settings → Data → Import instead."
+8. **Illustrate one feature.** One screenshot for the headline change; text for the rest.
+
+Exercise: rewrite this changelog line.
+
+- "Fixed N+1 query in the projects endpoint and added a composite index."
+
+Answer: "Projects now load in under a second, even for accounts with hundreds of projects."
+@@@ END
+
+@@@ USER
+How do I write a privacy notice summary that a normal person can understand?
+@@@ ASSISTANT
+A summary is a short, layered version of the legal notice. Answer five questions in plain words.
+
+Summary:
+
+**What we collect**
+- Account and contact details (name, email) to run your account.
+- What you create in the app (files, projects, settings) to show it back to you.
+- Technical logs (IP address, device, time) to keep the service secure and working.
+- Payment details are handled by our payment provider; we never see your card number.
+
+**Why**
+- To provide the service you asked for.
+- To send transactional emails (receipts, password resets).
+- To improve the product, using anonymized aggregate statistics.
+- Marketing emails only with your explicit consent.
+
+**Who sees it**
+- Only you, unless you share it or invite collaborators.
+- Our subprocessors (hosting, email, payments) process it under contract and only to run the service.
+- We never sell personal data.
+
+**How long**
+- While your account is active, plus 30 days after you delete it.
+- Backups are purged within 90 days of deletion.
+- Invoices are kept 7 years for tax law, without your files.
+
+**Your controls**
+- Export everything: Settings → Privacy → Export data.
+- Delete your account: Settings → Privacy → Delete account.
+- Opt out of marketing: unsubscribe link in every email.
+- Contact: privacy@example.com. We respond within 30 days.
+
+Rules:
+- Link to the full legal notice; do not replace it.
+- Numbers, locations, and the word "never" are allowed when true. If you cannot promise it, do not write it.
+- No "third-party partners may use data to personalize experiences". Either name the category or do not collect it.
+- Test readability: a 14-year-old should understand the summary. If not, simplify.
+@@@ END
+
+@@@ USER
+How do I write a bug report that gets fixed in days instead of weeks?
+@@@ ASSISTANT
+A bug report that gets fixed has: environment, steps, expected vs. actual, and evidence. Everything else is noise.
+
+Template:
+
+```
+Title: Export to CSV fails with 500 for accounts with >10k rows
+
+Environment:
+- Production, app version 2.4.1, Chrome 130, account id 48291
+- Request id: req_9fK2a
+
+Steps to reproduce:
+1. Sign in as admin.
+2. Go to Reports → Usage.
+3. Set date range to 2026-01-01 to 2026-10-01.
+4. Click Export CSV.
+
+Expected:
+- File downloads within 30 seconds.
+
+Actual:
+- 500 Internal Server Error, request id req_9fK2a.
+- Browser console: no error.
+
+Evidence:
+- curl command + response (redact the token)
+- Server log excerpt with request id
+- Screenshot of the failed request in DevTools
+- What we tried: smaller date range (90 days) succeeds.
+
+Impact:
+- Blocks monthly billing. Workaround: split into 3 exports.
+```
+
+Rules:
+1. **Title = symptom + scope.** "Export fails for >10k rows" beats "Bug in export".
+2. **Steps must be runnable by someone who has never seen the bug.** Numbers, page names, and exact values.
+3. **Expected vs. actual.** One line each. If you cannot write them, you have not understood the bug.
+4. **Evidence, not opinion.** Request ids, logs, curl commands, screenshots. "I think it is the database" is a hypothesis; label it as one.
+5. **Environment.** Version, browser, account type, and whether it reproduces in staging.
+6. **What you already tried.** This saves the engineer an hour.
+7. **Impact and workaround.** Priority is set by impact, not by who reported it.
+8. **One bug per report.** Five symptoms in one report become zero fixes.
+
+Exercise: fill the template.
+
+- Bug: "The search sometimes shows old results."
+
+Answer: Title: "Search shows stale results after filter change in 1 of 3 cases". Steps: type "acme", wait 3s, change filter to "Active", observe old "acme" results for 2s. Expected: results match the active filter. Actual: previous results shown. Evidence: request ids + timestamps showing out-of-order responses.
+@@@ END
+
+@@@ USER
+How do I write documentation for an API endpoint that developers actually read?
+@@@ ASSISTANT
+Lead with when to use it, show one minimal request/response pair, then the errors, limits, and examples. Reference details belong below the fold.
+
+Template:
+
+```
+POST /v1/invoices
+
+Creates a draft invoice for a customer. Use this to prepare a bill before sending it.
+Requires the `invoices:write` scope.
+
+Request
+POST /v1/invoices
+Content-Type: application/json
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+
+{
+  "customerId": "cus_123",
+  "lines": [{ "description": "Consulting", "quantity": 2, "unitPriceCents": 15000 }],
+  "currency": "USD"
+}
+
+Response 201
+{
+  "id": "inv_456",
+  "status": "draft",
+  "totalCents": 30000,
+  "createdAt": "2026-11-07T12:00:00Z"
+}
+
+Errors
+- 400 — validation_error: body failed schema validation
+- 401 — unauthenticated: missing or expired token
+- 403 — forbidden: scope invoices:write required
+- 409 — duplicate_resource: Idempotency-Key already used with a different body
+
+Limits
+- 100 requests/minute per account.
+- Max 200 line items per invoice.
+
+Notes
+- The invoice is created as a draft. Call POST /v1/invoices/:id/send to issue it.
+```
+
+Rules:
+1. **First line = when to use it.** "Creates a draft invoice" is better than "This endpoint allows creation of invoices".
+2. **One minimal example per section.** Copy-pasteable `curl` matters more than a second example.
+3. **Errors before parameters.** Developers hit errors first; the parameter table is reference.
+4. **Idempotency, pagination, and limits are mandatory fields.** If an endpoint does not have them, say "Not applicable" explicitly.
+5. **Units and formats.** "unitPriceCents" beats "price". ISO 8601 for dates. State the timezone.
+6. **Scope and role requirements.** State them at the top.
+7. **Breaking-change policy.** One line: "Field removals require 12 months notice."
+8. **Keep the reference table collapsed.** Prose first, table second, examples last.
+
+Exercise: add the missing sections.
+
+- Endpoint: `GET /v1/customers/:id`
+- Missing: required scope, pagination for nested resources, error codes.
+
+Answer: add "Requires `customers:read`", a "Related resources" section with cursors for nested lists, and the standard error table (400/401/403/404/429).
+@@@ END
+
+@@@ USER
+How do I write error messages that users can actually act on?
+@@@ ASSISTANT
+An error message must tell the user three things: what happened, what it means for them, and the next step. One sentence where possible.
+
+Weak:
+
+- "Error 500"
+- "Something went wrong."
+- "Invalid input."
+- "Failed"
+
+Strong:
+
+- "We couldn't save your changes. Check your internet connection and try again."
+- "This email is already registered. Try signing in instead."
+- "The file is larger than 25 MB. Choose a smaller file or compress it."
+- "Your session expired. Sign in again to continue."
+
+Rules:
+1. **Name the problem in user language.** "We couldn't reach the payment service" beats "Failed to connect to gateway".
+2. **Give the next action.** "Try again", "Sign in", "Choose a different file". Every error without a next step is a dead end.
+3. **Say what was saved and what was not.** "Your draft is saved. The payment did not go through." Prevents duplicate work.
+4. **Blame the system, not the user.** "We couldn't load your orders" beats "You have no orders" when the request failed.
+5. **No codes in the main message.** Error codes belong in a details disclosure or the request id, not the headline.
+6. **Inline beats toasts for fields.** "Enter a valid email address" next to the field, not a popup that disappears.
+7. **Stay consistent.** "Delete" and "Remove" are not synonyms; pick one verb per action across the product.
+8. **Keep tone calm.** Never "Oops!" for a payment failure. Brevity is reassuring.
+
+Exercise: rewrite these.
+
+1. "400 Bad Request"
+2. "You must enter a valid value."
+3. "Unknown error occurred."
+
+Answers:
+
+1. "We couldn't read that request. Check the fields and try again. (Error 400, request req_9fK2)"
+2. "Enter a valid email address, for example name@example.com."
+3. "Something went wrong on our side. Your work is saved. Try again in a minute."
+@@@ END
+
+@@@ USER
+How do I write meeting agendas and follow-ups that get things done?
+@@@ ASSISTANT
+An agenda states decisions to make, not topics to discuss. A follow-up lists decisions, owners, and dates.
+
+Agenda:
+
+```
+Team sync — Nov 7, 10:00, 30 min
+Goal: decide the export architecture before Friday.
+
+1. (5 min) Context: current export fails for >10k rows. (Priya)
+2. (10 min) Options: sync CSV (simple, slow), async job (scalable, complex).
+3. (10 min) Decision: pick one. Criteria: ship by Nov 21, support 100k rows.
+4. (5 min) Owners and dates for the chosen path.
+
+Pre-read: 1 page on the failure, link to the trace.
+```
+
+Follow-up:
+
+```
+Decisions made
+- Async job export. Sync path stays for <1k rows.
+- Owner: Daniel. Ship by Nov 21.
+- Progress update every Tuesday until shipped.
+
+Actions
+- [ ] Daniel: add job table + worker by Nov 10.
+- [ ] Priya: load test to 100k rows by Nov 14.
+- [ ] Maya: update billing docs by Nov 18.
+
+Open questions
+- Who owns the DLQ alert? (decide next sync)
+```
+
+Rules:
+1. **Decisions, not topics.** "Pick the export architecture" beats "Discuss exports".
+2. **Timebox each item.** A total under 30 minutes forces focus.
+3. **Name the owner per item** in the agenda itself.
+4. **Pre-read, not in-meeting reading.** One page maximum; link it.
+5. **Follow-up within 24 hours.** Decisions, owners, dates. If it is not written, it did not happen.
+6. **Action items are verbs with dates.** "Daniel: add job table by Nov 10" beats "Daniel to look at jobs".
+7. **Close with open questions** explicitly, so they are not lost.
+8. **Cancel if there is no decision.** A sync with no decision is an email. Return the time.
+@@@ END
+
+@@@ USER
+How do I write empty states and onboarding copy that guide without nagging?
+@@@ ASSISTANT
+Empty states have three jobs: acknowledge, explain the value, and offer one clear next step. Onboarding should teach by doing, not by lecturing.
+
+Weak empty state:
+
+- "No data found."
+- "Nothing here yet."
+
+Strong:
+
+- "No projects yet. Create your first project to start tracking work."
+  [Create project]
+- "No notifications. You're all caught up."
+- "Your inbox is empty. Invite a teammate to get started."
+  [Invite teammate]
+
+Rules:
+1. **One primary action.** "Create project" is the button. A second, secondary link is fine ("View a sample project").
+2. **Acknowledge the state.** Users check whether the system is broken or empty. "You're all caught up" answers that.
+3. **Explain the value in one line.** "Create a project to assign tasks and track progress."
+4. **Illustration is optional.** A simple icon signals "this is intentional"; a complex illustration adds weight without meaning.
+5. **Onboarding in three steps, not twelve.** Welcome → first real action → done. Each step should complete a task, not read a tip.
+6. **Progressive disclosure.** Show advanced options after the first success, not before.
+7. **Never block the product on onboarding.** Users must reach the core value within 30 seconds.
+8. **Test with five users.** If a first-time user cannot create the first item without help, the empty state failed.
+
+Exercise: write an empty state for a new billing page with no invoices.
+
+Answer: "No invoices yet. When you create your first invoice, it will appear here." [Create invoice] — acknowledges, explains, one action.
+@@@ END
+
+@@@ USER
+How do I write a cover letter for a career change without sounding apologetic?
+@@@ ASSISTANT
+Do not apologize for switching fields. Transfer evidence: show that your past work already required the skills the new role needs, in a different context.
+
+Weak opening:
+
+- "Although I have no experience in this field, I am a hard worker and eager to learn..."
+
+Strong opening:
+
+- "Over five years automating warehouse reporting in Python, I built data pipelines, scheduled jobs, and documented them for non-technical users. I want to bring that same practice to backend engineering, where the problems are the same and the stakes are higher."
+
+Structure:
+
+1. **One hook paragraph.** Why this role, why now, in two sentences. Name the specific work, not the industry.
+2. **Three transferable proofs.** Each proof: situation, skill used, result with a number. "Reduced report generation from 4 hours to 20 minutes with a scheduled Python pipeline."
+3. **Why this company.** Reference a real product, value, or engineering practice. Generic praise ("innovative, fast-moving") reads as filler.
+4. **Close with a low-friction ask.** "I would welcome a 30-minute conversation about how I could contribute to [team]."
+
+Rules:
+- Never say "passionate", "fast learner", or "hard worker" without evidence. Those are claims, not proof.
+- One page. Address hiring manager by name where known.
+- Do not repeat the resume. The letter explains the narrative; the resume lists the facts.
+- Quantify: time saved, errors reduced, users served, cost cut.
+- Acknowledge the switch in one sentence, then move on. Two sentences max.
+
+Exercise: rewrite this line.
+
+- "I have no experience with Kubernetes but I am willing to learn."
+
+Answer: "I have deployed and operated containerized services with Docker and systemd units for three years, and I am now learning Kubernetes orchestration for multi-service deployments." One honest sentence, plus evidence.
+@@@ END
+
+@@@ USER
+How do I answer "Tell me about a time you disagreed with a teammate" using STAR?
+@@@ ASSISTANT
+STAR is Situation, Task, Action, Result. The interviewer wants to see how you reason, not who was right.
+
+Structure:
+
+- **Situation (2 sentences).** Set the scene with roles and the decision. "We were designing the payments API and my teammate wanted to store card tokens in our database."
+- **Task (1 sentence).** What you had to decide. "I needed to pick a storage model before the contract with our processor was signed."
+- **Action (the bulk).** What you did: what you asked, what data you brought, what you proposed. "I asked for the compliance requirements from our processor, wrote a one-page comparison of tokenized vs. raw storage, and proposed a trial with the token vault."
+- **Result (1–2 sentences with numbers).** What happened. "We adopted the vault; card data never touches our servers, and the audit passed without findings. I also documented the decision so the next team would not relitigate it."
+
+Rules:
+- Stay on your actions. Never "he was wrong" or "management forced us". Describe evidence and process.
+- Admit what you learned. "I should have involved security earlier" shows growth.
+- Keep it under 90 seconds spoken. Details only if asked.
+- No confidential details: company names, figures, and unpublished features stay out.
+- End with the outcome, not the conflict.
+
+Exercise: answer in 90 seconds.
+
+Prompt: "Tell me about a production bug you caused."
+
+Answer shape: Situation (checkout totals wrong after a deploy), Task (find and fix before the afternoon peak), Action (checked recent deploys, found a rounding change, reverted and added a property test over totals), Result (bug fixed in 40 minutes, zero customer impact, test now in CI).
+@@@ END
+
+@@@ USER
+How do I write a postmortem that is blameless and actually useful?
+@@@ ASSISTANT
+A postmortem is a timeline of facts, a list of verified causes, and a set of owned fixes. It is not a verdict on any person.
+
+Structure:
+
+1. **Summary (3 lines).** What happened, when, for how long, and the user impact.
+2. **Timeline.** Timestamped facts only: deploys, alerts, actions taken, workarounds. No interpretation in this section.
+3. **Root causes.** Verified, with evidence. "The migration added a non-null column without a default, and the new code path wrote before the migration finished."
+4. **What worked.** Detection, rollback, communication. Credit the system and the responders.
+5. **What did not work.** Where the system allowed the error: missing test, no load test, alert that fired late.
+6. **Action items.** Each item: owner, deadline, and a measurable done criterion. "Add a migration smoke test to CI. Owner: Dana. Due: Dec 5."
+7. **Follow-ups.** Open questions and monitoring to add.
+
+Rules:
+- "Human error" is never a root cause. If a person could make the mistake, the system must prevent it. Replace it with the missing guardrail.
+- Blame the process, not the person: "The deploy checklist did not include a migration dry run" beats "Alex forgot to check".
+- Quantify impact: users affected, duration, error rate, data loss (or confirmed none).
+- Name the detection gap: how long until the first alert, and why.
+- Publish internally within 48 hours. A postmortem that never ships changes nothing.
+- Review action items monthly until closed. An action item without a date is a wish.
+
+Exercise: rewrite this root cause.
+
+- Root cause: "The engineer made a typo in the SQL."
+
+Answer: "The migration was applied without a dry-run in CI, and the schema change was not idempotent, so a retry produced a partial state. Fixes: idempotent migrations, a CI dry-run step, and a rollback script tested weekly."
+@@@ END
+
+@@@ USER
+How do I write a product launch announcement that respects time?
+@@@ ASSISTANT
+Lead with the one thing the reader can do differently. Write for skimmers: headline, one-line value, screenshot or demo, two bullet proof points, one link.
+
+Structure:
+
+- **Headline = outcome.** "Export any report to CSV in one click" beats "Introducing our new data export feature."
+- **One sentence of value.** Who it helps, what problem it removes.
+- **Show it.** One screenshot or 15-second GIF. Text-only announcements underperform.
+- **Two proof points.** A number or a quote: "Cut manual reporting from 2 hours to 5 minutes per week." "Used by 400 teams in beta."
+- **One link and one date.** "Try it today" with a single URL. No three links, no "sign up, read docs, join webinar".
+- **What it does not do.** One honest limitation prevents disappointment.
+
+Rules:
+- 120 words maximum for email; longer is fine for a blog post but skimmability still wins.
+- One announcement per launch. A digest with ten features teaches nothing.
+- No "revolutionary", "game-changing", "next-generation". Adjectives are cheap; outcomes are not.
+- Mention pricing or plan requirements in the same message, not after a click.
+- Send to the users who benefit, not the whole list. Relevance beats reach.
+- Include a text alternative for the screenshot: alt text describing the screen.
+
+Exercise: rewrite this subject line.
+
+- Subject: "New Feature Announcement: Advanced Analytics 2.0 is Here!"
+- Better: "Now you can export any report to CSV in one click"
+@@@ END
+
+@@@ USER
+How do I write a data-retention policy in plain English that non-lawyers can follow?
+@@@ ASSISTANT
+State what is kept, why, for how long, how to delete it, and who is responsible. Avoid legal jargon; every sentence should survive being read aloud.
+
+Template:
+
+**What we keep**
+
+- Account name, email, and billing contact: to run the service and bill you.
+- Usage logs (last 12 months): to debug problems and detect abuse.
+- Support tickets (3 years): to answer follow-up questions and meet tax record duties.
+- Invoices (7 years): for tax and accounting law.
+
+**What we delete**
+
+- Deleted accounts: anonymized within 30 days; backups purged within 90 days.
+- Marketing emails without consent: never stored after unsubscribing.
+- File uploads marked temporary: deleted after 30 days.
+
+**How to delete your data**
+
+- Settings → Privacy → Export data, then Delete account. Export is available for 30 days after a delete request.
+- Email privacy@example.com for deletion requests that the settings page cannot do. We respond within 30 days.
+
+**Who is responsible**
+
+- Product owner approves any change to retention periods.
+- Engineering purges expired data with an automated monthly job.
+- Legal reviews this policy once a year.
+
+Rules:
+- One table: data type, purpose, retention, deletion method. Plain words, no "shall", "hereby", "pursuant to".
+- Numbers are mandatory. "As long as necessary" means nothing.
+- Explain backups honestly: deletion from live systems now, from backups within 90 days.
+- Name the human or role who owns the policy. Anonymous policies are not maintained.
+- Provide a non-technical path: settings page or email, not "submit a form in triplicate".
+@@@ END
+
+@@@ USER
+How do I write a support reply that is human and not robotic?
+@@@ ASSISTANT
+Name the person, acknowledge the friction, give the fix in steps, state the timeframe, and ask one question. No filler.
+
+Template:
+
+"Hi Maya,
+
+Thanks for reporting this — I can reproduce the export issue on large accounts, and I'm sorry it blocked your billing run.
+
+Here's what to try:
+1. Open Settings → Exports and set the date range to the last 90 days.
+2. If the export still fails, I can trigger a server-side export for you today.
+
+I expect the full fix to ship next Tuesday. Is the 90-day range enough for your close, or do you need the full year?
+
+Best,
+Daniel"
+
+Rules:
+1. **Open with the person's name and the specific problem.** "Sorry you're having trouble" is filler.
+2. **Acknowledge impact, not just the bug.** "Blocked your billing run" beats "understood".
+3. **Number the steps.** Two to four steps, each one action.
+4. **Give a timeframe.** "Next Tuesday" is a commitment; "soon" is not.
+5. **Ask one question.** A short list of questions gets no answer. One question gets a reply.
+6. **Sign with a name.** "Support Team" is a faceless department; "Daniel" is a person.
+7. **Do not paste the docs.** Refuse, explain, offer the path: "I can't email the invoice, but you can download it in Settings → Billing."
+
+Exercise: rewrite this reply.
+
+- "Dear user, we apologize for any inconvenience. Please refer to our help center article."
+
+Answer: "Hi Sara, your invoice from March is in Settings → Billing → Documents. If you still need it after that, I can resend it today."
+@@@ END
+
+@@@ USER
+How do I write UX copy for empty states and error messages?
+@@@ ASSISTANT
+Two rules: name the user's next step, and say what the system did. Every message should let a first-time user act without help.
+
+Empty state pattern:
+
+- Headline (what this is): "No projects yet"
+- One line (why it matters): "Create a project to assign tasks and track progress."
+- One primary action: [Create project]
+- Optional secondary link: "View a sample project"
+
+Error pattern:
+
+- What happened: "We couldn't save your changes."
+- What it means: "Your draft is still on this device."
+- Next step: "Check your connection and try again."
+
+Rules:
+1. One action per screen. Two buttons compete; the user does neither.
+2. Verbs name outcomes: "Create project", "Delete 12 messages", "Download invoice (PDF)". Never "Click here", "OK", or "Submit".
+3. Errors blame the system, not the user: "We couldn't load your orders" beats "You have no orders" when the request failed.
+4. Say what was saved. "Your draft is saved. The payment did not go through." Prevents duplicate work.
+5. Confirm destructive actions by repeating the object: dialog "Delete project?" with confirm "Delete project", not "Yes".
+6. Field errors inline, not in a toast that disappears.
+7. Keep tone calm for money and data-loss errors. No "Oops!" on a payment failure.
+8. Every error needs a next step: "Try again", "Sign in", "Choose a smaller file".
+
+Exercise: rewrite these.
+
+1. "No data found."
+2. "Error 400"
+3. "Submit"
+
+Answers:
+
+1. "No projects yet. Create your first project to start tracking work." [Create project]
+2. "We couldn't read that request. Check the fields and try again."
+3. "Send message" or "Publish post" — the verb matches the action.
+@@@ END
+
+@@@ USER
+How do I write release notes for end users?
+@@@ ASSISTANT
+What the user can do now, not what changed in the code. One line per change: action + benefit.
+
+Strong:
+
+- "Export any report to CSV in one click (Settings → Reports → Export)."
+- "Notifications now arrive within seconds instead of minutes."
+- "Fixed a bug where deleted projects reappeared in search results."
+
+Rules:
+1. User verb first: "Export", "See", "Get". Not "Refactor" or "Migrate".
+2. Where to find it. A feature the user cannot find does not exist.
+3. One line per item.
+4. Say who it helps: "For admins:" or "For all users:".
+5. Name user-reported fixes: "Fixed the duplicate-charge bug some users saw on Nov 3."
+6. No internal codes, PR numbers, or tickets.
+7. Breaking changes first, with a migration path.
+8. One screenshot for the headline change; text for the rest.
+@@@ END
+
+@@@ USER
+How do I write an abstract for a technical talk?
+@@@ ASSISTANT
+One outcome, one approach, one proof. First sentence decides.
+
+Title: "Cutting p95 latency from 900 ms to 120 ms without rewriting the API"
+
+Abstract:
+
+"Our orders API was timing out during peak hours. We profiled the hot path and found 70% of the time in three unindexed queries and a synchronous external call. We fixed it with two composite indexes, a read replica for reporting, and an async webhook for the external dependency.
+
+You will leave with the profiling workflow we used, the exact index definitions, and the load test we now run in CI."
+
+Rules:
+1. Title = result. Numbers win.
+2. First sentence = problem + stakes.
+3. One approach, three concrete steps.
+4. What the audience takes home: a workflow, checklist, or code.
+5. Under 250 words.
+6. No marketing. Name tools and tradeoffs.
+7. Speaker credibility in one line.
+@@@ END
+
+@@@ USER
+How do I write a cold email that does not read as spam?
+@@@ ASSISTANT
+One specific observation, one relevant proof, one small ask.
+
+```
+Subject: Your Q3 report export time
+
+Hi Lena,
+
+I noticed your team exports the weekly usage report manually. Two similar finance teams cut that from two hours to five minutes a month by scheduling the export.
+
+Happy to send a two-minute demo showing the scheduled export. Would Tuesday at 10 am work?
+
+Best, Tom
+```
+
+Rules:
+- Personalize with a verifiable fact, not "I saw your blog post".
+- One proof point, a number, not three.
+- One small ask: "Would a 2-minute demo work?" beats "pick your brain".
+- Subject = the observation, under 6 words.
+- Under 100 words.
+- Honest opt-out: "If this is not a priority, no need to reply."
+- Never fake a reply thread. No "Re:" on a first email.
+@@@ END
+
+@@@ USER
+How do I write a postmortem action item that actually ships?
+@@@ ASSISTANT
+Owner, deadline, and a measurable done criterion. An action item without all three is a wish.
+
+Weak:
+
+- "Improve monitoring."
+
+Strong:
+
+- "Add an alert when the DLQ depth exceeds 0. Owner: Dana. Due: Dec 5. Done when the alert has fired in a staging drill."
+
+Rules:
+1. One owner. "The team" is no one.
+2. A date. "Soon" and "Q1" are not dates.
+3. A done criterion you can check without judgment. "Alert fired in a staging drill" is checkable; "monitoring improved" is not.
+4. Effort estimate. If it is larger than a week, split it.
+5. Review monthly. A postmortem that nobody re-reads changes nothing.
+6. Publish the list with the postmortem, not in a separate ticket.
+7. Close items publicly when done; the team needs to see the loop close.
+@@@ END
+
+@@@ USER
+How do I write a changelog entry for developers?
+@@@ ASSISTANT
+Version, date, what changed, and who is affected. One entry per change, linked to a migration guide when breaking.
+
+Template:
+
+```
+## 2.4.0 — 2026-11-07
+
+### Added
+- `POST /v1/invoices` creates a draft invoice. Requires `invoices:write`.
+
+### Fixed
+- `GET /v1/search` no longer returns stale results after a filter change.
+- Export to CSV now streams in chunks; accounts with >10k rows no longer time out.
+
+### Deprecated
+- `GET /v1/reports/csv` is deprecated. Use `POST /v1/reports/jobs` instead. Removal: 2027-11-07.
+
+### Removed
+- `GET /v1/legacy/tokens` removed in 2.3.0. See migration guide.
+```
+
+Rules:
+1. Keep-a-Changelog format: Added, Changed, Deprecated, Removed, Fixed, Security.
+2. Breaking changes first, in their own section, with a before/after example.
+3. Deprecation includes the sunset date and the replacement.
+4. No internal ticket numbers as the only reference. Explain the change.
+5. One entry per change that users must act on.
+6. Date every release. "Latest" is not a version.
+7. Link each breaking entry to a migration guide.
+@@@ END
+
+@@@ USER
+How do I write console errors and API error messages for developers?
+@@@ ASSISTANT
+Developers need three things: a stable code, a human sentence, and the request id.
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "The email field is invalid.",
+    "details": { "field": "email", "reason": "invalid_format" },
+    "requestId": "req_9fK2a"
+  }
+}
+```
+
+Rules:
+1. `code` is the machine contract. Clients branch on it. Never change a published code's meaning.
+2. `message` is for humans. It can improve without breaking clients.
+3. `details` carries field and reason so a form can highlight the exact input.
+4. `requestId` matches the `X-Request-Id` header and the server log line. Without it, every bug report becomes a guess.
+5. Status codes: 400 validation, 401 unauthenticated, 403 forbidden, 404 not found, 409 conflict, 413 too large, 422 semantic validation, 429 rate limited, 5xx internal.
+6. Never expose SQL, stack traces, or internal URLs in a message. Log them server-side with the request id.
+7. One error shape for the whole API. Ad-hoc shapes per endpoint double the client code.
+8. Log every 5xx with user id, route, and duration. A 500 with no log line is unfixable.
+
+Exercise: fix this response.
+
+- `500 { "error": "TypeError: Cannot read properties of undefined (reading 'email') at users.ts:42" }`
+
+Answer: `500 { "error": { "code": "internal_error", "message": "Something went wrong.", "requestId": "req_9fK2a" } }` with the stack logged server-side under that request id.
+@@@ END
+
+@@@ USER
+How do I write a postmortem that is blameless and useful?
+@@@ ASSISTANT
+Facts first, causes with evidence, fixes with owners and dates. Never a verdict on a person.
+
+Structure:
+
+1. **Summary (3 lines).** What happened, when, how long, user impact.
+2. **Timeline.** Timestamped facts only: deploys, alerts, actions, workarounds.
+3. **Root causes.** Verified, with evidence. "The migration added a non-null column without a default, and the new code wrote before the migration finished."
+4. **What worked.** Detection, rollback, communication.
+5. **What did not work.** The missing guardrail: test, load test, or late alert.
+6. **Action items.** Owner + deadline + measurable done criterion.
+
+Rules:
+- "Human error" is never a root cause. If a person could make the mistake, the system must prevent it. Replace it with the missing guardrail.
+- Blame the process: "The deploy checklist lacked a migration dry run" beats "Alex forgot to check".
+- Quantify: users affected, duration, error rate, confirmed data loss or none.
+- Publish within 48 hours. Review action items monthly until closed. An action item without a date is a wish.
+
+Exercise: rewrite this root cause.
+
+- "The engineer made a typo in the SQL."
+
+Answer: "The migration ran without a CI dry run and was not idempotent, so a retry left a partial state. Fixes: idempotent migrations, a CI dry-run step, and a tested rollback script."
+@@@ END
+
+@@@ USER
+How do I write a privacy notice summary a normal person can understand?
+@@@ ASSISTANT
+Answer five questions in plain words, with numbers. Link to the full legal notice; do not replace it.
+
+**What we collect**
+- Account details (name, email) to run your account.
+- What you create (files, projects, settings) to show it back to you.
+- Technical logs (IP, device, time) to keep the service secure.
+- Payment details are handled by our payment provider; we never see your card number.
+
+**Why**
+- To provide the service you asked for.
+- For transactional emails (receipts, password resets).
+- To improve the product with anonymized aggregate statistics.
+- Marketing emails only with explicit consent.
+
+**Who sees it**
+- Only you, unless you share it or invite collaborators.
+- Subprocessors (hosting, email, payments) under contract, only to run the service.
+- We never sell personal data.
+
+**How long**
+- While your account is active, plus 30 days after deletion.
+- Backups purged within 90 days. Invoices kept 7 years for tax law.
+
+**Your controls**
+- Export: Settings → Privacy → Export data.
+- Delete: Settings → Privacy → Delete account.
+- Unsubscribe in every marketing email.
+- Contact privacy@example.com; reply within 30 days.
+
+Test: a 14-year-old should understand the summary. If not, simplify.
+@@@ END
+
+@@@ USER
+How do I write a bug report that gets fixed in days?
+@@@ ASSISTANT
+Environment, steps, expected vs. actual, evidence. Nothing else.
+
+```
+Title: Export to CSV fails with 500 for accounts with >10k rows
+
+Environment:
+- Production, app 2.4.1, Chrome 130, account 48291
+- Request id: req_9fK2a
+
+Steps:
+1. Sign in as admin.
+2. Reports → Usage.
+3. Date range 2026-01-01 to 2026-10-01.
+4. Click Export CSV.
+
+Expected: file downloads within 30 seconds.
+Actual: 500 Internal Server Error, request id req_9fK2a.
+
+Evidence:
+- curl + response (token redacted)
+- Server log excerpt with request id
+- Screenshot of the failed request in DevTools
+- Tried: 90-day range succeeds.
+
+Impact: blocks monthly billing. Workaround: split into 3 exports.
+```
+
+Rules:
+- Title = symptom + scope. "Export fails for >10k rows" beats "Bug in export".
+- Steps runnable by someone who never saw the bug.
+- Expected vs. actual, one line each.
+- Evidence, not opinion: request ids, logs, screenshots. Label hypotheses as hypotheses.
+- One bug per report. Five symptoms become zero fixes.
+@@@ END
+
+@@@ USER
+How do I write API documentation developers actually read?
+@@@ ASSISTANT
+When to use it, one minimal example, then errors, limits, and examples.
+
+```
+POST /v1/invoices
+Creates a draft invoice for a customer. Use this to prepare a bill before sending it.
+Requires the `invoices:write` scope.
+
+Request
+POST /v1/invoices
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+
+{
+  "customerId": "cus_123",
+  "lines": [{ "description": "Consulting", "quantity": 2, "unitPriceCents": 15000 }],
+  "currency": "USD"
+}
+
+Response 201
+{ "id": "inv_456", "status": "draft", "totalCents": 30000, "createdAt": "2026-11-07T12:00:00Z" }
+
+Errors
+- 400 validation_error: body failed schema validation
+- 401 unauthenticated
+- 403 forbidden: scope invoices:write required
+- 409 duplicate_resource: key reused with a different body
+
+Limits
+- 100 requests/minute per account. Max 200 line items.
+
+Notes
+- Created as a draft. Call POST /v1/invoices/:id/send to issue it.
+```
+
+Rules:
+- First line = when to use it.
+- One minimal example per section, copy-pasteable `curl`.
+- Errors before parameters; reference tables below the fold.
+- Idempotency, pagination, limits are mandatory fields. "Not applicable" is an explicit statement.
+- Units and formats: `unitPriceCents`, ISO 8601 with timezone stated.
+@@@ END
+
+@@@ USER
+How do I answer behavioral interview questions with STAR?
+@@@ ASSISTANT
+Situation, Task, Action, Result, under 90 seconds, on your actions.
+
+- **Situation (2 sentences).** "We were designing the payments API and my teammate wanted to store card tokens in our database."
+- **Task (1 sentence).** "I needed to pick a storage model before the processor contract was signed."
+- **Action (the bulk).** "I asked for the compliance requirements, wrote a one-page comparison, and proposed a trial with the token vault."
+- **Result (1–2 sentences with numbers).** "We adopted the vault; card data never touches our servers, and the audit passed without findings."
+
+Rules:
+- Stay on your actions.
+- Admit what you learned.
+- No confidential details.
+- End with the outcome.
+@@@ END

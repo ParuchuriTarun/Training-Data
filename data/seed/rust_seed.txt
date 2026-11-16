@@ -1,0 +1,1148 @@
+@@@ USER
+Write a Rust struct for a rectangle with an area method and make it printable with println!.
+@@@ ASSISTANT
+Here is a `Rectangle` type with a constructor, two methods and a human-readable `Display` implementation.
+
+```rust
+use std::fmt;
+
+#[derive(Debug, Clone, PartialEq)]
+struct Rectangle {
+    width: f64,
+    height: f64,
+}
+
+impl Rectangle {
+    fn new(width: f64, height: f64) -> Self {
+        Self { width, height }
+    }
+
+    fn area(&self) -> f64 {
+        self.width * self.height
+    }
+
+    fn is_square(&self) -> bool {
+        (self.width - self.height).abs() < f64::EPSILON
+    }
+}
+
+impl fmt::Display for Rectangle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}x{} rectangle (area {:.2})", self.width, self.height, self.area())
+    }
+}
+
+fn main() {
+    let r = Rectangle::new(3.0, 4.5);
+    println!("{}", r);
+    println!("square? {}", r.is_square());
+}
+```
+
+What this does:
+- `#[derive(Debug, Clone, PartialEq)]` lets you print with `{:?}`, copy the value with `.clone()` and compare two rectangles with `==`.
+- `new` is an associated function (no `self`), the usual way to build a struct in Rust.
+- `area` and `is_square` borrow the rectangle with `&self`, so calling them does not consume it.
+- Implementing `fmt::Display` is what makes `println!("{}", r)` work.
+@@@ END
+
+@@@ USER
+Explain traits in Rust with an example of both static dispatch and dynamic dispatch.
+@@@ ASSISTANT
+A trait describes behavior that different types can share. You can use it two ways: with generics (static dispatch, resolved at compile time) or with `dyn Trait` (dynamic dispatch, resolved at run time).
+
+```rust
+trait Shape {
+    fn area(&self) -> f64;
+    fn name(&self) -> String;
+
+    // A default method: types get it for free.
+    fn describe(&self) -> String {
+        format!("{} with area {:.2}", self.name(), self.area())
+    }
+}
+
+struct Circle {
+    radius: f64,
+}
+
+struct Square {
+    side: f64,
+}
+
+impl Shape for Circle {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.radius * self.radius
+    }
+    fn name(&self) -> String {
+        "Circle".to_string()
+    }
+}
+
+impl Shape for Square {
+    fn area(&self) -> f64 {
+        self.side * self.side
+    }
+    fn name(&self) -> String {
+        "Square".to_string()
+    }
+}
+
+// Static dispatch: the compiler generates one copy per concrete type.
+fn print_generic<T: Shape>(shape: &T) {
+    println!("{}", shape.describe());
+}
+
+// Dynamic dispatch: one function, a vtable lookup at run time.
+fn total_area(shapes: &[Box<dyn Shape>]) -> f64 {
+    shapes.iter().map(|s| s.area()).sum()
+}
+
+fn main() {
+    print_generic(&Square { side: 3.0 });
+
+    let shapes: Vec<Box<dyn Shape>> = vec![
+        Box::new(Circle { radius: 1.5 }),
+        Box::new(Square { side: 2.0 }),
+    ];
+    for s in &shapes {
+        println!("{}", s.describe());
+    }
+    println!("total area: {:.2}", total_area(&shapes));
+}
+```
+
+When to pick which:
+- Use generics (`T: Shape`) when the type is known at compile time. It is the fastest option because calls can be inlined.
+- Use `Box<dyn Shape>` when you need one collection holding different types, like the `Vec` above. It costs a small pointer lookup per call.
+@@@ END
+
+@@@ USER
+How do I do proper error handling in Rust? Show a custom error type that works with the ? operator.
+@@@ ASSISTANT
+Define one error enum for your module, implement `Display` and `Error` for it, and add `From` conversions. After that the `?` operator converts errors automatically.
+
+```rust
+use std::fmt;
+use std::fs;
+use std::num::ParseIntError;
+
+#[derive(Debug)]
+enum ConfigError {
+    Io(std::io::Error),
+    Parse(ParseIntError),
+    Missing(&'static str),
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConfigError::Io(e) => write!(f, "could not read file: {}", e),
+            ConfigError::Parse(e) => write!(f, "invalid number: {}", e),
+            ConfigError::Missing(key) => write!(f, "missing key: {}", key),
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
+impl From<std::io::Error> for ConfigError {
+    fn from(e: std::io::Error) -> Self {
+        ConfigError::Io(e)
+    }
+}
+
+impl From<ParseIntError> for ConfigError {
+    fn from(e: ParseIntError) -> Self {
+        ConfigError::Parse(e)
+    }
+}
+
+fn read_port(path: &str) -> Result<u16, ConfigError> {
+    let text = fs::read_to_string(path)?; // io::Error -> ConfigError
+    let line = text
+        .lines()
+        .find(|l| l.starts_with("port="))
+        .ok_or(ConfigError::Missing("port"))?;
+    let port = line["port=".len()..].trim().parse::<u16>()?; // ParseIntError -> ConfigError
+    Ok(port)
+}
+
+fn main() {
+    match read_port("config.txt") {
+        Ok(p) => println!("port = {}", p),
+        Err(e) => eprintln!("error: {}", e),
+    }
+}
+```
+
+How it works:
+- `?` returns early with `Err(...)` and calls `From::from` to convert the error type, so each `?` line stays short.
+- `ok_or` turns an `Option` into a `Result`, which lets you use `?` on a missing value too.
+- For application code (not libraries) the `anyhow` crate gives you the same convenience with less boilerplate; for libraries the `thiserror` crate can derive `Display` and `From` for you.
+@@@ END
+
+@@@ USER
+Write a Rust program that reads a text file and prints the 10 most common words.
+@@@ ASSISTANT
+This program takes the file path as a command-line argument, counts lowercase words in a `HashMap`, and prints the top 10.
+
+```rust
+use std::collections::HashMap;
+use std::env;
+use std::fs::File;
+use std::io::{self, BufRead, BufReader};
+
+fn count_words(path: &str) -> io::Result<HashMap<String, usize>> {
+    let reader = BufReader::new(File::open(path)?);
+    let mut counts = HashMap::new();
+    for line in reader.lines() {
+        let line = line?;
+        for word in line.split_whitespace() {
+            let cleaned: String = word
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+                .to_lowercase();
+            if !cleaned.is_empty() {
+                *counts.entry(cleaned).or_insert(0) += 1;
+            }
+        }
+    }
+    Ok(counts)
+}
+
+fn main() -> io::Result<()> {
+    let path = env::args().nth(1).expect("usage: wordfreq <file>");
+    let counts = count_words(&path)?;
+
+    let mut entries: Vec<(&String, &usize)> = counts.iter().collect();
+    // Highest count first; ties are sorted alphabetically so the output is stable.
+    entries.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+
+    for (word, n) in entries.iter().take(10) {
+        println!("{:>6}  {}", n, word);
+    }
+    Ok(())
+}
+```
+
+Notes:
+- `BufReader` reads the file in chunks, so even a huge file does not need to fit in memory.
+- `entry(...).or_insert(0)` returns a mutable reference to the counter, which is why we dereference with `*`.
+- Run it with `cargo run -- notes.txt`. The `--` separates Cargo's arguments from your program's.
+@@@ END
+
+@@@ USER
+I get "error[E0382]: borrow of moved value: `names`". Here is my code:
+
+```rust
+fn main() {
+    let names = vec![String::from("Ada"), String::from("Linus")];
+    let first = names;
+    println!("{}", names.len());
+    println!("{:?}", first);
+}
+```
+@@@ ASSISTANT
+The error happens because `let first = names;` moves the vector into `first`. After a move, `names` is no longer valid, so `names.len()` on the next line is rejected.
+
+Here is a fixed version that borrows instead of moving:
+
+```rust
+fn count(names: &[String]) -> usize {
+    names.len()
+}
+
+fn main() {
+    let names = vec![String::from("Ada"), String::from("Linus")];
+    let first = &names; // borrow instead of move
+    println!("{}", count(&names));
+    println!("{:?}", first);
+}
+```
+
+Changes made:
+1. `let first = names;` became `let first = &names;`. A shared reference only borrows the vector, so `names` stays usable.
+2. I added a small `count` function that takes `&[String]`. Taking a slice instead of `Vec<String>` means the function only borrows the data and accepts both vectors and arrays.
+
+If you really need two independent copies, use `let first = names.clone();` instead. That duplicates the data, so only do it when you need to.
+@@@ END
+
+@@@ USER
+Show me how iterators and closures work in Rust with a realistic example.
+@@@ ASSISTANT
+Iterators are lazy: adapters like `filter` and `map` do nothing until a consumer such as `collect`, `sum` or `fold` runs them. Closures are small anonymous functions that can capture variables from their surroundings.
+
+```rust
+#[derive(Debug)]
+struct Order {
+    id: u32,
+    customer: &'static str,
+    total: f64,
+    paid: bool,
+}
+
+fn main() {
+    let orders = vec![
+        Order { id: 1, customer: "ana", total: 120.0, paid: true },
+        Order { id: 2, customer: "ben", total: 45.5, paid: false },
+        Order { id: 3, customer: "cy", total: 300.0, paid: true },
+        Order { id: 4, customer: "dee", total: 80.0, paid: false },
+    ];
+
+    // filter + map + sum
+    let paid_total: f64 = orders.iter().filter(|o| o.paid).map(|o| o.total).sum();
+
+    // filter + map + collect into a Vec
+    let unpaid_ids: Vec<u32> = orders.iter().filter(|o| !o.paid).map(|o| o.id).collect();
+
+    // max_by with a float comparison
+    let biggest = orders
+        .iter()
+        .max_by(|a, b| a.total.partial_cmp(&b.total).unwrap())
+        .unwrap();
+
+    // partition into two groups
+    let (small, large): (Vec<&Order>, Vec<&Order>) = orders.iter().partition(|o| o.total < 100.0);
+
+    // a closure that captures a variable
+    let threshold = 100.0;
+    let above = orders.iter().filter(|o| o.total > threshold).count();
+
+    // any / all
+    let has_unpaid = orders.iter().any(|o| !o.paid);
+
+    println!("paid total: {}", paid_total);
+    println!("unpaid ids: {:?}", unpaid_ids);
+    println!("biggest: {} ({})", biggest.customer, biggest.total);
+    println!("small: {}, large: {}", small.len(), large.len());
+    println!("above {}: {}", threshold, above);
+    println!("has unpaid: {}", has_unpaid);
+}
+```
+
+Key points:
+- `.iter()` borrows items; use `.into_iter()` when you want to take ownership.
+- Floats do not implement `Ord`, so `max_by` with `partial_cmp` is used instead of `max`.
+- The closure in `above` borrows `threshold` without any extra syntax.
+@@@ END
+
+@@@ USER
+How do Option and Result combinators work? Include tests.
+@@@ ASSISTANT
+`Option` and `Result` have methods that let you transform values without writing a `match` every time. Here are the most useful ones with unit tests.
+
+```rust
+fn parse_age(input: &str) -> Result<u8, String> {
+    input
+        .trim()
+        .parse::<u8>()
+        .map_err(|e| format!("invalid age '{}': {}", input.trim(), e))
+}
+
+fn age_in_months(input: &str) -> Result<u32, String> {
+    parse_age(input).map(|years| years as u32 * 12)
+}
+
+fn first_even(numbers: &[i32]) -> Option<i32> {
+    numbers.iter().copied().find(|n| n % 2 == 0)
+}
+
+fn describe(numbers: &[i32]) -> String {
+    first_even(numbers)
+        .map(|n| format!("first even is {}", n))
+        .unwrap_or_else(|| "no even numbers".to_string())
+}
+
+fn main() {
+    println!("{:?}", age_in_months("30"));
+    println!("{}", describe(&[1, 3, 8, 10]));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_valid_age() {
+        assert_eq!(parse_age(" 42 "), Ok(42));
+    }
+
+    #[test]
+    fn rejects_text() {
+        assert!(parse_age("abc").is_err());
+    }
+
+    #[test]
+    fn converts_to_months() {
+        assert_eq!(age_in_months("2"), Ok(24));
+    }
+
+    #[test]
+    fn finds_first_even() {
+        assert_eq!(first_even(&[1, 3, 6, 8]), Some(6));
+        assert_eq!(first_even(&[1, 3]), None);
+    }
+
+    #[test]
+    fn describes_result() {
+        assert_eq!(describe(&[5, 7]), "no even numbers");
+    }
+}
+```
+
+Cheat sheet:
+- `map` changes the success value, `map_err` changes the error.
+- `and_then` chains a step that can itself fail.
+- `unwrap_or`, `unwrap_or_else` and `unwrap_or_default` give a fallback instead of panicking.
+- `ok_or` converts `Option` to `Result`; `ok()` converts `Result` back to `Option`.
+- Run the tests with `cargo test`.
+@@@ END
+
+@@@ USER
+Explain lifetimes in Rust with a simple example.
+@@@ ASSISTANT
+A lifetime tells the compiler how long a reference is valid. Most of the time Rust infers them; you only write them when a function or struct returns or stores references and the compiler cannot tell which input they belong to.
+
+```rust
+// The returned reference is valid as long as BOTH inputs are valid.
+fn longest<'a>(a: &'a str, b: &'a str) -> &'a str {
+    if a.len() >= b.len() {
+        a
+    } else {
+        b
+    }
+}
+
+// A struct that borrows text must declare how long the borrow lasts.
+struct Highlight<'a> {
+    text: &'a str,
+    start: usize,
+}
+
+impl<'a> Highlight<'a> {
+    fn first_word(&self) -> &'a str {
+        self.text.split_whitespace().next().unwrap_or("")
+    }
+}
+
+fn main() {
+    let s1 = String::from("lifetimes");
+    let result;
+    {
+        let s2 = String::from("ok");
+        // We copy the answer into an owned String before s2 goes out of scope.
+        result = longest(s1.as_str(), s2.as_str()).to_string();
+    }
+    println!("{}", result);
+
+    let sentence = String::from("borrowed text lives here");
+    let h = Highlight { text: &sentence, start: 0 };
+    println!("{} (starts at {})", h.first_word(), h.start);
+}
+```
+
+How to think about it:
+- `'a` is only a name. `fn longest<'a>(a: &'a str, b: &'a str) -> &'a str` says "the output cannot outlive the shorter-lived input".
+- If we returned the reference directly out of the inner block, the compiler would reject it because `s2` is dropped there. Converting to an owned `String` solves it.
+- If a lifetime error is confusing, the easiest fix is often to return an owned value (`String`, `Vec`) instead of a reference.
+@@@ END
+
+@@@ USER
+Show how to use threads in Rust: a shared counter and message passing.
+@@@ ASSISTANT
+Rust gives you two safe patterns: share state behind `Arc<Mutex<T>>`, or send messages through a channel. This example shows both.
+
+```rust
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+
+fn main() {
+    // 1. Shared counter: Arc = shared ownership, Mutex = one writer at a time.
+    let counter = Arc::new(Mutex::new(0u32));
+    let mut handles = Vec::new();
+    for _ in 0..4 {
+        let counter = Arc::clone(&counter);
+        handles.push(thread::spawn(move || {
+            for _ in 0..1000 {
+                *counter.lock().unwrap() += 1;
+            }
+        }));
+    }
+    for h in handles {
+        h.join().unwrap();
+    }
+    println!("counter = {}", *counter.lock().unwrap());
+
+    // 2. Message passing: workers send results to one receiver.
+    let (tx, rx) = mpsc::channel();
+    for id in 0..3 {
+        let tx = tx.clone();
+        thread::spawn(move || {
+            tx.send(format!("worker {} done", id)).unwrap();
+        });
+    }
+    drop(tx); // close our own sender so the receiver loop can end
+
+    let mut messages: Vec<String> = rx.iter().collect();
+    messages.sort();
+    for m in messages {
+        println!("{}", m);
+    }
+}
+```
+
+Why it works:
+- `move` closures take ownership of what they use, which is required because a thread may outlive the function that created it.
+- `join()` waits for a thread; without it `main` could exit before the work finishes.
+- `drop(tx)` matters: the receiver only stops waiting when every sender, including the original, is gone.
+- Prefer channels when threads only need to hand results over; use a `Mutex` when they truly share state.
+@@@ END
+
+@@@ USER
+Implement a generic Stack<T> in Rust with unit tests.
+@@@ ASSISTANT
+This `Stack<T>` wraps a `Vec<T>` and exposes only stack operations.
+
+```rust
+#[derive(Debug, Default)]
+pub struct Stack<T> {
+    items: Vec<T>,
+}
+
+impl<T> Stack<T> {
+    pub fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+
+    pub fn push(&mut self, item: T) {
+        self.items.push(item);
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        self.items.pop()
+    }
+
+    pub fn peek(&self) -> Option<&T> {
+        self.items.last()
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_and_pop_follow_lifo_order() {
+        let mut s = Stack::new();
+        s.push(1);
+        s.push(2);
+        s.push(3);
+        assert_eq!(s.pop(), Some(3));
+        assert_eq!(s.pop(), Some(2));
+        assert_eq!(s.len(), 1);
+    }
+
+    #[test]
+    fn peek_does_not_remove() {
+        let mut s = Stack::new();
+        s.push("a");
+        assert_eq!(s.peek(), Some(&"a"));
+        assert_eq!(s.len(), 1);
+    }
+
+    #[test]
+    fn empty_stack_returns_none() {
+        let mut s: Stack<i32> = Stack::new();
+        assert!(s.is_empty());
+        assert_eq!(s.pop(), None);
+        assert_eq!(s.peek(), None);
+    }
+}
+```
+
+Design notes:
+- `pop` returns `Option<T>` instead of panicking, so callers must handle the empty case.
+- `peek` returns `Option<&T>`, a borrow, so the item stays in the stack.
+- Clippy asks for `is_empty` whenever you provide `len`, which is why both are there.
+@@@ END
+
+@@@ USER
+Model a traffic-light or job state machine in Rust using enums and match.
+@@@ ASSISTANT
+Enums with data are ideal for state machines: every state is a variant and `match` forces you to handle each combination of state and event.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum State {
+    Idle,
+    Running { ticks: u32 },
+    Paused { ticks: u32 },
+    Finished,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Event {
+    Start,
+    Tick,
+    Pause,
+    Resume,
+    Stop,
+}
+
+fn next(state: State, event: Event) -> State {
+    match (state, event) {
+        (State::Idle, Event::Start) => State::Running { ticks: 0 },
+        (State::Running { ticks }, Event::Tick) => State::Running { ticks: ticks + 1 },
+        (State::Running { ticks }, Event::Pause) => State::Paused { ticks },
+        (State::Paused { ticks }, Event::Resume) => State::Running { ticks },
+        (State::Running { .. }, Event::Stop) | (State::Paused { .. }, Event::Stop) => State::Finished,
+        (s, _) => s, // any other event is ignored
+    }
+}
+
+fn main() {
+    let mut state = State::Idle;
+    for event in [Event::Start, Event::Tick, Event::Tick, Event::Pause, Event::Resume, Event::Stop] {
+        state = next(state, event);
+        println!("{:?}", state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counts_ticks_while_running() {
+        let s = next(next(next(State::Idle, Event::Start), Event::Tick), Event::Tick);
+        assert_eq!(s, State::Running { ticks: 2 });
+    }
+
+    #[test]
+    fn pause_keeps_ticks() {
+        let s = next(State::Running { ticks: 5 }, Event::Pause);
+        assert_eq!(s, State::Paused { ticks: 5 });
+    }
+
+    #[test]
+    fn invalid_events_are_ignored() {
+        assert_eq!(next(State::Idle, Event::Tick), State::Idle);
+    }
+}
+```
+
+Why this design is good:
+- Invalid states cannot be represented: `ticks` only exists while running or paused.
+- The final `(s, _) => s` arm documents the rule "ignore unknown events". If you want an error instead, change `next` to return `Result<State, String>`.
+@@@ END
+
+@@@ USER
+Implement binary search in Rust for any ordered type, with tests.
+@@@ ASSISTANT
+This version works on a sorted slice of any type that implements `Ord` and returns the index if found.
+
+```rust
+use std::cmp::Ordering;
+
+pub fn binary_search<T: Ord>(items: &[T], target: &T) -> Option<usize> {
+    let (mut low, mut high) = (0usize, items.len());
+    while low < high {
+        let mid = low + (high - low) / 2; // avoids overflow of (low + high)
+        match items[mid].cmp(target) {
+            Ordering::Equal => return Some(mid),
+            Ordering::Less => low = mid + 1,
+            Ordering::Greater => high = mid,
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_existing_values() {
+        let v = [1, 3, 5, 7, 9, 11];
+        assert_eq!(binary_search(&v, &1), Some(0));
+        assert_eq!(binary_search(&v, &7), Some(3));
+        assert_eq!(binary_search(&v, &11), Some(5));
+    }
+
+    #[test]
+    fn returns_none_when_missing() {
+        let v = [1, 3, 5];
+        assert_eq!(binary_search(&v, &4), None);
+        assert_eq!(binary_search(&v, &100), None);
+    }
+
+    #[test]
+    fn handles_empty_and_strings() {
+        let empty: [i32; 0] = [];
+        assert_eq!(binary_search(&empty, &1), None);
+        let words = ["apple", "mango", "pear"];
+        assert_eq!(binary_search(&words, &"mango"), Some(1));
+    }
+}
+```
+
+Details:
+- The search keeps the invariant "if the target exists it lies in `low..high`", and shrinks that range each loop, so it runs in O(log n).
+- The input must already be sorted; otherwise the result is meaningless.
+- In real code prefer the standard library's `slice::binary_search`, which also tells you where to insert a missing value.
+@@@ END
+
+@@@ USER
+Write a custom iterator in Rust that yields Fibonacci numbers, then use it with iterator adapters.
+@@@ ASSISTANT
+Implement the `Iterator` trait by writing `next`; you immediately get every adapter (`take`, `filter`, `sum`, ...) for free.
+
+```rust
+struct Fibonacci {
+    current: u64,
+    next: u64,
+}
+
+impl Fibonacci {
+    fn new() -> Self {
+        Fibonacci { current: 0, next: 1 }
+    }
+}
+
+impl Iterator for Fibonacci {
+    type Item = u64;
+
+    fn next(&mut self) -> Option<u64> {
+        let result = self.current;
+        // checked_add returns None on overflow, which ends the iterator safely.
+        let new_next = self.current.checked_add(self.next)?;
+        self.current = self.next;
+        self.next = new_next;
+        Some(result)
+    }
+}
+
+fn main() {
+    let first_ten: Vec<u64> = Fibonacci::new().take(10).collect();
+    println!("{:?}", first_ten);
+
+    let even_sum: u64 = Fibonacci::new()
+        .take_while(|&n| n < 100)
+        .filter(|n| n % 2 == 0)
+        .sum();
+    println!("sum of even Fibonacci numbers below 100: {}", even_sum);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn starts_correctly() {
+        let v: Vec<u64> = Fibonacci::new().take(10).collect();
+        assert_eq!(v, vec![0, 1, 1, 2, 3, 5, 8, 13, 21, 34]);
+    }
+
+    #[test]
+    fn even_sum_below_100() {
+        let s: u64 = Fibonacci::new().take_while(|&n| n < 100).filter(|n| n % 2 == 0).sum();
+        assert_eq!(s, 44);
+    }
+}
+```
+
+Notes:
+- The iterator is infinite in theory, so always limit it with `take` or `take_while`.
+- Using `?` on an `Option` inside a function returning `Option` is a neat way to stop on overflow.
+@@@ END
+
+@@@ USER
+How do I set up a Rust project with a library and a binary, plus unit and integration tests?
+@@@ ASSISTANT
+Put the reusable logic in `src/lib.rs`, keep `src/main.rs` thin, and add integration tests under `tests/`.
+
+Project layout:
+
+```text
+textstats/
+  Cargo.toml
+  src/
+    lib.rs      <- logic + unit tests
+    main.rs     <- command-line wrapper
+  tests/
+    cli.rs      <- integration tests (use only the public API)
+```
+
+`Cargo.toml`:
+
+```toml
+[package]
+name = "textstats"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+```
+
+`src/lib.rs`:
+
+```rust,ignore
+/// Counts the words in a piece of text.
+pub fn word_count(text: &str) -> usize {
+    text.split_whitespace().count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counts_words() {
+        assert_eq!(word_count("one two  three"), 3);
+    }
+}
+```
+
+`src/main.rs`:
+
+```rust,ignore
+use std::io::Read;
+
+fn main() {
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input).expect("could not read stdin");
+    println!("{}", textstats::word_count(&input));
+}
+```
+
+`tests/cli.rs`:
+
+```rust,ignore
+#[test]
+fn empty_text_has_zero_words() {
+    assert_eq!(textstats::word_count(""), 0);
+}
+```
+
+Commands:
+
+```bash
+cargo new textstats          # creates a binary project; add src/lib.rs yourself
+cargo test                   # runs unit tests, integration tests and doc tests
+cargo run < notes.txt        # feed a file to stdin
+```
+
+Why split it this way:
+- Code in `lib.rs` can be tested directly and reused by other crates.
+- Integration tests in `tests/` see your crate like an outside user would, so they catch accidental API breakage.
+@@@ END
+
+@@@ USER
+Show a Rust async example with tokio that runs tasks concurrently.
+@@@ ASSISTANT
+`tokio` is the most common async runtime. This program runs several simulated fetches at the same time, so the total time is about the longest task, not the sum.
+
+`Cargo.toml`:
+
+```toml
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+```
+
+`src/main.rs`:
+
+```rust
+use std::time::Duration;
+use tokio::time::sleep;
+
+async fn fetch_data(id: u32, delay_ms: u64) -> String {
+    sleep(Duration::from_millis(delay_ms)).await;
+    format!("result {}", id)
+}
+
+#[tokio::main]
+async fn main() {
+    // join! runs the futures concurrently and waits for all of them.
+    let (a, b, c) = tokio::join!(fetch_data(1, 300), fetch_data(2, 100), fetch_data(3, 200));
+    println!("{a}, {b}, {c}");
+
+    // spawn runs each future as an independent task on the runtime's thread pool.
+    let handles: Vec<_> = (0..5)
+        .map(|i| tokio::spawn(async move { fetch_data(i, 50 * (5 - i as u64)).await }))
+        .collect();
+    for h in handles {
+        println!("{}", h.await.unwrap());
+    }
+}
+```
+
+What to remember:
+- An `async fn` returns a future that does nothing until it is `.await`ed (or spawned).
+- Use `tokio::time::sleep`, never `std::thread::sleep`, inside async code, otherwise you block the whole worker thread.
+- `h.await.unwrap()` unwraps the `JoinHandle` result; it is an `Err` if the task panicked.
+@@@ END
+
+@@@ USER
+How do I parse and write JSON in Rust with serde?
+@@@ ASSISTANT
+Use `serde` for the derive macros and `serde_json` for the format.
+
+`Cargo.toml`:
+
+```toml
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+```
+
+`src/main.rs`:
+
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct User {
+    id: u32,
+    name: String,
+    email: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+}
+
+fn main() -> Result<(), serde_json::Error> {
+    let raw = r#"{ "id": 7, "name": "Mira", "email": null }"#;
+
+    let user: User = serde_json::from_str(raw)?;
+    println!("{:?}", user);
+
+    let out = serde_json::to_string_pretty(&user)?;
+    println!("{}", out);
+    Ok(())
+}
+```
+
+Explanation:
+- `Option<String>` accepts both a missing field and `null`.
+- `#[serde(default)]` fills `tags` with an empty `Vec` when the key is absent.
+- Both `from_str` and `to_string_pretty` return `Result`, so `?` in a `main` that returns `Result` keeps the code compact.
+- Use `#[serde(rename_all = "camelCase")]` on the struct when the JSON uses camelCase keys.
+@@@ END
+
+@@@ USER
+Build a command-line todo app skeleton in Rust with subcommands using clap.
+@@@ ASSISTANT
+`clap` with the derive API turns a struct and an enum into a full argument parser with `--help` text.
+
+`Cargo.toml`:
+
+```toml
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+```
+
+`src/main.rs`:
+
+```rust
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(name = "todo", version, about = "A tiny todo manager")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Add a new task
+    Add { title: String },
+    /// List tasks
+    List {
+        /// Include finished tasks
+        #[arg(short, long)]
+        all: bool,
+    },
+    /// Mark a task as done
+    Done { id: usize },
+}
+
+fn main() {
+    let cli = Cli::parse();
+    match cli.command {
+        Commands::Add { title } => println!("added: {title}"),
+        Commands::List { all } => println!("listing (all = {all})"),
+        Commands::Done { id } => println!("task {id} done"),
+    }
+}
+```
+
+Try it:
+
+```bash
+cargo run -- add "write docs"
+cargo run -- list --all
+cargo run -- --help
+```
+
+Notes:
+- Doc comments (`///`) become the help text for each command and option.
+- Add persistence next: store tasks as JSON in a file using `serde_json` (see the serde example) and load it at the start of `main`.
+@@@ END
+
+@@@ USER
+Create a small desktop app in Rust with a window, a text box and a button.
+@@@ ASSISTANT
+`eframe` (the framework behind `egui`) is a simple way to build a native desktop GUI in pure Rust. This example is written for eframe 0.29.
+
+`Cargo.toml`:
+
+```toml
+[dependencies]
+eframe = "0.29"
+```
+
+`src/main.rs`:
+
+```rust
+use eframe::egui;
+
+#[derive(Default)]
+struct CounterApp {
+    count: i32,
+    name: String,
+}
+
+impl eframe::App for CounterApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Counter");
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut self.name);
+            });
+            let who = if self.name.is_empty() { "stranger" } else { self.name.as_str() };
+            ui.label(format!("Hello {}, count = {}", who, self.count));
+            if ui.button("+1").clicked() {
+                self.count += 1;
+            }
+            if ui.button("Reset").clicked() {
+                self.count = 0;
+            }
+        });
+    }
+}
+
+fn main() -> eframe::Result<()> {
+    let options = eframe::NativeOptions::default();
+    eframe::run_native(
+        "Counter",
+        options,
+        Box::new(|_cc| Ok(Box::new(CounterApp::default()))),
+    )
+}
+```
+
+How it works:
+- egui is an immediate-mode GUI: `update` runs every frame and you describe the whole UI again each time. State lives in your struct.
+- `ui.button(...).clicked()` is true only on the frame the button is pressed.
+- Build a release binary with `cargo build --release`; the exe is in `target/release/`.
+- eframe's API changes between versions, so check the docs for the version in your `Cargo.toml` if the signature of `run_native` does not match.
+@@@ END
+
+@@@ USER
+Write a minimal REST API in Rust using axum that returns JSON.
+@@@ ASSISTANT
+This example uses axum 0.7 with tokio and serde.
+
+`Cargo.toml`:
+
+```toml
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+```
+
+`src/main.rs`:
+
+```rust
+use axum::{extract::Path, routing::get, Json, Router};
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct Greeting {
+    message: String,
+}
+
+async fn hello(Path(name): Path<String>) -> Json<Greeting> {
+    Json(Greeting {
+        message: format!("Hello, {name}!"),
+    })
+}
+
+async fn health() -> &'static str {
+    "ok"
+}
+
+#[tokio::main]
+async fn main() {
+    let app = Router::new()
+        .route("/health", get(health))
+        .route("/hello/:name", get(hello));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    println!("listening on http://127.0.0.1:3000");
+    axum::serve(listener, app).await.unwrap();
+}
+```
+
+Test it from another terminal:
+
+```bash
+curl http://127.0.0.1:3000/health
+curl http://127.0.0.1:3000/hello/Mira
+```
+
+Notes:
+- Handlers are plain async functions; extractors like `Path` and `Json` in the arguments tell axum what to parse from the request.
+- Returning `Json<T>` serializes `T` with serde and sets the `Content-Type` header.
+- In axum 0.8 the path syntax changed from `/:name` to `/{name}`, so match the syntax to your version.
+@@@ END
+
+@@@ USER
+How do I make my Rust release binary smaller and faster?
+@@@ ASSISTANT
+Tune the release profile in `Cargo.toml`. Each option trades compile time for a smaller or faster binary.
+
+```toml
+[profile.release]
+opt-level = 3        # use "z" instead to optimize for the smallest size
+lto = true           # link-time optimization across all crates
+codegen-units = 1    # slower compile, better optimization
+panic = "abort"      # no unwinding code; a panic ends the program immediately
+strip = true         # remove debug symbols from the binary
+```
+
+Build and check the result:
+
+```bash
+cargo build --release
+ls -lh target/release/myapp
+```
+
+Explanation:
+- `lto = true` lets the compiler optimize across crate boundaries, which often shrinks the binary and speeds it up.
+- `codegen-units = 1` gives the optimizer a single big view of the code at the cost of longer builds.
+- `panic = "abort"` removes unwinding tables. Do not use it if you rely on `catch_unwind` or want tests that expect panics in release mode.
+- Measure before and after. If speed matters most, keep `opt-level = 3`; if size matters most, use `"s"` or `"z"`.
+@@@ END

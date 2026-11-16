@@ -1,0 +1,1095 @@
+@@@ USER
+I want to build a small command-line task manager in Rust. Standard library only, no crates. Each task has a title, a done flag, a priority and an optional due date, and the list is saved in a plain text file. Where do I start?
+@@@ ASSISTANT
+Start with the data, not with the command line. The program is mostly rules (what a task is, how it is written to a file and read back), and those rules can live in plain functions that you can test without touching the terminal or the disk. The commands come later as a thin layer on top.
+
+The layers:
+1. `task.rs`: `Task`, `Priority` and the text format of one task. No files, no terminal.
+2. `store.rs`: reads and writes the file.
+3. `cli.rs`: turns command-line arguments into actions and returns the text to print.
+4. `main.rs`: a few lines that connect these to the real process.
+
+The file format is one task per line, `id|title|done|priority|due`, for example `7|Write report|false|high|2026-03-01`. It is readable, easy to edit by hand and easy to compare with `git diff`. JSON would be the usual choice, but without crates there is no serde, and a hand-written JSON parser would be bigger than the rest of this program.
+
+Create the project:
+
+```bash
+cargo new tasks
+cd tasks
+```
+
+`Cargo.toml` stays as generated, with an empty `[dependencies]` section:
+
+```toml
+[package]
+name = "tasks"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+```
+
+For now only `src/main.rs` and `src/task.rs` matter. `main.rs`:
+
+```rust
+#[allow(dead_code)] // nothing calls this yet
+mod task;
+
+fn main() {
+    println!("tasks: not much here yet");
+}
+```
+
+The attribute silences the "never used" warnings for the module; nothing calls it yet. Now `src/task.rs`:
+
+```rust
+use std::fmt;
+use std::str::FromStr;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Priority {
+    Low,
+    Normal,
+    High,
+}
+
+impl fmt::Display for Priority {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let name = match self {
+            Priority::Low => "low",
+            Priority::Normal => "normal",
+            Priority::High => "high",
+        };
+        write!(f, "{}", name)
+    }
+}
+
+impl FromStr for Priority {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<Priority, String> {
+        match text {
+            "low" => Ok(Priority::Low),
+            "normal" => Ok(Priority::Normal),
+            "high" => Ok(Priority::High),
+            other => Err(format!("unknown priority '{}'", other)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Task {
+    pub id: u32,
+    pub title: String,
+    pub done: bool,
+    pub priority: Priority,
+    pub due: Option<String>,
+}
+
+impl Task {
+    pub fn new(id: u32, title: &str) -> Task {
+        Task {
+            id,
+            title: title.to_string(),
+            done: false,
+            priority: Priority::Normal,
+            due: None,
+        }
+    }
+
+    /// One task per line: id|title|done|priority|due
+    pub fn to_line(&self) -> String {
+        format!(
+            "{}|{}|{}|{}|{}",
+            self.id,
+            self.title,
+            self.done,
+            self.priority,
+            self.due.as_deref().unwrap_or("")
+        )
+    }
+
+    pub fn from_line(line: &str) -> Result<Task, String> {
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() != 5 {
+            return Err(format!("expected 5 fields, found {}", parts.len()));
+        }
+        let id = parts[0]
+            .parse::<u32>()
+            .map_err(|_| format!("bad id '{}'", parts[0]))?;
+        let done = match parts[2] {
+            "true" => true,
+            "false" => false,
+            other => return Err(format!("bad done flag '{}'", other)),
+        };
+        let priority = parts[3].parse::<Priority>()?;
+        let due = if parts[4].is_empty() {
+            None
+        } else {
+            Some(parts[4].to_string())
+        };
+        Ok(Task {
+            id,
+            title: parts[1].to_string(),
+            done,
+            priority,
+            due,
+        })
+    }
+}
+```
+
+How it works:
+- `Priority` derives `PartialOrd` and `Ord`. Variants compare in the order they are declared, so `Low < Normal < High`. That gives us sorting by priority later for free.
+- `Display` turns a priority into `high` for writing, and `FromStr` does the reverse, so `"high".parse::<Priority>()` works. Unknown text is an `Err` with a message.
+- `due` is an `Option<String>`. `None` is written as an empty last field, and `as_deref()` turns `Option<String>` into `Option<&str>` so `unwrap_or("")` works without cloning.
+- `from_line` checks the number of fields first, so the indexing of `parts[0]` to `parts[4]` can never go out of bounds. Then it checks each field and says which one is wrong. The errors are plain `String` messages for now.
+
+One gap I already know about: the title is written exactly as it is, so a title that contains `|` cannot be read back. I am leaving that until the basic commands work, and then I will come back to it properly.
+
+Now the tests, which are the specification of the format. They go at the bottom of `task.rs`:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample() -> Task {
+        Task {
+            id: 7,
+            title: "Write report".to_string(),
+            done: false,
+            priority: Priority::High,
+            due: Some("2026-03-01".to_string()),
+        }
+    }
+
+    #[test]
+    fn to_line_has_five_fields() {
+        assert_eq!(sample().to_line(), "7|Write report|false|high|2026-03-01");
+    }
+
+    #[test]
+    fn a_missing_due_date_is_an_empty_last_field() {
+        assert_eq!(Task::new(1, "Buy milk").to_line(), "1|Buy milk|false|normal|");
+    }
+
+    #[test]
+    fn a_line_round_trips() {
+        let task = sample();
+        assert_eq!(Task::from_line(&task.to_line()), Ok(task));
+    }
+
+    #[test]
+    fn a_line_without_due_round_trips() {
+        let task = Task::new(3, "Call Sam");
+        assert_eq!(Task::from_line(&task.to_line()), Ok(task));
+    }
+
+    // ... one test each for the wrong field count, a bad id, a bad done flag, an unknown
+    // priority, the priority order and the priority text, in the same style ...
+}
+```
+
+`assert_eq!` can compare `Result<Task, String>` values because `Task` derives `PartialEq` and `Debug`. Run them with one test at a time, so the output order is stable:
+
+```bash
+cargo test -- --test-threads=1
+```
+
+```
+running 10 tests
+test task::tests::a_line_round_trips ... ok
+test task::tests::a_line_without_due_round_trips ... ok
+test task::tests::a_missing_due_date_is_an_empty_last_field ... ok
+test task::tests::bad_done_flag_is_an_error ... ok
+test task::tests::bad_id_is_an_error ... ok
+test task::tests::priorities_order_from_low_to_high ... ok
+test task::tests::priority_prints_as_lowercase_text ... ok
+test task::tests::to_line_has_five_fields ... ok
+test task::tests::unknown_priority_is_an_error ... ok
+test task::tests::wrong_field_count_is_an_error ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+```
+
+All 10 pass. Next comes the storage and the first commands.
+@@@ USER
+Good. Now make it a real tool: add, list, done and rm, saved to a file. Let me choose the file location with an environment variable.
+@@@ ASSISTANT
+Two design decisions first:
+1. `run(args, path)` returns `Result<String, String>`: the text to print, or an error message. It never prints and never exits. Tests can call it directly and compare the text, and `main` is the only place that touches stdout, stderr and the exit code.
+2. The file path is a parameter, not a constant. `main` reads it from `TASKS_FILE` (default `tasks.txt`), and tests give each test its own temporary file.
+
+`src/store.rs`:
+
+```rust
+use crate::task::Task;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::Path;
+
+/// Reads every task from the file. A file that does not exist yet is an empty list.
+pub fn load(path: &Path) -> Result<Vec<Task>, String> {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(format!("cannot read {}: {}", path.display(), e)),
+    };
+    let mut tasks = Vec::new();
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        tasks.push(Task::from_line(line)?);
+    }
+    Ok(tasks)
+}
+
+pub fn save(path: &Path, tasks: &[Task]) -> Result<(), String> {
+    let mut text = String::new();
+    for task in tasks {
+        text.push_str(&task.to_line());
+        text.push('\n');
+    }
+    fs::write(path, text).map_err(|e| format!("cannot write {}: {}", path.display(), e))
+}
+
+pub fn next_id(tasks: &[Task]) -> u32 {
+    tasks.iter().map(|t| t.id).max().unwrap_or(0) + 1
+}
+```
+
+A file that does not exist yet is an empty list, so the first `add` works without any setup. `next_id` is the highest id plus one. One consequence: if you remove the task with the highest id, the next `add` reuses that number. For a personal tool that is fine.
+
+Tests need a file that no other test touches. This helper builds a name from the process id and the test name, and deletes leftovers from an earlier run:
+
+```rust
+#[cfg(test)]
+pub fn temp_path(name: &str) -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(format!("tasks-test-{}-{}.txt", std::process::id(), name));
+    let _ = fs::remove_file(&path);
+    path
+}
+```
+
+`src/cli.rs`:
+
+```rust
+use crate::store;
+use crate::task::{Priority, Task};
+use std::path::Path;
+
+pub fn run(args: &[String], path: &Path) -> Result<String, String> {
+    let (command, rest) = match args.split_first() {
+        Some((command, rest)) => (command.as_str(), rest),
+        None => return Err(usage()),
+    };
+    match command {
+        "add" => add(rest, path),
+        "list" => list(path),
+        "done" => done(rest, path),
+        "rm" => remove(rest, path),
+        other => Err(format!("unknown command '{}'\n{}", other, usage())),
+    }
+}
+
+fn usage() -> String {
+    [
+        "usage: tasks add TITLE [--priority low|normal|high] [--due YYYY-MM-DD]",
+        "       tasks list",
+        "       tasks done ID",
+        "       tasks rm ID",
+    ]
+    .join("\n")
+}
+
+fn value<'a>(args: &'a [String], i: usize, flag: &str) -> Result<&'a str, String> {
+    args.get(i)
+        .map(|s| s.as_str())
+        .ok_or_else(|| format!("{} needs a value", flag))
+}
+
+fn add(args: &[String], path: &Path) -> Result<String, String> {
+    let mut title: Option<String> = None;
+    let mut priority = Priority::Normal;
+    let mut due: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--priority" => {
+                i += 1;
+                priority = value(args, i, "--priority")?.parse::<Priority>()?;
+            }
+            "--due" => {
+                i += 1;
+                due = Some(value(args, i, "--due")?.to_string());
+            }
+            option if option.starts_with("--") => {
+                return Err(format!("unknown option '{}'", option));
+            }
+            text => {
+                if title.is_some() {
+                    return Err("only one title allowed (put it in quotes)".to_string());
+                }
+                title = Some(text.to_string());
+            }
+        }
+        i += 1;
+    }
+    let title = title.ok_or("add needs a title")?;
+    if title.trim().is_empty() {
+        return Err("title cannot be empty".to_string());
+    }
+    let mut tasks = store::load(path)?;
+    let id = store::next_id(&tasks);
+    let mut task = Task::new(id, &title);
+    task.priority = priority;
+    task.due = due;
+    tasks.push(task);
+    store::save(path, &tasks)?;
+    Ok(format!("added #{}: {}\n", id, title))
+}
+
+fn list(path: &Path) -> Result<String, String> {
+    let tasks = store::load(path)?;
+    if tasks.is_empty() {
+        return Ok("no tasks\n".to_string());
+    }
+    let mut out = String::new();
+    for task in &tasks {
+        out.push_str(&format_task(task));
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+fn format_task(task: &Task) -> String {
+    let mark = if task.done { "x" } else { " " };
+    let due = match &task.due {
+        Some(date) => format!("  due {}", date),
+        None => String::new(),
+    };
+    format!("{:>3} [{}] {:<6} {}{}", task.id, mark, task.priority, task.title, due)
+}
+
+fn parse_id(args: &[String], command: &str) -> Result<u32, String> {
+    let raw = args
+        .first()
+        .ok_or_else(|| format!("{} needs a task id", command))?;
+    raw.parse::<u32>()
+        .map_err(|_| format!("'{}' is not a task id", raw))
+}
+
+fn done(args: &[String], path: &Path) -> Result<String, String> {
+    let id = parse_id(args, "done")?;
+    let mut tasks = store::load(path)?;
+    let task = tasks
+        .iter_mut()
+        .find(|t| t.id == id)
+        .ok_or_else(|| format!("no task #{}", id))?;
+    task.done = true;
+    let title = task.title.clone();
+    store::save(path, &tasks)?;
+    Ok(format!("done #{}: {}\n", id, title))
+}
+
+fn remove(args: &[String], path: &Path) -> Result<String, String> {
+    let id = parse_id(args, "rm")?;
+    let mut tasks = store::load(path)?;
+    let position = tasks
+        .iter()
+        .position(|t| t.id == id)
+        .ok_or_else(|| format!("no task #{}", id))?;
+    let removed = tasks.remove(position);
+    store::save(path, &tasks)?;
+    Ok(format!("removed #{}: {}\n", id, removed.title))
+}
+```
+
+Points worth knowing:
+- `args.split_first()` gives the command and the remaining arguments in one step.
+- `add` parses its flags by hand with an index, because `--priority` and `--due` take a value. The helper `value` returns a `&str` borrowed from the arguments, which is why it carries the lifetime `'a`.
+- `done` uses `iter_mut().find(...)` to get a mutable reference to the task. The title is cloned before saving, so the borrow of `tasks` has ended when `save` needs it.
+- `rm` finds the position, removes the task and reports its title.
+
+`src/main.rs` becomes the only place with side effects. Errors go to stderr, so they never mix with output that is piped into another program, and the exit code is 1:
+
+```rust
+mod cli;
+mod store;
+mod task;
+
+use std::env;
+use std::path::PathBuf;
+use std::process;
+
+fn main() {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let path = env::var("TASKS_FILE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("tasks.txt"));
+    match cli::run(&args, &path) {
+        Ok(output) => print!("{}", output),
+        Err(message) => {
+            eprintln!("error: {}", message);
+            process::exit(1);
+        }
+    }
+}
+```
+
+The tests for `cli.rs` call `run` with a temporary file and compare the returned text: one test each for add, list, done, rm, unknown ids, missing titles and unknown commands.
+
+I ran the tests before trying anything by hand, and one failed. I removed the passing lines:
+
+```
+running 24 tests
+...
+test cli::tests::list_shows_priority_and_due_date ... FAILED
+...
+
+failures:
+
+---- cli::tests::list_shows_priority_and_due_date stdout ----
+
+thread 'cli::tests::list_shows_priority_and_due_date' panicked at src\cli.rs:158:9:
+assertion `left == right` failed
+  left: "  1 [ ] high Write report  due 2026-03-01\n  2 [ ] normal Buy milk\n"
+ right: "  1 [ ] high   Write report  due 2026-03-01\n  2 [ ] normal Buy milk\n"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+failures:
+    cli::tests::list_shows_priority_and_due_date
+
+test result: FAILED. 23 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+```
+
+The expected text has `high` padded to six characters, the actual text does not, so in the terminal the priority column would be ragged.
+
+The cause is in `Display for Priority`: `write!(f, "{}", name)` writes the text but ignores the width in `{:<6}`. Padding is only applied when the implementation uses `f.pad`. The fix is one line:
+
+```rust
+impl fmt::Display for Priority {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let name = match self {
+            Priority::Low => "low",
+            Priority::Normal => "normal",
+            Priority::High => "high",
+        };
+        f.pad(name)
+    }
+}
+```
+
+and a small test so it cannot come back:
+
+```rust
+    #[test]
+    fn priority_respects_a_width() {
+        assert_eq!(format!("[{:<6}]", Priority::High), "[high  ]");
+    }
+```
+
+```
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+```
+
+Now a real session. Build with `cargo build`. I write `tasks` for the binary (`target/debug/tasks`; `cargo run --` followed by the same arguments does the same). This ran in an empty folder with `TASKS_FILE` not set, so the data went to `tasks.txt` there:
+
+```
+$ tasks add "Buy milk"
+added #1: Buy milk
+$ tasks add "Write report" --priority high --due 2026-03-01
+added #2: Write report
+$ tasks add "Call Sam" --priority low
+added #3: Call Sam
+$ tasks list
+  1 [ ] normal Buy milk
+  2 [ ] high   Write report  due 2026-03-01
+  3 [ ] low    Call Sam
+$ tasks done 1
+done #1: Buy milk
+$ tasks rm 3
+removed #3: Call Sam
+$ tasks list
+  1 [x] normal Buy milk
+  2 [ ] high   Write report  due 2026-03-01
+$ tasks done 9
+error: no task #9
+[exit code 1]
+```
+
+Error messages go to stderr and the exit code is 1, which is what a script would check. The foundation is done; next come the extra features.
+@@@ USER
+Now I want to filter the list (only pending or only done), sort it by priority or by due date, and reject impossible due dates like 2026-02-30.
+@@@ ASSISTANT
+Dates first. A due date is valid when it has the right shape and the day exists in that month. Without a date crate that is a short function; the only subtle part is the leap-year rule. New file `src/date.rs`:
+
+```rust
+/// True when `text` is a real calendar date written as YYYY-MM-DD.
+pub fn is_valid_date(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return false;
+    }
+    let digits_only = bytes
+        .iter()
+        .enumerate()
+        .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit());
+    if !digits_only {
+        return false;
+    }
+    // Every byte is ASCII now, so slicing by byte position cannot split a character.
+    let year: u32 = text[0..4].parse().unwrap();
+    let month: u32 = text[5..7].parse().unwrap();
+    let day: u32 = text[8..10].parse().unwrap();
+    (1..=12).contains(&month) && day >= 1 && day <= days_in_month(year, month)
+}
+
+fn is_leap(year: u32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+fn days_in_month(year: u32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        _ => {
+            if is_leap(year) {
+                29
+            } else {
+                28
+            }
+        }
+    }
+}
+```
+
+Two details:
+- The slicing `text[0..4]` works on byte positions, and slicing in the middle of a multi-byte character panics. That is why the function first checks that the length is 10 bytes and that every byte is an ASCII digit or one of the two dashes. After that check, every byte is one character, so the slices are safe and the `unwrap()` calls cannot fail.
+- February has 29 days when the year is divisible by 4, except for century years, unless the year is divisible by 400. So 2028 and 2000 are leap years, 2027 and 2100 are not.
+
+Both are covered by tests, including one that feeds in non-ASCII digits and must not panic.
+
+Add `mod date;` to `main.rs`. In `cli.rs`, the `--due` branch of `add` now rejects bad dates:
+
+```rust
+            "--due" => {
+                i += 1;
+                let text = value(args, i, "--due")?;
+                if !date::is_valid_date(text) {
+                    return Err(format!("'{}' is not a real date (use YYYY-MM-DD)", text));
+                }
+                due = Some(text.to_string());
+            }
+```
+
+and `list` learns two options, `--pending` / `--done` and `--sort`:
+
+```rust
+fn list(args: &[String], path: &Path) -> Result<String, String> {
+    let mut only_done: Option<bool> = None;
+    let mut sort = "id";
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--pending" => only_done = Some(false),
+            "--done" => only_done = Some(true),
+            "--sort" => {
+                i += 1;
+                sort = value(args, i, "--sort")?;
+                if !["id", "priority", "due"].contains(&sort) {
+                    return Err(format!("unknown sort '{}' (use id, priority or due)", sort));
+                }
+            }
+            other => return Err(format!("unknown option '{}'", other)),
+        }
+        i += 1;
+    }
+    let mut tasks = store::load(path)?;
+    if let Some(wanted) = only_done {
+        tasks.retain(|t| t.done == wanted);
+    }
+    match sort {
+        // sort_by is stable, so equal priorities keep their id order
+        "priority" => tasks.sort_by(|a, b| b.priority.cmp(&a.priority)),
+        // false sorts before true, so tasks with a date come first, soonest first
+        "due" => tasks.sort_by_key(|t| (t.due.is_none(), t.due.clone())),
+        _ => {}
+    }
+    if tasks.is_empty() {
+        return Ok("no tasks\n".to_string());
+    }
+    let mut out = String::new();
+    for task in &tasks {
+        out.push_str(&format_task(task));
+        out.push('\n');
+    }
+    Ok(out)
+}
+```
+
+Why it is written this way:
+- `retain` keeps only the tasks for which the closure is true, so the filter is one line.
+- `sort_by` is stable: tasks that compare equal keep their previous order. With `b.priority.cmp(&a.priority)` the highest priority comes first, and tasks with the same priority stay in id order without any extra code.
+- A plain sort on `Option<String>` would put `None` before `Some`, the opposite of what we want. The key `(t.due.is_none(), t.due.clone())` compares `false` before `true`, so tasks with a date come first, soonest first (ISO dates sort correctly as text), and tasks without a date come last.
+
+The usage text mentions the new options too. The tests for sorting add four tasks with different priorities and dates and compare the order of the ids that `list` prints.
+
+```
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+```
+
+A session with the new features. Note the impossible date and the unknown sort being refused:
+
+```
+$ tasks add "Write report" --priority high --due 2026-03-01
+added #1: Write report
+$ tasks add "Buy milk" --due 2026-02-30
+error: '2026-02-30' is not a real date (use YYYY-MM-DD)
+[exit code 1]
+$ tasks add "Buy milk" --due 2026-02-28
+added #2: Buy milk
+$ tasks add "Call Sam" --priority low
+added #3: Call Sam
+$ tasks add "Book flights" --priority high
+added #4: Book flights
+$ tasks done 3
+done #3: Call Sam
+$ tasks list --sort priority
+  1 [ ] high   Write report  due 2026-03-01
+  4 [ ] high   Book flights
+  2 [ ] normal Buy milk  due 2026-02-28
+  3 [x] low    Call Sam
+$ tasks list --sort due
+  2 [ ] normal Buy milk  due 2026-02-28
+  1 [ ] high   Write report  due 2026-03-01
+  3 [x] low    Call Sam
+  4 [ ] high   Book flights
+$ tasks list --sort colour
+error: unknown sort 'colour' (use id, priority or due)
+[exit code 1]
+```
+
+In the `--sort priority` output the two high-priority tasks (#1 and #4) are in id order, and in `--sort due` the tasks without a date (#3 and #4) are at the end, also in id order. That is the stable sort at work.
+@@@ USER
+I think I hit the problem you warned about, but it is worse than I expected. I added a task with a pipe in the title:
+
+```
+$ tasks add "Compare a|b"
+added #1: Compare a|b
+$ tasks list
+error: expected 5 fields, found 6
+$ tasks add "Another task"
+error: expected 5 fields, found 6
+$ tasks done 1
+error: expected 5 fields, found 6
+```
+
+The file contains this one line:
+
+```
+1|Compare a|b|false|normal|
+```
+
+Now nothing works, not even `add`. Can you fix it so this cannot happen again, and tell me how to get my list back?
+@@@ ASSISTANT
+There are two separate problems, and the second one matters more.
+
+1. **The format cannot hold a `|` in a title.** `1|Compare a|b|false|normal|` splits into six pieces, and the parser expects five.
+2. **One bad line disables the whole tool.** The loader stops at the first bad line with `?`, and every command loads the file first, so `add` and `done` fail too. The message also does not say where the problem is.
+
+I will fix both. First, a failing test that reproduces the report, added to `task.rs`:
+
+```rust
+    #[test]
+    fn a_title_with_a_pipe_round_trips() {
+        let task = Task::new(1, "Compare a|b");
+        assert_eq!(Task::from_line(&task.to_line()), Ok(task));
+    }
+```
+
+Against the current code, with the passing lines removed:
+
+```
+running 36 tests
+...
+test task::tests::a_title_with_a_pipe_round_trips ... FAILED
+...
+
+failures:
+
+---- task::tests::a_title_with_a_pipe_round_trips stdout ----
+
+thread 'task::tests::a_title_with_a_pipe_round_trips' panicked at src\task.rs:176:9:
+assertion `left == right` failed
+  left: Err("expected 5 fields, found 6")
+ right: Ok(Task { id: 1, title: "Compare a|b", done: false, priority: Normal, due: None })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+failures:
+    task::tests::a_title_with_a_pipe_round_trips
+
+test result: FAILED. 35 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+```
+
+The other tests pass because none of them used a pipe; that is exactly the gap I mentioned at the start.
+
+**The fix for the format** is escaping. A backslash starts an escape sequence, so the characters with a special meaning get a two-character form: `\\` for a backslash, `\|` for a pipe, `\n` and `\r` for line breaks (a newline in a title would otherwise split one task into two lines). The writer escapes the title and the reader undoes it. The reader can no longer use `split('|')`, because it has to skip escaped pipes, so it walks through the characters itself. New helpers at the bottom of `task.rs`:
+
+```rust
+/// Makes a field safe to put between `|` separators.
+fn escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '|' => out.push_str("\\|"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Splits a line at every `|` that is not escaped, and undoes the escaping.
+fn split_fields(line: &str) -> Result<Vec<String>, String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '|' => fields.push(std::mem::take(&mut current)),
+            '\\' => match chars.next() {
+                Some('\\') => current.push('\\'),
+                Some('|') => current.push('|'),
+                Some('n') => current.push('\n'),
+                Some('r') => current.push('\r'),
+                Some(other) => return Err(format!("bad escape '\\{}'", other)),
+                None => return Err("line ends with a lone backslash".to_string()),
+            },
+            _ => current.push(c),
+        }
+    }
+    fields.push(current);
+    Ok(fields)
+}
+```
+
+`to_line` escapes the title, and `from_line` starts with the new splitter (the rest of the function is the same, except that the match on the done flag is now `match parts[2].as_str()`, because the fields are `String`s now):
+
+```rust
+    /// One task per line: id|title|done|priority|due
+    pub fn to_line(&self) -> String {
+        format!(
+            "{}|{}|{}|{}|{}",
+            self.id,
+            escape(&self.title),
+            self.done,
+            self.priority,
+            self.due.as_deref().unwrap_or("")
+        )
+    }
+
+    pub fn from_line(line: &str) -> Result<Task, String> {
+        let parts = split_fields(line)?;
+        if parts.len() != 5 {
+            return Err(format!("expected 5 fields, found {}", parts.len()));
+        }
+```
+
+The new tests round-trip awkward titles (a pipe, backslashes, a title with a line break), check what the stored line looks like, and check the error cases: a bad escape, a lone backslash at the end of a line, and an old-format line with a bare pipe, which must still be reported.
+
+**The fix for the failure mode** is in `store.rs`, and it has two parts:
+- The loader reports the file and line number of the first bad line.
+- `save` writes the new content to `tasks.txt.tmp` and then renames it over `tasks.txt`. If the program is killed in the middle of the write, the old file is still complete, instead of being cut off half way.
+
+I kept the loader strict on purpose: it does not skip bad lines. The next `save` writes only the tasks it has in memory, so skipping a bad line would silently delete it from your file the next time you add anything. An error that names the line is safer.
+
+```rust
+/// Reads every task from the file. A file that does not exist yet is an empty list.
+pub fn load(path: &Path) -> Result<Vec<Task>, String> {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(format!("cannot read {}: {}", path.display(), e)),
+    };
+    let mut tasks = Vec::new();
+    for (n, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let task = Task::from_line(line)
+            .map_err(|e| format!("{}:{}: {}", path.display(), n + 1, e))?;
+        tasks.push(task);
+    }
+    Ok(tasks)
+}
+
+pub fn save(path: &Path, tasks: &[Task]) -> Result<(), String> {
+    let mut text = String::new();
+    for task in tasks {
+        text.push_str(&task.to_line());
+        text.push('\n');
+    }
+    // Write the whole new file next to the real one, then swap it in. If the program dies
+    // half way through the write, the old file is still intact.
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    fs::write(&tmp, text).map_err(|e| format!("cannot write {}: {}", tmp.display(), e))?;
+    fs::rename(&tmp, path).map_err(|e| format!("cannot replace {}: {}", path.display(), e))
+}
+```
+
+Two more tests cover these: one checks that the error ends with `:2: bad done flag 'maybe'`, the other that no `.tmp` file is left behind after a save.
+
+```
+test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+```
+
+**Getting your list back.** The old file was written by the old version, so it still has the bare pipe. This is what the fixed version says about it, using the same file:
+
+```
+$ tasks list
+error: tasks.txt:1: expected 5 fields, found 6
+[exit code 1]
+```
+
+It names the line instead of just failing. Open `tasks.txt` in any editor and put a backslash in front of the pipe in the title:
+
+```
+1|Compare a|b|false|normal|
+1|Compare a\|b|false|normal|
+```
+
+(first line: before, second line: after). Now everything works, including titles with pipes and backslashes:
+
+```
+$ tasks list
+  1 [ ] normal Compare a|b
+$ tasks add "Pipes | and \ backslashes"
+added #2: Pipes | and \ backslashes
+```
+
+and the file looks like this:
+
+```
+1|Compare a\|b|false|normal|
+2|Pipes \| and \\ backslashes|false|normal|
+```
+
+For a new file the same thing happens from the start. After `tasks add "Compare a|b"` and `tasks done 1` the file contains:
+
+```
+1|Compare a\|b|true|normal|
+```
+
+and the folder contains only `tasks.txt`; no `.tmp` file is left over.
+
+One caveat for old files: a title that contains a backslash, written by the old version (for example `C:\temp`), will now be reported as `bad escape` with its line number. The fix is the same by hand: double the backslash.
+@@@ USER
+Last round. I want an `edit` command that only changes the fields I give it, a `stats` command, and proper exit codes and error messages so I can use the tool from scripts.
+@@@ ASSISTANT
+Scripts need to tell two situations apart: the command line was wrong (the usage should be printed), and the command was fine but could not be carried out (a task does not exist, the file is damaged). The convention is exit code 2 for the first and 1 for the second. I model that with an enum instead of a plain `String`:
+
+```rust
+#[derive(Debug, PartialEq)]
+pub enum CliError {
+    /// The command line was wrong: the usage is shown and the exit code is 2.
+    Usage(String),
+    /// The command was fine but could not be carried out: exit code 1.
+    Failed(String),
+}
+
+// Errors from the store are plain strings; they are failures, not usage mistakes.
+impl From<String> for CliError {
+    fn from(message: String) -> CliError {
+        CliError::Failed(message)
+    }
+}
+
+fn usage<T>(message: impl Into<String>) -> Result<T, CliError> {
+    Err(CliError::Usage(message.into()))
+}
+
+pub fn run(args: &[String], path: &Path) -> Result<String, CliError> {
+    let (command, rest) = match args.split_first() {
+        Some((command, rest)) => (command.as_str(), rest),
+        None => return usage("missing command"),
+    };
+    match command {
+        "add" => add(rest, path),
+        "list" => list(rest, path),
+        "done" => done(rest, path),
+        "rm" => remove(rest, path),
+        "edit" => edit(rest, path),
+        "stats" => stats(rest, path),
+        "help" | "--help" | "-h" => Ok(format!("{}\n", USAGE)),
+        other => usage(format!("unknown command '{}'", other)),
+    }
+}
+```
+
+`From<String>` is the trick that keeps the code short: the store still returns `String` errors, and the `?` operator now converts them into `CliError::Failed` automatically. Usage mistakes are created explicitly with the `usage(...)` helper. The `USAGE` constant (its text is visible in the output below) is built with `concat!` so that the indentation of its lines is kept. The checks for titles, dates and priorities, `parse_id` and `find_index` are small helper functions that return these errors; `add` and `list` use them for bad options. `main.rs` is the only place that turns the enum into exit codes:
+
+```rust
+mod cli;
+mod date;
+mod store;
+mod task;
+
+use cli::CliError;
+use std::env;
+use std::path::PathBuf;
+use std::process;
+
+fn main() {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let path = env::var("TASKS_FILE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("tasks.txt"));
+    match cli::run(&args, &path) {
+        Ok(output) => print!("{}", output),
+        Err(CliError::Usage(message)) => {
+            eprintln!("error: {}\n\n{}", message, cli::USAGE);
+            process::exit(2);
+        }
+        Err(CliError::Failed(message)) => {
+            eprintln!("error: {}", message);
+            process::exit(1);
+        }
+    }
+}
+```
+
+`edit` has to tell "not given" from "clear it". For the due date that is `Option<Option<String>>`: `None` means the option was not given, `Some(None)` means `--due none` (clear the date), and `Some(Some(date))` sets it. The other fields only need one `Option` level.
+
+```rust
+fn edit(args: &[String], path: &Path) -> Result<String, CliError> {
+    let id = parse_id(args, "edit")?;
+    let mut title: Option<String> = None;
+    let mut priority: Option<Priority> = None;
+    // None = leave the date alone, Some(None) = clear it, Some(Some(d)) = set it
+    let mut due: Option<Option<String>> = None;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--title" => {
+                i += 1;
+                title = Some(check_title(value(args, i, "--title")?)?);
+            }
+            "--priority" => {
+                i += 1;
+                priority = Some(check_priority(value(args, i, "--priority")?)?);
+            }
+            "--due" => {
+                i += 1;
+                let text = value(args, i, "--due")?;
+                due = Some(if text == "none" { None } else { Some(check_date(text)?) });
+            }
+            other => return usage(format!("unknown option '{}'", other)),
+        }
+        i += 1;
+    }
+    if title.is_none() && priority.is_none() && due.is_none() {
+        return usage("edit needs at least one of --title, --priority, --due");
+    }
+    let mut tasks = store::load(path)?;
+    let index = find_index(&tasks, id)?;
+    let task = &mut tasks[index];
+    if let Some(title) = title {
+        task.title = title;
+    }
+    if let Some(priority) = priority {
+        task.priority = priority;
+    }
+    if let Some(due) = due {
+        task.due = due;
+    }
+    let message = format!("updated #{}: {}\n", id, task.title);
+    store::save(path, &tasks)?;
+    Ok(message)
+}
+```
+
+`stats` is a short function that counts the done tasks and the pending tasks per priority; its output is in the session below.
+
+The tests check both kinds: a mistake in the command line must give `CliError::Usage`, and a missing task or a damaged file must give `CliError::Failed`.
+
+```
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+```
+
+A session with the new commands:
+
+```
+$ tasks add "Write report" --priority high --due 2026-03-01
+added #1: Write report
+$ tasks add "Buy milk"
+added #2: Buy milk
+$ tasks add "Call Sam" --priority low
+added #3: Call Sam
+$ tasks add "Book flights" --priority high
+added #4: Book flights
+$ tasks done 2
+done #2: Buy milk
+$ tasks edit 1 --due 2026-03-15 --title "Write the quarterly report"
+updated #1: Write the quarterly report
+$ tasks edit 3 --priority normal
+updated #3: Call Sam
+$ tasks edit 1 --due none
+updated #1: Write the quarterly report
+$ tasks list
+  1 [ ] high   Write the quarterly report
+  2 [x] normal Buy milk
+  3 [ ] normal Call Sam
+  4 [ ] high   Book flights
+$ tasks stats
+total:   4
+done:    1
+pending: 3
+  high:   2
+  normal: 1
+  low:    0
+```
+
+And the error handling. A failure that is not the user's typing mistake gives exit code 1 and no usage text:
+
+```
+$ tasks done 99
+error: no task #99
+[exit code 1]
+$ tasks list
+error: tasks.txt:2: bad done flag 'maybe'
+[exit code 1]
+```
+
+A mistake in the command line gives exit code 2 and the usage text:
+
+```
+$ tasks edit 1
+error: edit needs at least one of --title, --priority, --due
+
+usage: tasks add TITLE [--priority low|normal|high] [--due YYYY-MM-DD]
+       tasks list [--pending|--done] [--sort id|priority|due]
+       tasks done ID
+       tasks rm ID
+       tasks edit ID [--title TEXT] [--priority low|normal|high] [--due YYYY-MM-DD|none]
+       tasks stats
+
+The tasks are stored in the file named by TASKS_FILE (default: tasks.txt).
+[exit code 2]
+```
+
+(`tasks add` without a title, `tasks frobnicate` and `tasks` with no command behave the same way, with a different first line.)
+
+Where the project stands:
+- `task.rs` and `date.rs` hold the rules, `store.rs` the file handling, `cli.rs` the commands, and `main.rs` only connects them to the process. The rules are covered by 39 tests.
+- Each feature followed the same pattern: put the rule in a function with tests, wire it into a command, then run the real binary. When two bugs appeared (the padding and the pipe), I reproduced each with a failing test before fixing it, and kept the test.
+
+Possible next steps: `cargo install --path .` to put the tool on your path, an `overdue` filter (it needs today's date, which the standard library only gives as a timestamp, so that is where a date crate becomes worth it), and `clap` for argument parsing if you ever allow a dependency.
+@@@ END
+

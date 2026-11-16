@@ -1,0 +1,607 @@
+@@@ USER
+In JavaScript I have 20 async jobs (downloads) and I do not want to start all of them at once. How do I run only 2 at a time and still get all results in order?
+@@@ ASSISTANT
+Write a small limiter: a queue of waiting tasks and a counter of running tasks. When a task finishes, start the next one in the queue. `Promise.all` on the limited tasks still returns the results **in the order you gave them**, even if they finish in a different order.
+
+```js
+function pLimit(limit) {
+  let active = 0;
+  const queue = [];
+
+  const next = () => {
+    if (active >= limit || queue.length === 0) return;
+    active++;
+    const { task, resolve, reject } = queue.shift();
+    task()
+      .then(resolve, reject)
+      .finally(() => {
+        active--;
+        next(); // a slot is free: start the next waiting task
+      });
+  };
+
+  return (task) =>
+    new Promise((resolve, reject) => {
+      queue.push({ task, resolve, reject });
+      next();
+    });
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const start = Date.now();
+const stamp = () => Math.round((Date.now() - start) / 100) * 100;
+
+async function job(name, ms) {
+  console.log(`${stamp()}ms start ${name}`);
+  await sleep(ms);
+  console.log(`${stamp()}ms done  ${name}`);
+  return name.toUpperCase();
+}
+
+const limit = pLimit(2);
+const jobs = [["a", 300], ["b", 100], ["c", 100], ["d", 200]];
+
+Promise.all(jobs.map(([name, ms]) => limit(() => job(name, ms)))).then((results) => {
+  console.log(results);
+});
+```
+
+Output (times are rounded to 100 ms):
+
+```
+0ms start a
+0ms start b
+100ms done  b
+100ms start c
+200ms done  c
+200ms start d
+300ms done  a
+400ms done  d
+[ 'A', 'B', 'C', 'D' ]
+```
+
+What you see: only `a` and `b` start at once. When `b` is done, `c` takes its place, and so on. Two tasks are always running, but the result array is still `A, B, C, D`.
+
+Notes:
+- Pass **functions** that start the work (`() => job(...)`), not already running promises. A promise starts working the moment you create it, so a limiter cannot delay it.
+- In real projects the `p-limit` package does the same, with more checks.
+- A limit also protects the server you call: many APIs answer `429 Too Many Requests` when you send everything at once.
+@@@ END
+
+@@@ USER
+Write a retry helper in JavaScript for a flaky API call, with exponential backoff and a limit on the number of retries.
+@@@ ASSISTANT
+Try the call; on failure wait a little, then try again, and double the waiting time each round. After the last allowed retry, throw the last error so the caller can handle it.
+
+```js
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function retry(fn, { retries = 3, baseDelay = 20, factor = 2 } = {}) {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn(attempt);
+    } catch (err) {
+      if (attempt >= retries) throw err; // no retries left
+      const delay = baseDelay * factor ** attempt;
+      console.log(`attempt ${attempt + 1} failed (${err.message}), retrying in ${delay}ms`);
+      await sleep(delay);
+      attempt++;
+    }
+  }
+}
+
+// demo: fails twice, then works
+let calls = 0;
+const flaky = async () => {
+  calls++;
+  if (calls < 3) throw new Error("server busy");
+  return "data";
+};
+const alwaysFails = async () => {
+  throw new Error("down");
+};
+
+(async () => {
+  console.log(await retry(flaky));
+  try {
+    await retry(alwaysFails, { retries: 2, baseDelay: 5 });
+  } catch (e) {
+    console.log("gave up:", e.message);
+  }
+})();
+```
+
+Output:
+
+```
+attempt 1 failed (server busy), retrying in 20ms
+attempt 2 failed (server busy), retrying in 40ms
+data
+attempt 1 failed (down), retrying in 5ms
+attempt 2 failed (down), retrying in 10ms
+gave up: down
+```
+
+Improvements for real use:
+- **Retry only errors that can go away**: network failures, `429`, `503`. Never retry `400`, `401`, `404`, because the same request will fail again.
+- Add **jitter** (a random part, for example `delay * (0.5 + Math.random())`) so thousands of clients do not all retry at the same moment.
+- Put an upper limit on the delay (`Math.min(delay, 10000)`).
+- Retry only **idempotent** calls (GET, or a POST with an idempotency key). Retrying "charge the card" can charge twice.
+@@@ END
+
+@@@ USER
+What is the difference between debounce and throttle in JavaScript? Write both and show when each one runs.
+@@@ ASSISTANT
+- **Debounce**: wait until the events have stopped for N ms, then run **once**. Good for a search box: search after the user stops typing.
+- **Throttle**: run at most once every N ms while the events keep coming. Good for scroll and resize handlers.
+
+```js
+function debounce(fn, wait) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer); // every new event cancels the waiting one
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+
+function throttle(fn, wait) {
+  let last = 0;
+  return (...args) => {
+    const now = Date.now();
+    if (now - last >= wait) {
+      last = now;
+      fn(...args);
+    }
+  };
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+(async () => {
+  // typing "r", "ru", "rus" quickly, then "rust" after a pause
+  const onType = debounce((text) => console.log("search:", text), 50);
+  onType("r");
+  await sleep(10);
+  onType("ru");
+  await sleep(10);
+  onType("rus");
+  await sleep(100); // the user stops: the search runs
+  onType("rust");
+  await sleep(100);
+
+  // a scroll event every 40 ms, handler at most every 100 ms
+  const onScroll = throttle((y) => console.log("scroll handler", y), 100);
+  for (let i = 1; i <= 7; i++) {
+    onScroll(i * 10);
+    await sleep(40);
+  }
+})();
+```
+
+Output:
+
+```
+search: rus
+search: rust
+scroll handler 10
+scroll handler 40
+scroll handler 70
+```
+
+Reading the output:
+- Debounce ignored `r` and `ru`, because a new key came before 50 ms had passed. It ran for `rus` and later for `rust`.
+- Throttle ran for the 1st event, skipped the next two (inside 100 ms), ran for the 4th, and so on.
+
+Small variations: a *leading* debounce runs on the first event and ignores the rest; add a `cancel()` method that calls `clearTimeout(timer)` so you can stop a pending call when a component is removed. In the browser, scroll animation work is often better done with `requestAnimationFrame` than with a timer.
+@@@ END
+
+@@@ USER
+Write a tiny event emitter in JavaScript with on, off, once and emit. on() should return a function that removes the listener.
+@@@ ASSISTANT
+Keep a `Map` from event name to a `Set` of handlers. A `Set` keeps insertion order and prevents adding the same function twice. In `emit`, loop over a **copy** of the handlers, so a handler that removes itself (like `once`) does not disturb the loop.
+
+```js
+class Emitter {
+  #handlers = new Map();
+
+  on(event, fn) {
+    if (!this.#handlers.has(event)) this.#handlers.set(event, new Set());
+    this.#handlers.get(event).add(fn);
+    return () => this.off(event, fn); // call this to unsubscribe
+  }
+
+  off(event, fn) {
+    this.#handlers.get(event)?.delete(fn);
+  }
+
+  once(event, fn) {
+    const off = this.on(event, (...args) => {
+      off(); // remove first, then run
+      fn(...args);
+    });
+    return off;
+  }
+
+  emit(event, ...args) {
+    for (const fn of [...(this.#handlers.get(event) ?? [])]) {
+      fn(...args);
+    }
+  }
+}
+
+const bus = new Emitter();
+const stop = bus.on("login", (user) => console.log("welcome", user));
+bus.once("login", (user) => console.log("first login of the day:", user));
+
+bus.emit("login", "Asha");
+bus.emit("login", "Ben");
+stop();
+bus.emit("login", "Chen"); // nobody listens now
+console.log("done");
+```
+
+Output:
+
+```
+welcome Asha
+first login of the day: Asha
+welcome Ben
+done
+```
+
+Points to notice:
+- `#handlers` is a **private field**: code outside the class cannot touch it.
+- The function returned by `on` is the safest way to clean up. In a UI component, call it when the component is removed, or the listener (and everything it captures) stays in memory.
+- In Node.js use the built-in `EventEmitter` from `node:events`. In the browser, `EventTarget` and `CustomEvent` do the same job.
+- If one handler throws, the next ones do not run. Wrap the call in `try/catch` if you want them to be independent.
+@@@ END
+
+@@@ USER
+How do I copy an object in JavaScript so the copy does not share nested objects with the original? And how do I merge user settings into defaults, also for nested objects?
+@@@ ASSISTANT
+The spread syntax `{ ...obj }` makes a **shallow** copy: the top level is new, but nested objects and arrays are still shared. Use `structuredClone` for a real deep copy, and a small recursive function for a deep merge.
+
+```js
+const original = { name: "app", tags: ["a"], nested: { n: 1 }, when: new Date(0) };
+
+const shallow = { ...original };
+const deep = structuredClone(original);
+
+shallow.nested.n = 99;   // changes the shared nested object
+shallow.tags.push("b");  // changes the shared array
+
+console.log(original.nested.n, original.tags);
+console.log(deep.nested.n, deep.tags, deep.when instanceof Date);
+
+function isPlainObject(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date);
+}
+
+function deepMerge(target, source) {
+  const out = { ...target };
+  for (const [key, value] of Object.entries(source)) {
+    out[key] = isPlainObject(value) && isPlainObject(out[key])
+      ? deepMerge(out[key], value) // both are objects: merge inside
+      : value;                      // otherwise the new value wins
+  }
+  return out;
+}
+
+const defaults = { theme: "dark", editor: { fontSize: 14, tabs: 4 }, plugins: ["git"] };
+const user = { editor: { fontSize: 18 }, plugins: ["vim"] };
+
+console.log(deepMerge(defaults, user));
+console.log(defaults.editor.fontSize); // the defaults were not changed
+```
+
+Output:
+
+```
+99 [ 'a', 'b' ]
+1 [ 'a' ] true
+{
+  theme: 'dark',
+  editor: { fontSize: 18, tabs: 4 },
+  plugins: [ 'vim' ]
+}
+14
+```
+
+What to remember:
+- `structuredClone` handles `Date`, `Map`, `Set`, arrays and cycles. It **cannot** copy functions or class methods and throws an error for them.
+- `JSON.parse(JSON.stringify(x))` is the old trick. It turns dates into strings and drops `undefined` and functions, so avoid it for anything but plain data.
+- Arrays are **replaced**, not merged, in `deepMerge` (`plugins` is `['vim']`). Decide what you want for your settings; many tools replace arrays.
+- Never merge untrusted JSON into an object with a recursive function that accepts any key. A key named `__proto__` can change `Object.prototype` (prototype pollution). Skip `__proto__`, `constructor` and `prototype`, or use `Object.create(null)`.
+@@@ END
+
+@@@ USER
+Give me JavaScript helpers for groupBy, chunk, uniqueBy and sorting by two fields, with a short example.
+@@@ ASSISTANT
+These four are used in almost every project.
+
+```js
+const people = [
+  { name: "Asha", city: "Pune", age: 31 },
+  { name: "Ben", city: "Delhi", age: 25 },
+  { name: "Chen", city: "Pune", age: 25 },
+  { name: "Dev", city: "Delhi", age: 40 },
+];
+
+// { key: [items...] }
+const groupBy = (list, keyFn) =>
+  list.reduce((acc, item) => {
+    (acc[keyFn(item)] ??= []).push(item);
+    return acc;
+  }, {});
+
+// [1,2,3,4,5] with size 2 -> [[1,2],[3,4],[5]]
+const chunk = (list, size) =>
+  Array.from({ length: Math.ceil(list.length / size) }, (_, i) =>
+    list.slice(i * size, i * size + size)
+  );
+
+// one item per key (the last one wins)
+const uniqueBy = (list, keyFn) => [...new Map(list.map((x) => [keyFn(x), x])).values()];
+
+const byCity = groupBy(people, (p) => p.city);
+console.log(Object.keys(byCity), byCity.Pune.map((p) => p.name));
+console.log(chunk([1, 2, 3, 4, 5], 2));
+console.log(uniqueBy(people, (p) => p.age).map((p) => p.name));
+
+// sort by age, and by name when the ages are equal (copy first: sort changes the array)
+const sorted = [...people].sort((a, b) => a.age - b.age || a.name.localeCompare(b.name));
+console.log(sorted.map((p) => `${p.name}(${p.age})`).join(" "));
+
+const average = people.reduce((sum, p) => sum + p.age, 0) / people.length;
+console.log(average);
+```
+
+Output:
+
+```
+[ 'Pune', 'Delhi' ] [ 'Asha', 'Chen' ]
+[ [ 1, 2 ], [ 3, 4 ], [ 5 ] ]
+[ 'Asha', 'Chen', 'Dev' ]
+Ben(25) Chen(25) Asha(31) Dev(40)
+30.25
+```
+
+Notes:
+- `a.age - b.age || a.name.localeCompare(b.name)`: the `||` uses the second comparison only when the first one gives `0`.
+- `array.sort()` changes the original array. Copy with `[...people]` (or use `toSorted()` in recent Node and browsers).
+- Newer runtimes also have `Object.groupBy(list, fn)` and `Map.groupBy`. The helper above works everywhere.
+- `uniqueBy` keeps the order in which keys first appeared but the value of the **last** item. Reverse the list first if you want the first item to win.
+@@@ END
+
+@@@ USER
+How do I handle several promises in JavaScript when some may fail? I also want a timeout for a slow call, and a way to cancel a wait.
+@@@ ASSISTANT
+Pick the helper by what you need:
+- `Promise.all`: all must succeed; the first failure rejects the whole thing.
+- `Promise.allSettled`: wait for every promise and get a status for each. Nothing is thrown.
+- `Promise.race`: the first promise that finishes (success or failure) wins. With a timer promise this gives a timeout.
+- `AbortController`: a signal you can pass to `fetch` and other APIs to cancel them.
+
+```js
+const sleep = (ms, value, fail) =>
+  new Promise((resolve, reject) =>
+    setTimeout(() => (fail ? reject(new Error(value)) : resolve(value)), ms)
+  );
+
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+(async () => {
+  // 1. every result, good or bad
+  const results = await Promise.allSettled([
+    sleep(10, "users"),
+    sleep(20, "orders failed", true),
+    sleep(5, "stats"),
+  ]);
+  for (const r of results) {
+    console.log(r.status, r.status === "fulfilled" ? r.value : r.reason.message);
+  }
+
+  // 2. timeout
+  console.log(await withTimeout(sleep(10, "fast"), 100));
+  try {
+    await withTimeout(sleep(200, "slow"), 30);
+  } catch (e) {
+    console.log(e.message);
+  }
+
+  // 3. cancellation
+  const controller = new AbortController();
+  const waiting = new Promise((resolve, reject) => {
+    controller.signal.addEventListener("abort", () => reject(new Error("cancelled")));
+  });
+  setTimeout(() => controller.abort(), 10);
+  try {
+    await waiting;
+  } catch (e) {
+    console.log(e.message);
+  }
+})();
+```
+
+Output:
+
+```
+fulfilled users
+rejected orders failed
+fulfilled stats
+fast
+timeout after 30ms
+cancelled
+```
+
+Important: `Promise.race` with a timer does **not** stop the slow work, it only stops *waiting* for it. To really stop a `fetch`, pass `{ signal: controller.signal }` and call `controller.abort()` in the timeout. Modern runtimes also offer `AbortSignal.timeout(ms)`, which creates such a signal for you.
+@@@ END
+
+@@@ USER
+Write a small Redux-style store in plain JavaScript: state, a reducer, dispatch, subscribe. Use a shopping cart as the example.
+@@@ ASSISTANT
+The idea: the state is never changed in place. A **reducer** is a pure function `(state, action) => newState`. `dispatch` runs the reducer and tells the subscribers when the state really changed.
+
+```js
+function createStore(reducer, initialState) {
+  let state = initialState;
+  const listeners = new Set();
+
+  return {
+    getState: () => state,
+    dispatch(action) {
+      const next = reducer(state, action);
+      if (next === state) return; // nothing changed: nobody is told
+      state = next;
+      listeners.forEach((listener) => listener(state, action));
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+function cartReducer(state, action) {
+  switch (action.type) {
+    case "add": {
+      const existing = state.items.find((i) => i.id === action.item.id);
+      const items = existing
+        ? state.items.map((i) => (i.id === action.item.id ? { ...i, qty: i.qty + 1 } : i))
+        : [...state.items, { ...action.item, qty: 1 }];
+      return { ...state, items };
+    }
+    case "remove":
+      return { ...state, items: state.items.filter((i) => i.id !== action.id) };
+    default:
+      return state;
+  }
+}
+
+const total = (s) => s.items.reduce((sum, i) => sum + i.price * i.qty, 0);
+
+const store = createStore(cartReducer, { items: [] });
+const unsubscribe = store.subscribe((s, a) => console.log(a.type, "-> total", total(s)));
+
+store.dispatch({ type: "add", item: { id: 1, name: "Pen", price: 20 } });
+store.dispatch({ type: "add", item: { id: 2, name: "Book", price: 150 } });
+store.dispatch({ type: "add", item: { id: 1, name: "Pen", price: 20 } });
+store.dispatch({ type: "unknown" }); // ignored
+store.dispatch({ type: "remove", id: 2 });
+unsubscribe();
+store.dispatch({ type: "remove", id: 1 }); // changes the state, but nobody listens
+console.log(store.getState());
+```
+
+Output:
+
+```
+add -> total 20
+add -> total 170
+add -> total 190
+remove -> total 40
+{ items: [] }
+```
+
+Why this pattern is useful:
+- Every change goes through one function, so you can log, test and replay actions easily. The reducer is easy to unit test: call it with a state and an action, and compare the result.
+- Because the state is replaced and not mutated, "did it change?" is a cheap `===` check. UI libraries use the same idea to decide what to redraw.
+- Do not put side effects (fetch, timers, random numbers) in the reducer. Do them before you dispatch and put the result in the action.
+@@@ END
+
+@@@ USER
+My three buttons should log 0, 1 and 2 but they all log 3. What is wrong?
+
+```js
+for (var i = 0; i < 3; i++) {
+  setTimeout(() => console.log("clicked", i), 0);
+}
+```
+@@@ ASSISTANT
+`var` has **function scope**, so the whole loop shares one variable `i`. The callbacks run later, after the loop has finished and `i` is already `3`. All three callbacks read the same `i`.
+
+Fix: use `let`. A `let` in a `for` loop creates a **new variable for every round**, so each callback keeps its own value.
+
+```js
+for (let i = 0; i < 3; i++) {
+  setTimeout(() => console.log("clicked", i), 0);
+}
+```
+
+Output:
+
+```
+clicked 0
+clicked 1
+clicked 2
+```
+
+Changes made:
+- `var i` became `let i`. Nothing else is needed.
+
+Other ways to get the same result:
+- `[0, 1, 2].forEach((i) => setTimeout(() => console.log("clicked", i), 0));` The function parameter is a fresh variable on every call.
+- For old code you cannot change: wrap the body in a function that receives `i` as an argument (an IIFE).
+
+General rule: use `const` by default, `let` when the value changes, and avoid `var`. It also makes `this` and hoisting problems less likely.
+@@@ END
+
+@@@ USER
+Write a small fetch wrapper in JavaScript that sends a GET request, sets a timeout, throws a clear error for HTTP errors like 404, and returns the JSON. I want to test it without a real server.
+@@@ ASSISTANT
+`fetch` does **not** throw for HTTP errors such as 404 or 500. It only throws for network failures. So you must check `res.ok` yourself. For testing, pass the fetch function as a parameter (dependency injection) and give it a fake in the test.
+
+```js
+async function getJson(url, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(url, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} for ${url}`);
+    }
+    return await res.json();
+  } finally {
+    clearTimeout(timer); // always stop the timer, success or error
+  }
+}
+
+// a fake fetch for the demo: no network needed
+const fakeFetch = async (url) => {
+  if (url.endsWith("/missing")) return { ok: false, status: 404 };
+  return { ok: true, status: 200, json: async () => ({ url, items: [1, 2, 3] }) };
+};
+
+(async () => {
+  console.log(await getJson("/api/list", { fetchImpl: fakeFetch }));
+  try {
+    await getJson("/api/missing", { fetchImpl: fakeFetch });
+  } catch (e) {
+    console.log(e.message);
+  }
+})();
+```
+
+Output:
+
+```
+{ url: '/api/list', items: [ 1, 2, 3 ] }
+HTTP 404 for /api/missing
+```
+
+Details:
+- When the timeout fires, `controller.abort()` makes `fetch` reject with an `AbortError`. You can catch it and show "the server took too long".
+- `fetchImpl = fetch` is used only when you do not pass your own, so the normal call is just `getJson("/api/list")`.
+- For a POST add `method: "POST"`, `headers: { "Content-Type": "application/json" }` and `body: JSON.stringify(data)`.
+- Read the error body before you throw if your server sends useful messages: `const text = await res.text()`.
+@@@ END

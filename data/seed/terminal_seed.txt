@@ -1,0 +1,505 @@
+@@@ USER
+How do I find all files larger than 100 MB on Linux or macOS?
+@@@ ASSISTANT
+Use `find` with the `-size` test:
+
+```bash
+find / -type f -size +100M -exec ls -lh {} + 2>/dev/null
+```
+
+What each part does:
+- `/` is where the search starts. Use `.` for the current folder, which is faster and safer.
+- `-type f` limits the search to regular files.
+- `-size +100M` means "larger than 100 megabytes".
+- `-exec ls -lh {} +` prints a human-readable listing of the matches.
+- `2>/dev/null` hides "Permission denied" messages.
+
+To see the biggest items sorted:
+
+```bash
+du -ah . | sort -rh | head -n 20
+```
+
+`du -ah` lists sizes of everything, `sort -rh` sorts human-readable numbers from largest to smallest, and `head -n 20` keeps the top 20.
+@@@ END
+
+@@@ USER
+How do I search for a word inside all files of a folder in Linux, and in PowerShell?
+@@@ ASSISTANT
+Linux/macOS (using `grep`):
+
+```bash
+grep -rn "TODO" .
+```
+
+- `-r` searches folders recursively.
+- `-n` shows the line number.
+- Add `-i` to ignore uppercase/lowercase and `--include="*.py"` to search only Python files.
+
+Faster alternative if installed (`ripgrep`):
+
+```bash
+rg -n "TODO"
+```
+
+Windows PowerShell:
+
+```powershell
+Get-ChildItem -Recurse -File | Select-String -Pattern "TODO"
+```
+
+- `Get-ChildItem -Recurse -File` lists every file in every subfolder.
+- `Select-String` prints each matching line with its file name and line number.
+@@@ END
+
+@@@ USER
+Show the most useful git commands for daily work.
+@@@ ASSISTANT
+Here are the commands that cover most days:
+
+```bash
+git status                      # what changed?
+git diff                        # see unstaged changes
+git add -p                      # stage changes piece by piece
+git commit -m "Fix login bug"   # save a snapshot
+git switch -c feature/search    # create and switch to a new branch
+git pull --rebase               # get remote changes, keep history linear
+git push -u origin feature/search
+git log --oneline --graph -n 15 # compact history
+git stash                       # park changes temporarily
+git stash pop                   # bring them back
+```
+
+Undo helpers (understand them before using them):
+
+```bash
+git restore file.txt            # discard unstaged changes in a file
+git restore --staged file.txt   # unstage a file, keep the changes
+git commit --amend              # fix the last commit message or add forgotten files
+git revert <commit>             # make a new commit that undoes an old one (safe for shared branches)
+```
+
+Warning: `git reset --hard` throws away uncommitted work permanently, so check `git status` first.
+@@@ END
+
+@@@ USER
+I committed to the wrong branch. How do I move my last commit to a new branch?
+@@@ ASSISTANT
+You can do this safely in three steps. Suppose you committed to `main` by mistake.
+
+```bash
+git branch feature/my-work     # new branch pointing at your current commit
+git reset --keep HEAD~1        # move main back by one commit
+git switch feature/my-work     # continue work on the new branch
+```
+
+What happens:
+1. `git branch feature/my-work` marks the commit with a second name, so it cannot be lost.
+2. `git reset --keep HEAD~1` moves `main` back one commit and keeps uncommitted changes in your working tree. It refuses to run if that would overwrite local edits, which makes it safer than `--hard`.
+3. `git switch` moves you to the branch that still holds the commit.
+
+If `main` was already pushed, do not rewrite it. Use `git revert <commit>` on `main` instead.
+@@@ END
+
+@@@ USER
+How do I check which process is using port 3000 and stop it on Windows?
+@@@ ASSISTANT
+In PowerShell:
+
+```powershell
+netstat -ano | findstr :3000
+```
+
+The last column is the process ID (PID). To see which program it is and stop it:
+
+```powershell
+Get-Process -Id 12345
+Stop-Process -Id 12345
+```
+
+Replace `12345` with your PID. If the program refuses to close, add `-Force`.
+
+One-liner version:
+
+```powershell
+Get-NetTCPConnection -LocalPort 3000 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+```
+
+Be careful: make sure you know what the process is before stopping it. On Linux/macOS the equivalent is `lsof -i :3000` followed by `kill <PID>`.
+@@@ END
+
+@@@ USER
+Write a bash script that backs up a folder into a dated zip file and keeps only the last 7 backups.
+@@@ ASSISTANT
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE_DIR="${1:?usage: backup.sh <source-folder> [backup-folder]}"
+BACKUP_DIR="${2:-$HOME/backups}"
+STAMP="$(date +%Y-%m-%d_%H-%M-%S)"
+NAME="$(basename "$SOURCE_DIR")"
+TARGET="$BACKUP_DIR/${NAME}_${STAMP}.zip"
+
+mkdir -p "$BACKUP_DIR"
+zip -rq "$TARGET" "$SOURCE_DIR"
+echo "Created $TARGET"
+
+# Keep only the 7 newest backups of this folder.
+ls -1t "$BACKUP_DIR/${NAME}_"*.zip | tail -n +8 | while read -r old; do
+  echo "Removing old backup: $old"
+  rm -- "$old"
+done
+```
+
+How it works:
+- `set -euo pipefail` stops the script on errors, unset variables and failed pipes.
+- `${1:?message}` prints the usage message if you forget the first argument.
+- `ls -1t` lists newest first; `tail -n +8` skips the 7 newest and passes the older ones to the delete loop.
+
+Run it with `chmod +x backup.sh && ./backup.sh ~/projects/site`.
+@@@ END
+
+@@@ USER
+Write a PowerShell script that deletes files older than 30 days from a folder, with a preview mode.
+@@@ ASSISTANT
+```powershell
+param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [int]$Days = 30,
+    [switch]$DryRun
+)
+
+if (-not (Test-Path $Path)) {
+    Write-Error "Folder not found: $Path"
+    exit 1
+}
+
+$cutoff = (Get-Date).AddDays(-$Days)
+$old = Get-ChildItem -Path $Path -File -Recurse | Where-Object { $_.LastWriteTime -lt $cutoff }
+
+foreach ($file in $old) {
+    if ($DryRun) {
+        Write-Host "Would delete: $($file.FullName)"
+    } else {
+        Remove-Item -LiteralPath $file.FullName -Force
+        Write-Host "Deleted: $($file.FullName)"
+    }
+}
+
+Write-Host "$($old.Count) file(s) matched (older than $Days days)."
+```
+
+Usage:
+
+```powershell
+.\cleanup.ps1 -Path "C:\Temp" -Days 30 -DryRun   # preview only
+.\cleanup.ps1 -Path "C:\Temp" -Days 30           # really delete
+```
+
+Always run with `-DryRun` first and check the list. `-LiteralPath` is used so file names with special characters such as `[` are handled correctly.
+@@@ END
+
+@@@ USER
+How do I use curl to call a JSON API with an auth header and POST data?
+@@@ ASSISTANT
+```bash
+curl -X POST https://api.example.com/v1/items \
+  -H "Authorization: Bearer $API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "notebook", "qty": 3}'
+```
+
+Useful options:
+- `-H` adds a header. Keep secrets in an environment variable (`$API_TOKEN`) rather than typing them into the command, so they do not end up in shell history.
+- `-d` sends the request body; curl switches to POST automatically.
+- `-i` shows response headers, `-s` hides the progress bar, `-f` makes curl fail on HTTP errors, `-L` follows redirects.
+- Pretty-print the response with `jq`:
+
+```bash
+curl -s https://api.example.com/v1/items | jq '.'
+```
+
+In Windows PowerShell, write `curl.exe` (not `curl`, which is an alias for `Invoke-WebRequest`), or use:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri https://api.example.com/v1/items `
+  -Headers @{ Authorization = "Bearer $env:API_TOKEN" } `
+  -ContentType "application/json" `
+  -Body '{"name":"notebook","qty":3}'
+```
+@@@ END
+
+@@@ USER
+Explain chmod and file permissions on Linux with examples.
+@@@ ASSISTANT
+Each file has permissions for three groups: the **owner** (u), the **group** (g) and **others** (o). Each group can have read (r = 4), write (w = 2) and execute (x = 1).
+
+```bash
+ls -l script.sh
+# -rwxr-xr-- 1 sam devs 120 Oct 29 10:00 script.sh
+#  ^^^ owner  ^^^ group ^^^ others
+```
+
+Here the owner can read/write/execute, the group can read/execute, others can only read.
+
+Changing permissions:
+
+```bash
+chmod +x script.sh        # make it executable for everyone
+chmod u+w,g-w file.txt    # owner can write, group cannot
+chmod 644 notes.txt       # rw-r--r--  (typical for files)
+chmod 755 deploy.sh       # rwxr-xr-x  (typical for scripts and folders)
+chmod 600 id_rsa          # rw-------  (private keys must look like this)
+chown sam:devs file.txt   # change owner and group (usually needs sudo)
+```
+
+How the numbers work: 7 = 4+2+1 (rwx), 6 = 4+2 (rw-), 5 = 4+1 (r-x), 4 = r--. So `755` means owner rwx, group r-x, others r-x.
+
+Avoid `chmod 777`. It lets every user modify the file and is almost never the right fix; find which user actually needs access instead.
+@@@ END
+
+@@@ USER
+How do I use ssh keys and copy files over ssh?
+@@@ ASSISTANT
+Create a key once, install the public part on the server, then log in without a password.
+
+```bash
+ssh-keygen -t ed25519 -C "my-laptop"      # creates ~/.ssh/id_ed25519 and .pub
+ssh-copy-id user@server.example.com       # installs the public key on the server
+ssh user@server.example.com               # log in
+```
+
+Copy files:
+
+```bash
+scp report.pdf user@server.example.com:/home/user/      # upload a file
+scp -r ./site user@server.example.com:/var/www/          # upload a folder
+rsync -avz --progress ./site/ user@server.example.com:/var/www/site/   # smarter: only sends changes
+```
+
+Shortcut config in `~/.ssh/config`:
+
+```text
+Host myserver
+    HostName server.example.com
+    User sam
+    IdentityFile ~/.ssh/id_ed25519
+```
+
+After that, `ssh myserver` and `scp file myserver:~/` just work.
+
+Never share the private key (the file without `.pub`).
+@@@ END
+
+@@@ USER
+Show me Docker commands to build an image, run a container with a port and a volume, and clean up.
+@@@ ASSISTANT
+```bash
+docker build -t myapp:1.0 .                         # build an image from the Dockerfile in this folder
+docker run -d --name web -p 8080:3000 myapp:1.0     # run in background, host port 8080 -> container port 3000
+docker run --rm -it -v "$PWD":/app -w /app node:20 bash   # temporary container with your folder mounted
+docker ps                                           # running containers
+docker logs -f web                                  # follow logs
+docker exec -it web sh                              # open a shell inside the container
+docker stop web && docker rm web                    # stop and remove it
+```
+
+Clean up unused data:
+
+```bash
+docker image prune          # remove dangling images
+docker system prune         # remove stopped containers, unused networks, dangling images
+```
+
+Notes:
+- `-p HOST:CONTAINER` maps ports. The app inside must listen on `0.0.0.0`, not only `127.0.0.1`.
+- `-v` mounts keep data after the container is removed. Use named volumes (`-v mydata:/var/lib/data`) for databases.
+- On Windows PowerShell write `${PWD}` instead of `$PWD`.
+@@@ END
+
+@@@ USER
+How do I see what is eating my disk space and free it up on Windows?
+@@@ ASSISTANT
+Start by finding the large folders, then clean what is safe.
+
+PowerShell: size of each top-level folder on C: (may take a while):
+
+```powershell
+Get-ChildItem C:\ -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+    $size = (Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+    [pscustomobject]@{ Folder = $_.FullName; SizeGB = [math]::Round($size / 1GB, 2) }
+} | Sort-Object SizeGB -Descending
+```
+
+Safe cleanup options:
+
+```powershell
+cleanmgr                          # built-in Disk Cleanup
+Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue   # your temp files
+npm cache clean --force           # npm cache (if you use Node)
+cargo clean                       # inside a Rust project: deletes its target folder
+docker system prune               # unused Docker data
+```
+
+Do not delete anything inside `C:\Windows` by hand. Rust `target` folders and `node_modules` can be large and are safe to delete because they are rebuilt.
+@@@ END
+
+@@@ USER
+I ran `npm install` and got "EACCES: permission denied". What should I do?
+@@@ ASSISTANT
+This error means npm tried to write to a folder your user does not own, usually the global directory. Do not fix it with `sudo npm install`: that creates root-owned files that cause more errors later.
+
+Check where npm writes:
+
+```bash
+npm config get prefix
+```
+
+Fix options, from best to quickest:
+1. Use a version manager (`nvm` on Linux/macOS, `nvm-windows` or `fnm` on Windows). It installs Node in your home folder, so no permission problems exist.
+2. Or tell npm to use a folder you own:
+
+```bash
+mkdir -p ~/.npm-global
+npm config set prefix ~/.npm-global
+echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+```
+
+3. If only one project folder is the problem, fix its ownership: `sudo chown -R $USER:$USER .` (run it inside your project folder only).
+
+For local installs (`npm install` without `-g`), also check that you are in the project folder and that `node_modules` was not created earlier by root.
+@@@ END
+
+@@@ USER
+How do I set up a Python virtual environment and install requirements?
+@@@ ASSISTANT
+Windows (PowerShell):
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Linux/macOS:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Handy extras:
+
+```bash
+pip freeze > requirements.txt    # save the exact versions you use
+deactivate                       # leave the environment
+```
+
+Notes:
+- A virtual environment keeps each project's packages separate, so versions never clash.
+- If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
+- Add `.venv/` to `.gitignore`.
+@@@ END
+
+@@@ USER
+Explain pipes, redirection and some text-processing one-liners in bash (grep, sort, uniq, awk, sed).
+@@@ ASSISTANT
+A pipe (`|`) sends the output of one command into the next. Redirection (`>`, `>>`, `2>`) sends output to a file.
+
+```bash
+ls -l > files.txt         # overwrite files.txt with the listing
+echo "done" >> log.txt    # append a line
+command 2> errors.txt     # send only error messages to a file
+command > out.txt 2>&1    # send both normal output and errors to a file
+```
+
+Classic text processing, with a web server log `access.log`:
+
+```bash
+# The 10 most frequent IP addresses
+awk '{print $1}' access.log | sort | uniq -c | sort -rn | head -n 10
+
+# All lines with a 500 error
+grep ' 500 ' access.log
+
+# Count requests per HTTP status code (status is field 9 in common log format)
+awk '{count[$9]++} END {for (s in count) print s, count[s]}' access.log
+
+# Replace text in a file (keeps a .bak backup)
+sed -i.bak 's/http:/https:/g' links.txt
+
+# Show only the 3rd column of a CSV
+cut -d',' -f3 data.csv
+```
+
+Remember: `uniq` only merges neighbouring identical lines, which is why you `sort` first.
+@@@ END
+
+@@@ USER
+How do I schedule a recurring task with cron on Linux and Task Scheduler on Windows?
+@@@ ASSISTANT
+Linux with cron:
+
+```bash
+crontab -e
+```
+
+Add a line with five time fields and the command:
+
+```text
+# minute hour day-of-month month day-of-week  command
+30 2 * * *   /home/sam/backup.sh >> /home/sam/backup.log 2>&1
+*/15 * * * * /usr/bin/python3 /home/sam/check.py
+0 9 * * 1    /home/sam/weekly-report.sh
+```
+
+- `30 2 * * *` means every day at 02:30.
+- `*/15` means every 15 minutes, `1` in the last field means Monday.
+- Use absolute paths; cron runs with a minimal environment.
+
+Windows with Task Scheduler from PowerShell:
+
+```powershell
+$action  = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File C:\Scripts\backup.ps1"
+$trigger = New-ScheduledTaskTrigger -Daily -At 2:30am
+Register-ScheduledTask -TaskName "DailyBackup" -Action $action -Trigger $trigger
+```
+
+Check or remove it with `Get-ScheduledTask -TaskName DailyBackup` and `Unregister-ScheduledTask -TaskName DailyBackup`.
+@@@ END
+
+@@@ USER
+My command says "command not found" or "is not recognized". How do I debug PATH problems?
+@@@ ASSISTANT
+That message means the shell cannot find the program in any folder listed in your `PATH` variable. Check these things in order.
+
+1. Is it installed? Try `which tool` (Linux/macOS) or `where.exe tool` (Windows).
+2. Show your PATH:
+
+```bash
+echo $PATH | tr ':' '\n'          # Linux/macOS
+```
+
+```powershell
+$env:Path -split ';'              # Windows PowerShell
+```
+
+3. Add the folder that contains the program:
+
+```bash
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+```
+
+```powershell
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Tools\mytool", "User")
+```
+
+4. Open a NEW terminal window. On Windows an already open terminal keeps the old PATH.
+
+On Linux, a script in the current folder needs `./script.sh`, because `.` is deliberately not in PATH.
+@@@ END

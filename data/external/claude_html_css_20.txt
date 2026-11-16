@@ -1,0 +1,681 @@
+@@@ USER
+How do I center a card both horizontally and vertically in the middle of the page with CSS?
+@@@ ASSISTANT
+Make the `body` a full-height grid (or flex) container and let it center its child. The grid version needs two lines, `display: grid` and `place-items: center`. The key detail is `min-height: 100vh`: without a height, the body is only as tall as its content and there is nothing to center in vertically. Both versions are below.
+
+**Grid**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Centered card</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    font-family: system-ui, sans-serif;
+    background: #f3f4f6;
+  }
+  .card { width: 320px; padding: 24px; background: white; border-radius: 12px; }
+</style>
+</head>
+<body>
+<div class="card"><h1>Hello</h1><p>This card is centered.</p></div>
+</body>
+</html>
+```
+
+I loaded the page in headless Chrome and measured it (Grid):
+
+```
+card width: 320
+card height: 170.9
+distance from the left edge: 231
+distance from the right edge: 231
+distance from the top: 216.6
+distance from the bottom: 216.6
+```
+
+**Flexbox**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Centered card</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: system-ui, sans-serif;
+    background: #f3f4f6;
+  }
+  .card { width: 320px; padding: 24px; background: white; border-radius: 12px; }
+</style>
+</head>
+<body>
+<div class="card"><h1>Hello</h1><p>This card is centered.</p></div>
+</body>
+</html>
+```
+
+I loaded the page in headless Chrome and measured it (Flexbox):
+
+```
+card width: 320
+card height: 170.9
+distance from the left edge: 231
+distance from the right edge: 231
+distance from the top: 216.6
+distance from the bottom: 216.6
+```
+
+In both layouts the distances on opposite sides are equal, so the card is centered in both directions. Use grid when there is exactly one thing to center, and flexbox when you also want to lay out several children in a row or column. Do not use `height: 100vh` on mobile if the content can be taller than the screen; `min-height` lets the page grow instead of cutting the content. Newer browsers also have `100dvh`, which follows the visible area when the address bar shows or hides.
+@@@ END
+
+@@@ USER
+How do I make a responsive card grid that changes the number of columns by itself, without media queries?
+@@@ ASSISTANT
+Use `repeat(auto-fit, minmax(160px, 1fr))` for `grid-template-columns`. It means: make as many columns as fit, each at least 160 px wide, and share the leftover space equally (`1fr`). When the window gets narrower, columns drop out and the tiles wrap to the next row.
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Responsive grid</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font-family: system-ui, sans-serif; }
+  .grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+  .tile { background: #dbeafe; padding: 24px; border-radius: 8px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="grid">
+  <div class="tile">Tile 1</div>
+  <div class="tile">Tile 2</div>
+  <div class="tile">Tile 3</div>
+  <div class="tile">Tile 4</div>
+  <div class="tile">Tile 5</div>
+  <div class="tile">Tile 6</div>
+</div>
+</body>
+</html>
+```
+
+I loaded the page in headless Chrome at two window widths and counted the columns:
+
+```
+[window 504 px wide]
+columns: 2
+rows: 3
+first tile width: 228
+
+[window 882 px wide]
+columns: 4
+rows: 2
+first tile width: 200.5
+```
+
+The same CSS gives 2 columns in the narrow window and 4 in the wide one (the available width is the window minus 32 px of padding), and the tile width always stays at least 160 px. `auto-fit` collapses empty columns, so with few tiles they stretch to fill the row; use `auto-fill` instead when you want the empty columns to stay and the tiles to keep a fixed maximum size (combine it with a `max-width` in `minmax` such as `minmax(160px, 220px)`). The `gap` replaces the old trick of margins on every tile.
+@@@ END
+
+@@@ USER
+My position: sticky header does not stick. It scrolls away with the page. What is wrong?
+@@@ ASSISTANT
+`position: sticky` sticks to the nearest ancestor that scrolls. If any ancestor has `overflow: hidden`, `auto` or `scroll` (including `overflow-x: hidden`, which people add to stop sideways scrolling), that ancestor becomes the scroll container, it does not actually scroll, and the header never sticks. Three versions, each scrolled down by 500 px with `window.scrollTo(0, 500)`, and the distance of the header from the top of the window measured afterwards:
+
+**1. Header directly in the page**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sticky</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; }
+  .site-header { position: sticky; top: 0; background: #1e293b; color: white; padding: 16px; }
+  .content { height: 2000px; padding: 16px; }
+</style>
+</head>
+<body>
+<header class="site-header">My site</header>
+<main class="content">Long content</main>
+</body>
+</html>
+```
+
+Measured in headless Chrome (1. Header directly in the page):
+
+```
+scrolled by: 500
+header top after scrolling: 0
+```
+
+**2. Header inside a wrapper with overflow-x: hidden**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sticky</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; }
+  .site-header { position: sticky; top: 0; background: #1e293b; color: white; padding: 16px; }
+  .content { height: 2000px; padding: 16px; }
+  .page { overflow-x: hidden; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">My site</header>
+  <main class="content">Long content</main>
+</div>
+</body>
+</html>
+```
+
+Measured in headless Chrome (2. Header inside a wrapper with overflow-x: hidden):
+
+```
+scrolled by: 500
+header top after scrolling: -500
+```
+
+**3. The same wrapper with overflow-x: clip**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sticky</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; }
+  .site-header { position: sticky; top: 0; background: #1e293b; color: white; padding: 16px; }
+  .content { height: 2000px; padding: 16px; }
+  .page { overflow-x: clip; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">My site</header>
+  <main class="content">Long content</main>
+</div>
+</body>
+</html>
+```
+
+Measured in headless Chrome (3. The same wrapper with overflow-x: clip):
+
+```
+scrolled by: 500
+header top after scrolling: 0
+```
+
+In version 2 the header scrolled out of view (negative top). `overflow-x: clip` hides the overflow in the same way but, unlike `hidden`, does not create a scroll container, so sticky works again (version 3). If you cannot use `clip`, remove the `overflow` from the ancestors that contain the sticky element, and put it on a different element that does not contain it. Also remember that a sticky element needs a `top`, `bottom`, `left` or `right` value to know where to stick.
+@@@ END
+
+@@@ USER
+My long text with text-overflow: ellipsis inside a flex row does not get cut off. It pushes the other items out of the box. How do I fix it?
+@@@ ASSISTANT
+A flex item has `min-width: auto`, which means it will not shrink below the width of its content. When the ellipsis is on a child, the flex item around it (`.col` here) keeps the full text width, so the row overflows and the ellipsis never appears. Fix it with `min-width: 0` on that flex item. The measurements below compare the broken row with the fixed one.
+
+**Broken**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ellipsis in flex</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 16px; font-family: system-ui, sans-serif; }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 300px;
+    padding: 8px;
+    border: 1px solid #cbd5e1;
+    margin-bottom: 12px;
+  }
+  .title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .badge { flex: none; background: #16a34a; color: white; padding: 2px 8px; border-radius: 999px; }
+</style>
+</head>
+<body>
+<div class="row" id="broken">
+  <div class="col"><div class="title">A very long file name that does not fit into the row.txt</div></div>
+  <span class="badge">new</span>
+</div>
+</body>
+</html>
+```
+
+Measured in headless Chrome (Broken):
+
+```
+row width: 300
+col width: 378.9
+title is cut off (scrollWidth > clientWidth): False
+badge right edge minus row right edge: 144.9
+```
+
+**Fixed with min-width: 0 on .col**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ellipsis in flex</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 16px; font-family: system-ui, sans-serif; }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 300px;
+    padding: 8px;
+    border: 1px solid #cbd5e1;
+    margin-bottom: 12px;
+  }
+  .title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .badge { flex: none; background: #16a34a; color: white; padding: 2px 8px; border-radius: 999px; }
+  .col { min-width: 0; }
+</style>
+</head>
+<body>
+<div class="row" id="broken">
+  <div class="col"><div class="title">A very long file name that does not fit into the row.txt</div></div>
+  <span class="badge">new</span>
+</div>
+</body>
+</html>
+```
+
+Measured in headless Chrome (Fixed with min-width: 0 on .col):
+
+```
+row width: 300
+col width: 225
+title is cut off (scrollWidth > clientWidth): True
+badge right edge minus row right edge: -9
+```
+
+In the broken version the `col` is as wide as the whole text, the title is not cut, and the badge sits far outside the row (a large positive number). With `min-width: 0` the column shrinks to the space that is left, the text is cut with an ellipsis, and the badge stays inside the row (the last number is -9: its right edge is 9 px inside the row's outer edge, which is the 8 px padding plus the 1 px border). The same rule applies to grid items (`min-width: 0` or `minmax(0, 1fr)` for the columns). A flex item that itself has `overflow: hidden` does not have this problem, because its automatic minimum size is 0.
+@@@ END
+
+@@@ USER
+How do I build a light/dark theme switch with CSS variables that remembers the choice?
+@@@ ASSISTANT
+Put every color in CSS custom properties on `:root`, override them under `[data-theme="dark"]`, and use `var(--name)` everywhere else. The switch then only changes one attribute on `<html>`. The script chooses the starting theme from the saved value, or from the system setting (`prefers-color-scheme`) when nothing is saved, and the `try/catch` keeps the page working when `localStorage` is blocked.
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Theme switch</title>
+<style>
+  :root { --bg: #ffffff; --fg: #111827; --accent: #2563eb; }
+  [data-theme="dark"] { --bg: #0f172a; --fg: #e2e8f0; --accent: #60a5fa; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; }
+  button { background: var(--accent); color: var(--bg); border: 0; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>Theme demo</h1>
+<button id="toggle" type="button" aria-pressed="false">Dark mode</button>
+<script>
+  var root = document.documentElement;
+  var button = document.getElementById('toggle');
+
+  function apply(theme) {
+    root.dataset.theme = theme;
+    button.setAttribute('aria-pressed', String(theme === 'dark'));
+  }
+
+  var saved = null;
+  try { saved = localStorage.getItem('theme'); } catch (e) {}
+  apply(saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+
+  button.addEventListener('click', function () {
+    var next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    apply(next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+  });
+</script>
+</body>
+</html>
+```
+
+I loaded the page in headless Chrome, simulated two clicks on the button and read the computed background color:
+
+```
+system prefers dark: True
+background at start: rgb(15, 23, 42)
+aria-pressed at start: true
+background after one click: rgb(255, 255, 255)
+aria-pressed after one click: false
+saved theme after one click: light
+background after a second click: rgb(15, 23, 42)
+```
+
+The page starts in the theme that matches the system setting (the first line shows that this system prefers dark, so the page started dark). The first click switches to the other theme, flips `aria-pressed` and stores the choice; the second click switches back. Using `aria-pressed` tells screen readers that the button is a toggle and in which state it is. To avoid a flash of the wrong theme when the page loads, keep the small `apply(...)` script in the `<head>` (before the body is painted) instead of at the end. When you start from `prefers-color-scheme`, you can also listen to its `change` event so the page follows the system setting while the user has not chosen a theme.
+@@@ END
+
+@@@ USER
+Why is my input with width: 100% wider than its container?
+@@@ ASSISTANT
+By default (`box-sizing: content-box`) `width` is only the width of the content. Padding and border are added on top, so `width: 100%` plus 20 px padding and a 2 px border on each side is wider than 100%. Set `box-sizing: border-box` so that `width` includes the padding and the border. Most projects set it once for every element.
+
+**Default box model**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Box model</title>
+<style>
+  body { margin: 16px; font-family: system-ui, sans-serif; }
+  .container { width: 300px; background: #e2e8f0; margin-bottom: 12px; }
+  input { width: 100%; padding: 20px; border: 2px solid #475569; display: block; }
+</style>
+</head>
+<body>
+<div class="container"><input id="field" value="width: 100%"></div>
+</body>
+</html>
+```
+
+Measured in headless Chrome (Default box model):
+
+```
+container width: 300
+input width: 344
+input sticks out on the right by: 44
+```
+
+**With box-sizing: border-box**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Box model</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body { margin: 16px; font-family: system-ui, sans-serif; }
+  .container { width: 300px; background: #e2e8f0; margin-bottom: 12px; }
+  input { width: 100%; padding: 20px; border: 2px solid #475569; display: block; }
+</style>
+</head>
+<body>
+<div class="container"><input id="field" value="width: 100%"></div>
+</body>
+</html>
+```
+
+Measured in headless Chrome (With box-sizing: border-box):
+
+```
+container width: 300
+input width: 300
+input sticks out on the right by: 0
+```
+
+With the default box model the input is 344 px wide in a 300 px container: 300 content + 2 × 20 padding + 2 × 2 border. With `border-box` it is exactly 300. The `*, *::before, *::after` selector also covers the generated content, which `*` alone does not.
+@@@ END
+
+@@@ USER
+How do I validate a sign-up form with the browser's built-in validation, show red and green borders, and focus the first wrong field?
+@@@ ASSISTANT
+Use the HTML attributes (`type="email"`, `required`, `minlength`) and let the browser do the checking. Add `novalidate` to the form so that the browser does not show its own pop-up and your script controls the timing: on submit, call `form.checkValidity()`, add a class to the form, and style `:invalid` and `:valid` only below that class, so the fields do not turn red before the user has tried to submit. `validationMessage` gives you a ready-made, translated error text.
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign-up form</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; padding: 24px; max-width: 360px; }
+  label { display: block; margin-top: 12px; font-weight: 600; }
+  input { width: 100%; padding: 8px; border: 2px solid #94a3b8; border-radius: 6px; }
+  .was-validated input:invalid { border-color: #dc2626; }
+  .was-validated input:valid { border-color: #16a34a; }
+  #status { margin-top: 12px; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<form id="signup" novalidate>
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email" required autocomplete="email">
+  <label for="password">Password (at least 8 characters)</label>
+  <input id="password" name="password" type="password" required minlength="8" autocomplete="new-password">
+  <button type="submit">Create account</button>
+  <p id="status" role="status"></p>
+</form>
+<script>
+  var form = document.getElementById('signup');
+  var statusEl = document.getElementById('status');
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();                       // we handle the submit ourselves
+    form.classList.add('was-validated');
+    if (!form.checkValidity()) {
+      var first = form.querySelector(':invalid');
+      statusEl.textContent = first.validationMessage;
+      first.focus();
+      return;
+    }
+    statusEl.textContent = 'Account created for ' + form.email.value;
+  });
+</script>
+</body>
+</html>
+```
+
+I loaded the page in headless Chrome and submitted the form three times from a script: first with bad values, then with one field fixed, then with both fixed:
+
+```
+border before submit: rgb(148, 163, 184)
+after a bad submit: email border: rgb(220, 38, 38)
+after a bad submit: focused field: email
+after a bad submit: message: Please include an '@' in the email address. 'anna.example.com' is missing an '@'.
+after the email is fixed: focused field: password
+after the email is fixed: message: Please fill out this field.
+after both are fixed: password border: rgb(22, 163, 74)
+after both are fixed: message: Account created for anna@example.com
+```
+
+The messages come from the browser, so they follow the user's language. A detail I met while testing this page: `minlength` is only checked for values that the user typed; a value set from a script (like in my test) skips that check, which is why the test leaves the password empty to trigger `required` instead. Remember that this is only a convenience for the user: the server must check the data again, because anyone can send a request without your form. If you want your own wording, read `email.validity.typeMismatch`, `valueMissing` or `tooShort` and write the text yourself. In the script the variable is called `statusEl` because a global `var status` collides with `window.status`, which only stores strings (my first version silently did nothing for that reason). Keep the `<label for=...>` connected to each input so that clicking the label focuses the field and screen readers announce it.
+@@@ END
+
+@@@ USER
+How do I keep a box in a 16:9 shape, and how do I put a square image into a wide box without stretching it?
+@@@ ASSISTANT
+`aspect-ratio: 16 / 9` lets the browser compute the height from the width, so you do not need the old padding-top hack. For images, `object-fit: cover` fills the box and crops the overflow, while the default (`fill`) stretches the image. Here a 400 × 400 image is shown in a 200 × 100 box.
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aspect ratio</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 16px; font-family: system-ui, sans-serif; }
+  .video { width: 320px; aspect-ratio: 16 / 9; background: #0f172a; margin-bottom: 12px; }
+  .thumb { width: 200px; height: 100px; object-fit: cover; display: block; }
+</style>
+</head>
+<body>
+<div class="video"></div>
+<img class="thumb" alt="Blue circle" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Crect width='400' height='400' fill='%2338bdf8'/%3E%3Ccircle cx='200' cy='200' r='120' fill='%230369a1'/%3E%3C/svg%3E">
+</body>
+</html>
+```
+
+Measured in headless Chrome:
+
+```
+video box: 320 x 180
+image file size: 400 x 400
+image box: 200 x 100
+object-fit: cover
+with object-fit: fill the image box is still: 200 x 100
+```
+
+The video box is 320 × 180, which is exactly 16:9. The image box stays 200 × 100 in both cases; `object-fit` does not change the box, it changes how the picture is placed inside it. With `cover` the picture is scaled to 200 × 200 and only the middle 100 px of its height are shown; with `fill` the whole square is squeezed into the wide box and looks distorted. Use `contain` when nothing may be cropped, and `object-position` to choose which part stays visible with `cover`. Always give `<img>` a `width` and `height` or an `aspect-ratio`, so the page does not jump when the image loads.
+@@@ END
+
+@@@ USER
+My dropdown menu has z-index: 9999 but it still appears behind the next section. Why?
+@@@ ASSISTANT
+`z-index` only competes with other elements inside the same stacking context. Some properties create a new stacking context on an element: `opacity` below 1, `transform`, `filter`, `position` with a `z-index` value, and more. Everything inside it is then ranked as one group, so the 9999 of the menu counts only inside its parent. To see what is really on top, the script asks the browser which element is at one point of the overlap with `document.elementFromPoint`. Three versions:
+
+**1. Normal: the menu is on top**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stacking</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; }
+  .nav { position: relative; height: 50px; background: #1e293b; color: white; padding: 12px; }
+  .menu { position: absolute; top: 50px; left: 0; width: 200px; height: 100px; z-index: 9999; background: #f59e0b; }
+  .hero { position: relative; z-index: 1; height: 300px; background: #bae6fd; }
+</style>
+</head>
+<body>
+<nav class="nav" id="nav">Nav<div class="menu" id="menu">Menu</div></nav>
+<section class="hero" id="hero">Hero</section>
+</body>
+</html>
+```
+
+Measured in headless Chrome (1. Normal: the menu is on top):
+
+```
+element on top at point (100, 100): menu
+```
+
+**2. The nav has opacity: 0.99, which creates a stacking context**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stacking</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; }
+  .nav { position: relative; height: 50px; background: #1e293b; color: white; padding: 12px; }
+  .menu { position: absolute; top: 50px; left: 0; width: 200px; height: 100px; z-index: 9999; background: #f59e0b; }
+  .hero { position: relative; z-index: 1; height: 300px; background: #bae6fd; }
+  .nav { opacity: 0.99; }
+</style>
+</head>
+<body>
+<nav class="nav" id="nav">Nav<div class="menu" id="menu">Menu</div></nav>
+<section class="hero" id="hero">Hero</section>
+</body>
+</html>
+```
+
+Measured in headless Chrome (2. The nav has opacity: 0.99, which creates a stacking context):
+
+```
+element on top at point (100, 100): hero
+```
+
+**3. Fix: give the nav its own z-index above the hero**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stacking</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; }
+  .nav { position: relative; height: 50px; background: #1e293b; color: white; padding: 12px; }
+  .menu { position: absolute; top: 50px; left: 0; width: 200px; height: 100px; z-index: 9999; background: #f59e0b; }
+  .hero { position: relative; z-index: 1; height: 300px; background: #bae6fd; }
+  .nav { opacity: 0.99; z-index: 2; }
+</style>
+</head>
+<body>
+<nav class="nav" id="nav">Nav<div class="menu" id="menu">Menu</div></nav>
+<section class="hero" id="hero">Hero</section>
+</body>
+</html>
+```
+
+Measured in headless Chrome (3. Fix: give the nav its own z-index above the hero):
+
+```
+element on top at point (100, 100): menu
+```
+
+In version 2 the hero (`z-index: 1`) is above the whole nav, including its menu, because the nav with `opacity` and no `z-index` is ranked at level 0 as one block. In version 3 the nav forms a stacking context of level 2, which is higher than the hero's 1, so its menu is on top again, and the 9999 is not needed at all. When a z-index does not work, look at the ancestors of the element for `opacity`, `transform`, `filter`, `will-change`, `position: fixed` or `sticky`, and `isolation: isolate`. A small z-index scale (1, 10, 100) kept in CSS variables avoids the 9999 race.
+@@@ END
+

@@ -1,0 +1,483 @@
+@@@ USER
+How do I make my own error type in Rust? I read a config text with "key = value" lines and I want clear messages for a missing key, a bad number and a number that is too big.
+@@@ ASSISTANT
+Use an **enum** with one variant per kind of failure, then implement `Display` (the message for humans) and `std::error::Error` (so it works with `?` and `Box<dyn Error>`). Variants can carry data, such as the key name, so the message says exactly what went wrong.
+
+```rust
+use std::fmt;
+use std::num::ParseIntError;
+
+#[derive(Debug)]
+enum ConfigError {
+    Missing(&'static str),
+    BadNumber { key: String, source: ParseIntError },
+    OutOfRange { key: String, value: u32, max: u32 },
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ConfigError::Missing(key) => write!(f, "missing key '{}'", key),
+            ConfigError::BadNumber { key, source } => {
+                write!(f, "key '{}' is not a number: {}", key, source)
+            }
+            ConfigError::OutOfRange { key, value, max } => {
+                write!(f, "key '{}' is {} but the maximum is {}", key, value, max)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {
+    // lets callers walk the chain of causes
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ConfigError::BadNumber { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+struct Config {
+    port: u32,
+    workers: u32,
+}
+
+fn find<'a>(text: &'a str, key: &'static str) -> Result<&'a str, ConfigError> {
+    for line in text.lines() {
+        if let Some((k, v)) = line.split_once('=') {
+            if k.trim() == key {
+                return Ok(v.trim());
+            }
+        }
+    }
+    Err(ConfigError::Missing(key))
+}
+
+fn number(text: &str, key: &'static str, max: u32) -> Result<u32, ConfigError> {
+    let raw = find(text, key)?;
+    let value: u32 = raw.parse().map_err(|e| ConfigError::BadNumber {
+        key: key.to_string(),
+        source: e,
+    })?;
+    if value > max {
+        return Err(ConfigError::OutOfRange { key: key.to_string(), value, max });
+    }
+    Ok(value)
+}
+
+fn parse_config(text: &str) -> Result<Config, ConfigError> {
+    Ok(Config {
+        port: number(text, "port", 65535)?,
+        workers: number(text, "workers", 64)?,
+    })
+}
+
+fn main() {
+    let inputs = [
+        "port = 8080\nworkers = 4",
+        "port = 80\n",
+        "port = abc\nworkers = 2",
+        "port = 8080\nworkers = 500",
+    ];
+    for input in inputs {
+        match parse_config(input) {
+            Ok(c) => println!("ok: port {} workers {}", c.port, c.workers),
+            Err(e) => println!("error: {}", e),
+        }
+    }
+}
+```
+
+Output:
+
+```
+ok: port 8080 workers 4
+error: missing key 'workers'
+error: key 'port' is not a number: invalid digit found in string
+error: key 'workers' is 500 but the maximum is 64
+```
+
+Why it is built this way:
+- `?` on a `Result<_, ConfigError>` returns early with the error, so each function stays short.
+- `map_err` turns the library error (`ParseIntError`) into your own variant and adds the key name.
+- Keeping the original error in `source` means no information is lost.
+- In a bigger program, add `impl From<ParseIntError> for ConfigError` when one conversion is always right, and `?` will convert for you.
+@@@ END
+
+@@@ USER
+My Rust function reads numbers from a string and I want one error type for everything. Show me Box<dyn Error>, the ? operator, and returning an error from main.
+@@@ ASSISTANT
+`Box<dyn Error>` means "any error type". The `?` operator converts every error into it automatically, and a plain `&str` or `String` can be turned into one with `.into()`. It is the easiest choice for small programs and scripts.
+
+```rust
+use std::error::Error;
+
+fn sum_line(line: &str) -> Result<i64, Box<dyn Error>> {
+    let mut total = 0;
+    for part in line.split(',') {
+        let n: i64 = part.trim().parse()?; // ParseIntError becomes Box<dyn Error>
+        total += n;
+    }
+    Ok(total)
+}
+
+fn average(line: &str) -> Result<f64, Box<dyn Error>> {
+    if line.trim().is_empty() {
+        return Err("empty input".into()); // &str becomes Box<dyn Error>
+    }
+    let count = line.split(',').count();
+    Ok(sum_line(line)? as f64 / count as f64)
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    println!("{}", sum_line("1, 2, 3")?);
+    println!("{:.2}", average("10, 20, 25")?);
+
+    if let Err(e) = average("") {
+        println!("error: {}", e);
+    }
+    if let Err(e) = sum_line("1, x") {
+        println!("error: {}", e);
+    }
+
+    // An error that reaches the end of main stops the program
+    let v = sum_line("4, five")?;
+    println!("not reached {}", v);
+    Ok(())
+}
+```
+
+Output on the screen:
+
+```
+6
+18.33
+error: empty input
+error: invalid digit found in string
+```
+
+After that, the program prints `Error: ParseIntError { kind: InvalidDigit }` on the error stream and exits with code 1. That is what you want in a command-line tool: a non-zero exit code tells the shell that something failed.
+
+When to switch to your own enum: when the caller needs to react differently to different errors (retry, show a hint, ignore). `Box<dyn Error>` hides the type, so the caller can only print it. For application code, `Box<dyn Error>` is fine; for a library, use your own enum.
+@@@ END
+
+@@@ USER
+Explain Option in Rust with and_then, map, ok_or and unwrap_or. I have users where the email and age may be missing.
+@@@ ASSISTANT
+`Option<T>` is either `Some(value)` or `None`. Instead of checking with `if` all the time, chain small steps:
+
+- `map(f)`: change the value inside, keep `None` as `None`.
+- `and_then(f)`: like `map`, but `f` itself returns an `Option` (use it to avoid `Option<Option<T>>`).
+- `ok_or(err)`: turn `None` into an `Err`, so you can use `?`.
+- `unwrap_or(default)`: take the value or a fallback.
+
+```rust
+use std::collections::HashMap;
+
+struct User {
+    name: String,
+    email: Option<String>,
+    age: Option<u32>,
+}
+
+// email -> text after '@' (None if there is no email, or no '@')
+fn domain_of(user: &User) -> Option<&str> {
+    user.email.as_deref().and_then(|e| e.split('@').nth(1))
+}
+
+fn main() {
+    let mut users: HashMap<u32, User> = HashMap::new();
+    users.insert(1, User { name: "Asha".into(), email: Some("asha@example.com".into()), age: Some(31) });
+    users.insert(2, User { name: "Ben".into(), email: None, age: Some(17) });
+    users.insert(3, User { name: "Chen".into(), email: Some("not-an-email".into()), age: None });
+
+    for id in [1, 2, 3, 4] {
+        let domain = users.get(&id).and_then(domain_of).unwrap_or("(no domain)");
+        let adult = users.get(&id).and_then(|u| u.age).map(|a| a >= 18);
+        let status = match adult {
+            Some(true) => "adult",
+            Some(false) => "minor",
+            None => "unknown",
+        };
+        println!("user {}: domain={} status={}", id, domain, status);
+    }
+
+    let found: Result<&str, &str> = users.get(&2).map(|u| u.name.as_str()).ok_or("no such user");
+    let missing: Result<&str, &str> = users.get(&9).map(|u| u.name.as_str()).ok_or("no such user");
+    println!("{:?}", found);
+    println!("{:?}", missing);
+}
+```
+
+Output:
+
+```
+user 1: domain=example.com status=adult
+user 2: domain=(no domain) status=minor
+user 3: domain=(no domain) status=unknown
+user 4: domain=(no domain) status=unknown
+Ok("Ben")
+Err("no such user")
+```
+
+Notes:
+- `as_deref()` turns `Option<String>` into `Option<&str>` without moving or cloning the `String`.
+- `users.get(&id)` already returns an `Option<&User>`, so a missing user and a missing email are handled by the same chain.
+- Avoid `unwrap()` on data that comes from outside your program. Use `unwrap_or`, `ok_or` + `?`, or `match`.
+@@@ END
+
+@@@ USER
+In Rust, how do I turn a list of strings into numbers and stop at the first bad one? And how do I keep the good ones and report the bad ones instead?
+@@@ ASSISTANT
+An iterator of `Result`s can be collected into one `Result<Vec<_>, _>`. It stops at the first `Err`. If you want the good values and the errors separately, use `partition` or `filter_map`.
+
+```rust
+fn parse_all(items: &[&str]) -> Result<Vec<u32>, std::num::ParseIntError> {
+    items.iter().map(|s| s.parse::<u32>()).collect()
+}
+
+fn main() {
+    // 1. all or nothing
+    println!("{:?}", parse_all(&["1", "2", "3"]));
+    println!("{:?}", parse_all(&["1", "x", "3"]));
+
+    // 2. keep good values and error messages separately
+    let (good, bad): (Vec<_>, Vec<_>) = ["7", "oops", "9", "-1"]
+        .iter()
+        .map(|s| s.parse::<u32>())
+        .partition(|r| r.is_ok());
+    let good: Vec<u32> = good.into_iter().map(Result::unwrap).collect();
+    let bad: Vec<String> = bad.into_iter().map(|r| r.unwrap_err().to_string()).collect();
+    println!("{:?} {:?}", good, bad);
+
+    // 3. silently skip bad items
+    let total: u32 = ["1", "x", "3"].iter().filter_map(|s| s.parse::<u32>().ok()).sum();
+    println!("{}", total);
+}
+```
+
+Output:
+
+```
+Ok([1, 2, 3])
+Err(ParseIntError { kind: InvalidDigit })
+[7, 9] ["invalid digit found in string", "invalid digit found in string"]
+4
+```
+
+Which one to choose:
+- `collect::<Result<Vec<_>, _>>()` when one bad item makes the whole input invalid (a config file, a request body).
+- `partition` when you must tell the user which lines failed (import of a file with many rows).
+- `filter_map(... .ok())` only when ignoring bad data is really acceptable. It hides problems, so log a count if you can.
+- `Option` works the same way: `Vec<Option<T>>` collects into `Option<Vec<T>>`.
+@@@ END
+
+@@@ USER
+How do I fix this in Rust?
+
+```rust
+fn main() {
+    let names = vec![String::from("a"), String::from("b")];
+    let joined = join_all(names);
+    println!("{} from {} names", joined, names.len());
+}
+
+fn join_all(v: Vec<String>) -> String {
+    v.join("-")
+}
+```
+
+error[E0382]: borrow of moved value: `names`
+@@@ ASSISTANT
+`join_all(names)` takes the vector **by value**, so `names` is moved into the function and is gone when the function returns. Then `names.len()` uses a value that no longer belongs to `main`. The function only needs to read the strings, so it should **borrow** them.
+
+```rust
+fn main() {
+    let names = vec![String::from("a"), String::from("b")];
+    let joined = join_all(&names);
+    println!("{} from {} names", joined, names.len());
+}
+
+fn join_all(v: &[String]) -> String {
+    v.join("-")
+}
+```
+
+Output:
+
+```
+a-b from 2 names
+```
+
+Changes made:
+- The parameter type changed from `Vec<String>` to `&[String]`, a borrowed slice. It accepts `&Vec<String>` too, and it works for arrays and parts of a vector.
+- The call changed from `join_all(names)` to `join_all(&names)`, so `main` keeps ownership.
+
+Rule of thumb: take `&T` (or `&[T]`, `&str`) when you only read, `&mut T` when you change the value, and `T` only when the function must keep or consume it. `.clone()` also removes this error, but it copies all the data, so use it only when you really need two owners.
+@@@ END
+
+@@@ USER
+Rust says error[E0502]: cannot borrow `scores` as mutable because it is also borrowed as immutable. How do I fix it?
+
+```rust
+fn main() {
+    let mut scores = vec![10, 20, 30];
+    let first = &scores[0];
+    scores.push(40);
+    println!("first = {}", first);
+}
+```
+@@@ ASSISTANT
+`first` is a reference into the vector's memory. `push` may need more room, so it can move the whole buffer to a new place. If that happened, `first` would point at freed memory. Rust refuses to compile this, because `first` is still used after the `push`.
+
+You have two clean fixes. Choose by what you need.
+
+**Fix 1: copy the number** (an `i32` is cheap to copy, so you do not need a reference):
+
+```rust
+fn main() {
+    let mut scores = vec![10, 20, 30];
+    let first = scores[0]; // a copy, not a borrow
+    scores.push(40);
+    println!("first = {}", first);
+}
+```
+
+**Fix 2: finish with the reference before you change the vector:**
+
+```rust
+fn main() {
+    let mut scores = vec![10, 20, 30];
+    let first = &scores[0];
+    println!("first = {}", first); // last use of the borrow
+    scores.push(40);
+    println!("now {:?}", scores);
+}
+```
+
+Output of fix 1:
+
+```
+first = 10
+```
+
+Output of fix 2:
+
+```
+first = 10
+now [10, 20, 30, 40]
+```
+
+Changes made:
+- Fix 1 replaced `&scores[0]` with `scores[0]`, so there is no borrow at all.
+- Fix 2 moved the `println!` before the `push`. A borrow lasts only until its **last use**, so the vector is free to change after that line.
+
+The general rule: at one time you may have many `&` readers **or** one `&mut` writer, never both. This is what prevents "iterator invalidation" bugs.
+@@@ END
+
+@@@ USER
+Write a Rust function that counts words in a text and prints the most common ones. It must ignore case and punctuation, and break ties alphabetically.
+@@@ ASSISTANT
+Use a `HashMap<String, usize>` and the `entry` API to count. A `HashMap` has no order, so move the entries into a `Vec` and sort it: first by count (largest first), then by word.
+
+```rust
+use std::collections::HashMap;
+
+fn word_counts(text: &str) -> Vec<(String, usize)> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+
+    // split on everything that is not a letter, a digit or an apostrophe
+    for word in text
+        .split(|c: char| !c.is_alphanumeric() && c != '\'')
+        .filter(|w| !w.is_empty())
+    {
+        *counts.entry(word.to_lowercase()).or_insert(0) += 1;
+    }
+
+    let mut list: Vec<(String, usize)> = counts.into_iter().collect();
+    // bigger count first, then alphabetical
+    list.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    list
+}
+
+fn main() {
+    let text = "The cat and the hat. The cat sat; the HAT didn't.";
+    for (word, n) in word_counts(text).iter().take(4) {
+        println!("{:<6} {}", word, n);
+    }
+}
+```
+
+Output:
+
+```
+the    4
+cat    2
+hat    2
+and    1
+```
+
+How it works:
+- `entry(key).or_insert(0)` gives a mutable reference to the counter for that word, creating it with 0 the first time. `*... += 1` adds one.
+- `then(...)` is used only when the first comparison says "equal", which is how ties are broken.
+- `{:<6}` pads the word to 6 characters, left aligned, so the numbers line up.
+- For a very large text, read it line by line and call the same counting code for each line to avoid holding everything in memory.
+@@@ END
+
+@@@ USER
+I want to write a tokenizer in Rust that returns slices of the original text without copying. How do I write the lifetime for the struct and the Iterator?
+@@@ ASSISTANT
+Make the struct hold a `&'a str` and make every token a `&'a str` of the **same lifetime**. The tokens then point into the original text, so there are no allocations, and the compiler guarantees the text stays alive while any token is used.
+
+```rust
+struct Tokens<'a> {
+    rest: &'a str,
+}
+
+impl<'a> Tokens<'a> {
+    fn new(source: &'a str) -> Self {
+        Tokens { rest: source }
+    }
+}
+
+impl<'a> Iterator for Tokens<'a> {
+    type Item = &'a str; // tied to the source text, not to the iterator
+
+    fn next(&mut self) -> Option<&'a str> {
+        let s = self.rest.trim_start();
+        if s.is_empty() {
+            return None;
+        }
+        let first = s.chars().next().unwrap();
+        let len = if first.is_ascii_digit() {
+            s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len())
+        } else if first.is_alphabetic() {
+            s.find(|c: char| !c.is_alphanumeric()).unwrap_or(s.len())
+        } else {
+            first.len_utf8() // one symbol such as + ( ) ;
+        };
+        let (token, rest) = s.split_at(len);
+        self.rest = rest;
+        Some(token)
+    }
+}
+
+fn main() {
+    let source = String::from("let x1 = 42+foo(7);");
+    let tokens: Vec<&str> = Tokens::new(&source).collect();
+    println!("{:?}", tokens);
+}
+```
+
+Output:
+
+```
+["let", "x1", "=", "42", "+", "foo", "(", "7", ")", ";"]
+```
+
+Points to remember:
+- `type Item = &'a str` is the key line. If you wrote `&str` with a different lifetime, tokens could not outlive the `Tokens` value.
+- `split_at(len)` needs `len` on a character boundary. That is why a symbol uses `len_utf8()` and not `1`.
+- Because the tokens borrow `source`, the compiler rejects code that drops or changes `source` while the `tokens` vector is alive. That is the guarantee you wanted.
+@@@ END

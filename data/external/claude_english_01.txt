@@ -1,0 +1,211 @@
+@@@ USER
+I changed this function. Write a clear explanation of what I changed for my teammate.
+
+Before:
+```python
+def average(nums):
+    return sum(nums) / len(nums)
+```
+
+After:
+```python
+def average(nums):
+    if not nums:
+        return 0.0
+    return sum(nums) / len(nums)
+```
+@@@ ASSISTANT
+**What changed:** `average()` now returns `0.0` for an empty list instead of crashing.
+
+**Why:** with an empty list, `len(nums)` is 0, so the old code divided by zero and raised `ZeroDivisionError`. Any page or report that happened to have no data would fail.
+
+**How to check it:**
+- `average([2, 4, 6])` still returns `4.0`.
+- `average([])` now returns `0.0`.
+
+**One thing to decide:** returning `0.0` means "no data" looks the same as "the average really is zero". If that difference matters (for example in a chart), return `None` or raise a clear `ValueError("no numbers given")` instead, and let the caller handle it.
+@@@ END
+
+@@@ USER
+Write a good Git commit message for this change: I fixed a bug where the login button stayed disabled after a failed login, because the code never set loading back to false.
+@@@ ASSISTANT
+```
+Fix login button staying disabled after a failed login
+
+The button is disabled while the request is running, but the
+loading flag was only reset on success. After a wrong password
+the user had to refresh the page to try again.
+
+Reset the flag in a finally block so it runs for both success
+and failure.
+```
+
+Why this works:
+- The first line is a short summary in the imperative ("Fix ...", not "Fixed ..."), about 50 characters, describing the result for the user.
+- The body explains the cause and the reason for the fix, because the diff already shows *what* changed.
+- It is separated from the summary by a blank line, and each line stays under about 72 characters so it reads well in `git log`.
+@@@ END
+
+@@@ USER
+Explain what an API is to someone who is not technical, in about 5 sentences.
+@@@ ASSISTANT
+An API is a way for one program to ask another program for something, using agreed rules. Think of a restaurant: you (the app) do not walk into the kitchen; you give your order to a waiter (the API), and the waiter brings back the food (the data). The menu tells you what you are allowed to ask for and how to ask. When a weather app shows today's forecast, it is sending a request through an API to a weather service and displaying the answer. The API keeps the details hidden, so the app does not need to know how the service stores or calculates anything.
+@@@ END
+
+@@@ USER
+Rewrite this error message so a normal user understands it: "Error 500: NullReferenceException at UserService.GetProfile(Int32 id)"
+@@@ ASSISTANT
+Users cannot do anything with a stack trace, so show a calm message that says what happened and what to do next, and keep the technical detail in the logs.
+
+**Message for the user:**
+"We could not load your profile. This is a problem on our side, not yours. Please try again in a minute. If it keeps happening, contact support and mention code PR-500."
+
+**What to write in the log (for developers):**
+`GetProfile failed for user id 4821: NullReferenceException (profile record is missing). request_id=a91f3c`
+
+Why this is better:
+- It says what failed (the profile did not load) and whose fault it is, so the user does not feel they did something wrong.
+- It gives one next step: try again, then contact support.
+- The short code lets support find the exact log entry, so nothing technical is shown on screen.
+
+A good error message answers three questions: what happened, why (if it helps the user), and what to do now.
+@@@ END
+
+@@@ USER
+Write a bug report for this problem: the app crashes when I open Settings after changing the language to Hindi.
+@@@ ASSISTANT
+**Title:** App crashes when opening Settings after switching the language to Hindi
+
+**Steps to reproduce:**
+1. Open the app and go to Settings > Language.
+2. Choose "Hindi" and confirm.
+3. Go back to the home screen, then open Settings again.
+
+**Expected result:** the Settings screen opens, shown in Hindi.
+
+**Actual result:** the app closes immediately on step 3. It happens every time.
+
+**Environment:** app version (fill in), device and operating system version (fill in), language before the change (English).
+
+**Extra information to attach:**
+- The crash log or error text, if the app shows one.
+- Whether it also happens with other languages. This helps the developer decide if the cause is the Hindi text itself (for example a missing font or a missing translation) or the language switching.
+- A screen recording, if easy.
+
+A good bug report lets someone else make the bug happen on the first try, so the steps matter most. Keep one problem per report.
+@@@ END
+
+@@@ USER
+Summarize what I did in this session in a short message to my manager. I fixed three bugs: a crash on empty search, a wrong total in the cart, and a typo on the pricing page. I also added tests for the cart total. Everything passes locally but I have not deployed.
+@@@ ASSISTANT
+Hi, quick update on today's work.
+
+**Fixed (3):**
+- The app crashed when someone searched with an empty box. It now shows "Type something to search".
+- The cart total was wrong. It is now correct, and I added tests for it so it cannot quietly break again.
+- Fixed a typo on the pricing page.
+
+**Status:** all tests pass on my computer. I have not deployed yet, so nothing is live.
+
+**Next:** I will deploy after a quick review. Let me know if you want me to wait for something first.
+
+Why it is written this way: the result comes first, each fix says what the user will notice, and the status says plainly what is done and what is not. Nothing claims "live" before it is.
+@@@ END
+
+@@@ USER
+My code works but a reviewer said "this is hard to read". Give me a short checklist for making code easier to read.
+@@@ ASSISTANT
+Go through these in order; the first few give the biggest improvement.
+
+1. **Use names that say what the thing is.** `days_until_expiry` beats `d`; `is_valid` beats `flag`.
+2. **Keep each function to one job.** If you need "and" to describe it, split it into two functions.
+3. **Return early to avoid deep nesting.** Handle the error or empty case first and leave the main path unindented.
+4. **Replace magic numbers with named constants.** `MAX_RETRIES = 3` explains itself; a bare `3` does not.
+5. **Write comments for why, not what.** `# the API rate-limits at 60/min` is useful; `# add one to i` is noise.
+6. **Remove dead code and old commented-out code.** Version control remembers it.
+7. **Be consistent.** Use one naming style and one formatter (for example `rustfmt`, `black` or `prettier`) so the team stops arguing about layout.
+
+Quick test: read your function a day later. If you must scroll up to remember what a variable means, rename it or shorten the function.
+@@@ END
+
+@@@ USER
+Write a README introduction for a small command-line tool called "tidyfiles" that sorts files in a folder into subfolders by type.
+@@@ ASSISTANT
+```markdown
+# tidyfiles
+
+Sort the files in a messy folder into subfolders by type: images, documents, videos, and so on.
+
+## Why
+
+Downloads folders fill up fast. `tidyfiles` cleans one in a second, and it never deletes anything. Files are only moved.
+
+## Quick start
+
+    tidyfiles ~/Downloads
+
+Preview the changes first, without moving anything:
+
+    tidyfiles ~/Downloads --dry-run
+
+## What it does
+
+| File type            | Moved to     |
+|----------------------|--------------|
+| .jpg, .png, .gif     | `Images/`    |
+| .pdf, .docx, .txt    | `Documents/` |
+| .mp4, .mkv           | `Videos/`    |
+| anything else        | `Other/`     |
+
+## Safety
+
+- If a file with the same name already exists in the target folder, `tidyfiles` adds a number (`photo (1).jpg`) instead of overwriting.
+- `--dry-run` prints every move it would make and changes nothing.
+```
+
+Tips for a good README: start with one sentence on what the tool does, show a working command in the first screen, and list the safety guarantees. People decide in about 10 seconds whether to keep reading.
+@@@ END
+
+@@@ USER
+Explain the difference between "stack" and "heap" memory in simple words, with a Rust example.
+@@@ ASSISTANT
+**Stack:** a small, very fast area where values of a known, fixed size live. Data is added and removed in strict last-in, first-out order, like a pile of plates. When a function ends, its part of the stack is cleaned up automatically.
+
+**Heap:** a larger area for data whose size is not known at compile time, or that must live longer than one function, such as a `String` that can grow. You ask for space, get back a pointer, and the data stays until its owner is dropped.
+
+```rust
+fn main() {
+    let age: i32 = 30;                  // fixed size (4 bytes): stored on the stack
+    let name = String::from("Asha");    // the text is on the heap
+    // The variable `name` on the stack holds a pointer, a length and a capacity,
+    // and the pointer leads to the heap memory with the letters.
+
+    let boxed = Box::new(5);            // put a number on the heap on purpose
+    println!("{} {} {}", age, name, boxed);
+} // here all three are cleaned up: the stack frame disappears, and the heap memory
+  // for `name` and `boxed` is freed when their owners go out of scope
+```
+
+Key differences:
+- Stack: fast and automatic, but fixed-size data only.
+- Heap: flexible size, but needs allocation, which is slower.
+- Rust frees heap memory for you when the owner goes out of scope, so you do not call `free` and you cannot forget to.
+@@@ END
+
+@@@ USER
+How should I answer when someone asks "why did you choose this approach?" in a code review? Give me a good example.
+@@@ ASSISTANT
+Answer in this order: the goal, the options you considered, why you picked this one, and what it costs. Keep it calm; the reviewer wants to understand, not to attack you.
+
+**Example:**
+
+"I needed the report page to load in under 2 seconds. I looked at two options: cache the result in memory, or compute it in the database with a query. A cache is quick to add but shows stale numbers and uses memory on every server. The database query was slower to write but always returns correct values, and with the new index it takes 300 ms, so the page is fast enough. I chose the query. The cost is one more index on the `orders` table, which slows inserts slightly. If the page becomes slower later, adding a cache on top is easy."
+
+Why this works:
+- It starts with a measurable goal, so the choice is judged against something concrete.
+- It shows alternatives were considered.
+- It names the downside honestly. Reviewers trust you more when you do.
+- It ends by saying what you would do if the situation changes.
+
+If the reviewer finds a better option, say so: "Good point, that is simpler. I will switch." Changing your mind after good information is a strength.
+@@@ END

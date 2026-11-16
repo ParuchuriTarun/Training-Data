@@ -1,0 +1,943 @@
+@@@ USER
+I want to write a small Markdown to HTML converter in Rust, standard library only, as a command-line tool. It needs headings, paragraphs, bullet lists, code blocks, bold, italic, inline code and links. Plan the steps and do only step 1.
+@@@ ASSISTANT
+Plan:
+
+1. **Block parser**: split the text into blocks (headings, paragraphs, lists, code blocks, rules). Tests first, no HTML yet.
+2. **Inline formatting**: `**bold**`, `*italic*`, `` `code` ``, links, and escaping of HTML characters.
+3. **HTML output and the command line**: render the blocks, read a file or standard input, build the tool.
+4. **Review**: whatever breaks when you use it on real files.
+
+Separating the steps matters. The parser decides *what* a line is; the renderer decides *how* it looks in HTML. Each can be tested alone.
+
+Step 1: everything goes into one file, `md.rs`.
+
+```rust
+// md.rs: a small Markdown to HTML converter. Standard library only.
+
+/// Three backticks, written as escapes so that this file can be shown inside a Markdown code block.
+const FENCE: &str = "\x60\x60\x60";
+
+/// One block of a Markdown document.
+#[derive(Debug, PartialEq)]
+pub enum Block {
+    Heading { level: u8, text: String },
+    Paragraph(String),
+    List(Vec<String>),
+    Code { lang: String, text: String },
+    Rule,
+}
+
+/// Splits Markdown text into blocks. It never panics, whatever the input.
+pub fn parse_blocks(input: &str) -> Vec<Block> {
+    let mut blocks = Vec::new();
+    let mut paragraph: Vec<&str> = Vec::new();
+    let mut list: Vec<String> = Vec::new();
+    let mut lines = input.lines();
+
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix(FENCE) {
+            flush(&mut blocks, &mut paragraph, &mut list);
+            let mut code = Vec::new();
+            for inner in lines.by_ref() {
+                if inner.trim() == FENCE {
+                    break; // an unclosed fence simply runs to the end of the input
+                }
+                code.push(inner);
+            }
+            blocks.push(Block::Code { lang: rest.trim().to_string(), text: code.join("\n") });
+        } else if trimmed.is_empty() {
+            flush(&mut blocks, &mut paragraph, &mut list);
+        } else if is_rule(trimmed) {
+            flush(&mut blocks, &mut paragraph, &mut list);
+            blocks.push(Block::Rule);
+        } else if let Some((level, text)) = heading(trimmed) {
+            flush(&mut blocks, &mut paragraph, &mut list);
+            blocks.push(Block::Heading { level, text: text.to_string() });
+        } else if let Some(item) = bullet(trimmed) {
+            if !paragraph.is_empty() {
+                flush(&mut blocks, &mut paragraph, &mut list);
+            }
+            list.push(item.to_string());
+        } else {
+            if !list.is_empty() {
+                flush(&mut blocks, &mut paragraph, &mut list);
+            }
+            paragraph.push(trimmed);
+        }
+    }
+    flush(&mut blocks, &mut paragraph, &mut list);
+    blocks
+}
+
+fn flush(blocks: &mut Vec<Block>, paragraph: &mut Vec<&str>, list: &mut Vec<String>) {
+    if !paragraph.is_empty() {
+        blocks.push(Block::Paragraph(paragraph.join(" ")));
+        paragraph.clear();
+    }
+    if !list.is_empty() {
+        blocks.push(Block::List(std::mem::take(list)));
+    }
+}
+
+/// "### Title" -> (3, "Title"). "#rust" is not a heading: a space must follow the hashes.
+fn heading(line: &str) -> Option<(u8, &str)> {
+    let hashes = line.chars().take_while(|&c| c == '#').count();
+    if (1..=6).contains(&hashes) {
+        let rest = &line[hashes..]; // '#' is one byte, so this index is always valid
+        if rest.starts_with(' ') {
+            return Some((hashes as u8, rest.trim()));
+        }
+    }
+    None
+}
+
+fn is_rule(line: &str) -> bool {
+    let first = line.chars().next();
+    matches!(first, Some('-') | Some('*') | Some('_'))
+        && line.len() >= 3
+        && line.chars().all(|c| Some(c) == first)
+}
+
+fn bullet(line: &str) -> Option<&str> {
+    line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")).map(str::trim)
+}
+```
+
+And at the bottom of the same file, the tests:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn p(s: &str) -> Block {
+        Block::Paragraph(s.to_string())
+    }
+
+    #[test]
+    fn headings() {
+        assert_eq!(
+            parse_blocks("# Title\n### Sub"),
+            vec![
+                Block::Heading { level: 1, text: "Title".into() },
+                Block::Heading { level: 3, text: "Sub".into() },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_hashtag_is_not_a_heading() {
+        assert_eq!(parse_blocks("#rust"), vec![p("#rust")]);
+        assert_eq!(parse_blocks("####### seven"), vec![p("####### seven")]);
+    }
+
+    #[test]
+    fn paragraph_lines_are_joined() {
+        assert_eq!(parse_blocks("one\ntwo\n\nthree"), vec![p("one two"), p("three")]);
+    }
+
+    #[test]
+    fn list_items_are_grouped() {
+        let expected = vec![Block::List(vec!["a".into(), "b".into(), "c".into()])];
+        assert_eq!(parse_blocks("- a\n- b\n* c"), expected);
+    }
+
+    #[test]
+    fn a_list_ends_when_text_follows() {
+        assert_eq!(
+            parse_blocks("- a\ntext"),
+            vec![Block::List(vec!["a".into()]), p("text")]
+        );
+    }
+
+    #[test]
+    fn code_block_keeps_its_content_untouched() {
+        let md = format!("{f}rust\nlet x = 1;\n\n# not a heading\n{f}\nafter", f = FENCE);
+        assert_eq!(
+            parse_blocks(&md),
+            vec![
+                Block::Code { lang: "rust".into(), text: "let x = 1;\n\n# not a heading".into() },
+                p("after"),
+            ]
+        );
+    }
+
+    #[test]
+    fn unclosed_code_block_runs_to_the_end() {
+        assert_eq!(
+            parse_blocks(&format!("{}\nabc", FENCE)),
+            vec![Block::Code { lang: "".into(), text: "abc".into() }]
+        );
+    }
+
+    #[test]
+    fn rules_split_paragraphs() {
+        assert_eq!(parse_blocks("a\n---\nb"), vec![p("a"), Block::Rule, p("b")]);
+    }
+
+    #[test]
+    fn empty_input_gives_no_blocks() {
+        assert!(parse_blocks("").is_empty());
+        assert!(parse_blocks("\n\n   \n").is_empty());
+    }
+}
+```
+
+Compile and run the tests (on Linux or macOS run `./md_test`):
+
+```
+rustc --edition 2021 --test md.rs -o md_test.exe
+md_test.exe
+```
+
+Result:
+
+```
+running 9 tests
+...
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+Decisions in this step:
+- `parse_blocks` goes through the input **line by line** and keeps small buffers (`paragraph`, `list`). A blank line, a heading, a rule or a code fence **flushes** the buffers into finished blocks. That is the whole algorithm.
+- The three backtick characters of a fence are not typed literally in the Rust source. They live in a constant named `FENCE`, written with the escape `\x60` three times. Backtick is character 0x60. This keeps the source file free of a literal fence, so the file can be pasted into a Markdown code block, and the tests can build input with `format!`.
+- A code fence is handled first and the lines inside it are copied without any interpretation. That is why `# not a heading` inside a code block stays text, which one of the tests checks.
+- `#rust` is not a heading: Markdown needs a space after the hashes. `&line[hashes..]` is safe because `#` is exactly one byte long; I wrote that in a comment because slicing a `&str` at a wrong byte position is the classic way to get a panic in Rust.
+- `Block` derives `PartialEq` and `Debug` only so that `assert_eq!` can compare and print blocks in the tests.
+- Known simplification: `a` followed by `---` is a rule here. In full Markdown that line pair would be a heading.
+
+Tell me when the 9 tests pass and I will write step 2.
+
+@@@ USER
+9 tests pass. Step 2.
+@@@ ASSISTANT
+Step 2 adds the inline part. It is independent of the parser, so `parse_blocks` does not change. Add this code to `md.rs` below the block parser:
+
+```rust
+/// Replaces the five characters that can change the meaning of HTML.
+pub fn escape_html(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Index of the first occurrence of `pat` in `chars` at or after `from`.
+fn find_seq(chars: &[char], from: usize, pat: &str) -> Option<usize> {
+    let pat: Vec<char> = pat.chars().collect();
+    if pat.is_empty() || chars.len() < pat.len() {
+        return None;
+    }
+    (from..=chars.len() - pat.len()).find(|&i| chars[i..i + pat.len()] == pat[..])
+}
+
+/// Index of the ')' that closes a link target; inner pairs like (1) are skipped.
+fn find_paren_end(chars: &[char], from: usize) -> Option<usize> {
+    let mut depth = 0;
+    for (i, &c) in chars.iter().enumerate().skip(from) {
+        match c {
+            '(' => depth += 1,
+            ')' if depth == 0 => return Some(i),
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Only these links become clickable; "javascript:" and every other scheme is refused.
+fn safe_url(url: &str) -> bool {
+    let url = url.trim().to_ascii_lowercase();
+    match url.split_once(':') {
+        None => true, // relative link such as "docs/intro.md" or "#top"
+        Some((scheme, _)) => matches!(scheme, "http" | "https" | "mailto"),
+    }
+}
+
+/// Turns `code`, **bold**, *italic* and [text](url) into HTML. Everything else is escaped.
+pub fn render_inline(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+
+        if c == '`' {
+            if let Some(end) = find_seq(&chars, i + 1, "`") {
+                let code: String = chars[i + 1..end].iter().collect();
+                out.push_str(&format!("<code>{}</code>", escape_html(&code)));
+                i = end + 1;
+                continue;
+            }
+        }
+
+        if c == '*' && chars.get(i + 1) == Some(&'*') {
+            if let Some(end) = find_seq(&chars, i + 2, "**") {
+                let inner: String = chars[i + 2..end].iter().collect();
+                if !inner.is_empty() {
+                    out.push_str(&format!("<strong>{}</strong>", render_inline(&inner)));
+                    i = end + 2;
+                    continue;
+                }
+            }
+        }
+
+        if c == '*' {
+            if let Some(end) = find_seq(&chars, i + 1, "*") {
+                let inner: String = chars[i + 1..end].iter().collect();
+                if !inner.is_empty() {
+                    out.push_str(&format!("<em>{}</em>", render_inline(&inner)));
+                    i = end + 1;
+                    continue;
+                }
+            }
+        }
+
+        if c == '[' {
+            if let Some(close) = find_seq(&chars, i + 1, "](") {
+                if let Some(end) = find_paren_end(&chars, close + 2) {
+                    let label: String = chars[i + 1..close].iter().collect();
+                    let url: String = chars[close + 2..end].iter().collect();
+                    if safe_url(&url) {
+                        out.push_str(&format!(
+                            "<a href=\"{}\">{}</a>",
+                            escape_html(url.trim()),
+                            render_inline(&label)
+                        ));
+                    } else {
+                        out.push_str(&render_inline(&label)); // keep the text, drop the link
+                    }
+                    i = end + 1;
+                    continue;
+                }
+            }
+        }
+
+        out.push_str(&escape_html(&c.to_string()));
+        i += 1;
+    }
+    out
+}
+```
+
+and these tests inside the existing `mod tests { ... }`:
+
+```rust
+
+    #[test]
+    fn html_characters_are_escaped() {
+        assert_eq!(render_inline("a <b> & \"c\""), "a &lt;b&gt; &amp; &quot;c&quot;");
+    }
+
+    #[test]
+    fn bold_italic_and_code() {
+        assert_eq!(
+            render_inline("**b** *i* `c`"),
+            "<strong>b</strong> <em>i</em> <code>c</code>"
+        );
+    }
+
+    #[test]
+    fn code_is_escaped_but_not_formatted() {
+        assert_eq!(render_inline("`a *b* <c>`"), "<code>a *b* &lt;c&gt;</code>");
+    }
+
+    #[test]
+    fn formatting_can_be_nested() {
+        assert_eq!(
+            render_inline("**bold `code`**"),
+            "<strong>bold <code>code</code></strong>"
+        );
+    }
+
+    #[test]
+    fn links() {
+        assert_eq!(
+            render_inline("see [the docs](https://example.com/a?b=1&c=2)!"),
+            "see <a href=\"https://example.com/a?b=1&amp;c=2\">the docs</a>!"
+        );
+        assert_eq!(
+            render_inline("[wiki](https://en.wikipedia.org/wiki/Rust_(language))"),
+            "<a href=\"https://en.wikipedia.org/wiki/Rust_(language)\">wiki</a>"
+        );
+        assert_eq!(render_inline("[next](docs/next.md)"), "<a href=\"docs/next.md\">next</a>");
+    }
+
+    #[test]
+    fn dangerous_links_become_plain_text() {
+        assert_eq!(render_inline("[click](javascript:alert(1))"), "click");
+        assert_eq!(render_inline("[click](JaVaScRiPt:alert(1))"), "click");
+        assert_eq!(render_inline("[x](data:text/html;base64,AAAA)"), "x");
+    }
+
+    #[test]
+    fn unclosed_markers_stay_text() {
+        assert_eq!(render_inline("2 ** 3 and a_b `x"), "2 ** 3 and a_b `x");
+        assert_eq!(render_inline("[no link](oops"), "[no link](oops");
+    }
+
+    #[test]
+    fn non_ascii_text_is_safe() {
+        assert_eq!(render_inline("**é** `ü` 日本"), "<strong>é</strong> <code>ü</code> 日本");
+    }
+```
+
+Run the same two commands as before. Result:
+
+```
+running 17 tests
+...
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+Decisions:
+- **Escaping is the security rule of the whole tool**: every character that is not part of a recognised pattern goes through `escape_html`. That is why `<script>` in the input arrives as harmless text, and why the content of an inline code span is escaped too.
+- The text is turned into a `Vec<char>` first. Indexing a `Vec<char>` by position is always valid, and it avoids slicing a `&str` in the middle of a multi-byte character (the test `non_ascii_text_is_safe` covers this).
+- Each pattern looks for its closing marker. If there is none (`` `x `` or `[no link](oops`), nothing matches and the character is written as plain text. The test `unclosed_markers_stay_text` checks that no input is lost.
+- Formatting is **recursive**: the inside of `**...**` goes through `render_inline` again, so `**bold `code`**` works. The inside of a code span does not, on purpose.
+- **Links use a deny-by-default rule.** `safe_url` only accepts `http`, `https`, `mailto` and links without a scheme. `[click](javascript:alert(1))` becomes plain text. A list of dangerous schemes would always miss one; a list of allowed ones cannot. `find_paren_end` counts brackets so that addresses like `Rust_(language)` work.
+- The rules are simplified compared with the full CommonMark specification. Mixed cases such as `**bold and *italic***` are not handled correctly. Tell me what you find when you use it.
+
+Ready for step 3 (HTML output and the command line)?
+
+@@@ USER
+17 pass. Yes, step 3.
+@@@ ASSISTANT
+Step 3 connects everything. Add the renderer and `main` to `md.rs`:
+
+```rust
+/// Renders blocks as HTML, one block per line (lists and code blocks keep their own lines).
+pub fn render_html(blocks: &[Block]) -> String {
+    let mut out = String::new();
+    for block in blocks {
+        match block {
+            Block::Heading { level, text } => {
+                out.push_str(&format!("<h{0}>{1}</h{0}>\n", level, render_inline(text)));
+            }
+            Block::Paragraph(text) => {
+                out.push_str(&format!("<p>{}</p>\n", render_inline(text)));
+            }
+            Block::List(items) => {
+                out.push_str("<ul>\n");
+                for item in items {
+                    out.push_str(&format!("  <li>{}</li>\n", render_inline(item)));
+                }
+                out.push_str("</ul>\n");
+            }
+            Block::Code { lang, text } => {
+                let class = if lang.is_empty() {
+                    String::new()
+                } else {
+                    format!(" class=\"language-{}\"", escape_html(lang))
+                };
+                out.push_str(&format!("<pre><code{}>{}</code></pre>\n", class, escape_html(text)));
+            }
+            Block::Rule => out.push_str("<hr>\n"),
+        }
+    }
+    out
+}
+
+/// The whole job in one call: Markdown text in, HTML text out.
+pub fn convert(markdown: &str) -> String {
+    render_html(&parse_blocks(markdown))
+}
+```
+```rust
+use std::io::Read;
+use std::{env, fs, io, process};
+
+fn page_title(blocks: &[Block]) -> String {
+    for block in blocks {
+        if let Block::Heading { level: 1, text } = block {
+            return text.clone();
+        }
+    }
+    "Document".to_string()
+}
+
+fn wrap_page(title: &str, body: &str) -> String {
+    format!(
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>{}</title>\n</head>\n<body>\n{}</body>\n</html>\n",
+        escape_html(title),
+        body
+    )
+}
+
+fn fail(message: &str) -> ! {
+    eprintln!("md: {}", message);
+    process::exit(1)
+}
+
+fn main() {
+    let mut full_page = false;
+    let mut path: Option<String> = None;
+    for arg in env::args().skip(1) {
+        match arg.as_str() {
+            "-h" | "--help" => {
+                println!("usage: md [--page] [file.md]\nReads standard input when no file is given.");
+                return;
+            }
+            "--page" => full_page = true,
+            _ if arg.starts_with('-') => {
+                eprintln!("md: unknown option {}", arg);
+                process::exit(2);
+            }
+            _ => path = Some(arg),
+        }
+    }
+
+    let input = match &path {
+        Some(p) => fs::read_to_string(p).unwrap_or_else(|e| fail(&format!("cannot read {}: {}", p, e))),
+        None => {
+            let mut text = String::new();
+            io::stdin()
+                .read_to_string(&mut text)
+                .unwrap_or_else(|e| fail(&format!("cannot read input: {}", e)));
+            text
+        }
+    };
+
+    let blocks = parse_blocks(&input);
+    let body = render_html(&blocks);
+    if full_page {
+        print!("{}", wrap_page(&page_title(&blocks), &body));
+    } else {
+        print!("{}", body);
+    }
+}
+```
+
+and these tests:
+
+```rust
+
+    #[test]
+    fn converts_a_small_document() {
+        let md = format!(
+            "# Hello\n\nSome *text* with `code`.\n\n- one\n- **two**\n\n{f}rust\nfn main() {{}}\n{f}\n\n---\n",
+            f = FENCE
+        );
+        let expected = "<h1>Hello</h1>\n<p>Some <em>text</em> with <code>code</code>.</p>\n<ul>\n  <li>one</li>\n  <li><strong>two</strong></li>\n</ul>\n<pre><code class=\"language-rust\">fn main() {}</code></pre>\n<hr>\n";
+        assert_eq!(convert(&md), expected);
+    }
+
+    #[test]
+    fn html_in_the_input_is_escaped() {
+        assert_eq!(
+            convert("<script>alert(1)</script>"),
+            "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>\n"
+        );
+    }
+
+    #[test]
+    fn code_blocks_are_escaped() {
+        assert_eq!(
+            convert(&format!("{f}\n<b>&</b>\n{f}", f = FENCE)),
+            "<pre><code>&lt;b&gt;&amp;&lt;/b&gt;</code></pre>\n"
+        );
+    }
+
+    #[test]
+    fn the_page_gets_the_title_of_the_first_heading() {
+        let blocks = parse_blocks("intro\n\n# My <Title>\n");
+        assert_eq!(page_title(&blocks), "My <Title>");
+        assert!(wrap_page("My <Title>", "").contains("<title>My &lt;Title&gt;</title>"));
+    }
+```
+
+Tests again, then build the real tool:
+
+```
+md_test.exe
+rustc --edition 2021 -O md.rs -o md.exe
+```
+
+Result of the tests: `21 passed`.
+
+Try it on a file or on standard input. With this input in `notes.md`:
+
+````markdown
+# Release notes
+
+The tool is *fast*, and `md --page` makes a **full page**.
+See [the docs](https://example.com/docs) or [bad](javascript:alert(1)).
+
+- converts headings
+- converts lists
+
+```rust
+fn main() { println!("<hi>"); }
+```
+````
+
+`md.exe notes.md` prints (the real output of this code):
+
+```html
+<h1>Release notes</h1>
+<p>The tool is <em>fast</em>, and <code>md --page</code> makes a <strong>full page</strong>. See <a href="https://example.com/docs">the docs</a> or bad.</p>
+<ul>
+  <li>converts headings</li>
+  <li>converts lists</li>
+</ul>
+<pre><code class="language-rust">fn main() { println!(&quot;&lt;hi&gt;&quot;); }</code></pre>
+```
+
+`md.exe --page notes.md > notes.html` wraps the same body in a complete page with `<title>Release notes</title>`. Errors go to standard error with an exit code, so scripts can react:
+
+```
+md.exe nope.md      ->  md: cannot read nope.md: The system cannot find the file specified. (os error 2)   (exit code 1)
+md.exe --zzz        ->  md: unknown option --zzz                                                         (exit code 2)
+```
+
+Decisions:
+- `convert(markdown) -> String` is the one function other code needs. The command line is a thin layer around it, so the logic stays testable without files.
+- `fail` returns `!` (the "never returns" type), so `unwrap_or_else(|e| fail(...))` has the right type in both branches.
+- Output is a **fragment** by default and a full page only with `--page`, because most people want to paste the HTML into something else. The page title is the first level-1 heading, escaped.
+- `print!` instead of `println!` for the result, because every block already ends with a newline.
+
+Use it on some real files and tell me what looks wrong.
+
+@@@ USER
+It works. Two problems on my own notes. First, a line like "Total: 5 * 3 * 2 = 30" comes out as "5 <em> 3 </em> 2". Second, I need numbered lists and quotes. Also I want to be sure the converter cannot crash on strange input.
+@@@ ASSISTANT
+The first one is a real bug in my rules, so I reproduced it before changing anything:
+
+```
+echo Total: 5 * 3 * 2 = 30 | md.exe
+<p>Total: 5 <em> 3 </em> 2 = 30</p>
+```
+
+**Cause:** my italic rule treats any `*` as an opening marker and the next `*` as its end. In Markdown, an opening marker must be followed directly by text, and a closing marker must not follow a space. `5 * 3 * 2` has spaces on both sides, so it is plain text.
+
+**Fix**, in `render_inline`. Two helper functions are new. Add them above `safe_url`:
+
+```rust
+/// True when the marker of `len` characters at `at` may open emphasis: text must follow it directly.
+fn opens_emphasis(chars: &[char], at: usize, len: usize) -> bool {
+    chars.get(at + len).map_or(false, |c| !c.is_whitespace())
+}
+
+/// Index of the marker that closes emphasis: it must not follow a space, the text must not be empty,
+/// and a single `*` must not be part of a `**` pair.
+fn find_closing(chars: &[char], from: usize, pat: &str) -> Option<usize> {
+    let mut start = from;
+    while let Some(pos) = find_seq(chars, start, pat) {
+        let in_pair = pat == "*" && (chars.get(pos + 1) == Some(&'*') || chars[pos - 1] == '*');
+        if pos > from && !chars[pos - 1].is_whitespace() && !in_pair {
+            return Some(pos);
+        }
+        start = pos + 1;
+    }
+    None
+}
+```
+
+and replace the bold and italic branches inside `render_inline` with these two:
+
+```rust
+        if c == '*' && chars.get(i + 1) == Some(&'*') && opens_emphasis(&chars, i, 2) {
+            if let Some(end) = find_closing(&chars, i + 2, "**") {
+                let inner: String = chars[i + 2..end].iter().collect();
+                out.push_str(&format!("<strong>{}</strong>", render_inline(&inner)));
+                i = end + 2;
+                continue;
+            }
+        }
+
+        if c == '*' && chars.get(i + 1) != Some(&'*') && opens_emphasis(&chars, i, 1) {
+            if let Some(end) = find_closing(&chars, i + 1, "*") {
+                let inner: String = chars[i + 1..end].iter().collect();
+                out.push_str(&format!("<em>{}</em>", render_inline(&inner)));
+                i = end + 1;
+                continue;
+            }
+        }
+```
+
+Two details: a single `*` does not open italic when another `*` follows (that is the start of `**`), and `find_closing` skips a `*` that is part of a `**` pair. Without this, `a ** b ** c` came out as `a <em>* b *</em> c` in my first attempt: one of the new tests caught it. The empty-text check `if !inner.is_empty()` is no longer needed, because `find_closing` already requires at least one character.
+
+**Numbered lists and quotes** need two new block kinds. The two loose buffers in `parse_blocks` are getting crowded, so I moved them into a small struct. Replace the `Block` enum, `flush` and `parse_blocks` with this (the helper functions `heading`, `is_rule` and `bullet` stay, `ordered_item` is new):
+
+```rust
+/// Three backticks, written as escapes so that this file can be shown inside a Markdown code block.
+const FENCE: &str = "\x60\x60\x60";
+
+/// One block of a Markdown document.
+#[derive(Debug, PartialEq)]
+pub enum Block {
+    Heading { level: u8, text: String },
+    Paragraph(String),
+    List(Vec<String>),
+    Ordered(Vec<String>),
+    Quote(String),
+    Code { lang: String, text: String },
+    Rule,
+}
+
+/// Lines that are collected until the block they belong to is complete.
+#[derive(Default)]
+struct Pending {
+    paragraph: Vec<String>,
+    list: Vec<String>,
+    ordered: bool, // is `list` a numbered list?
+    quote: Vec<String>,
+}
+
+impl Pending {
+    /// Turns whatever is collected into a block. Only one of the three is ever filled.
+    fn flush(&mut self, blocks: &mut Vec<Block>) {
+        if !self.paragraph.is_empty() {
+            blocks.push(Block::Paragraph(self.paragraph.join(" ")));
+            self.paragraph.clear();
+        }
+        if !self.list.is_empty() {
+            let items = std::mem::take(&mut self.list);
+            blocks.push(if self.ordered { Block::Ordered(items) } else { Block::List(items) });
+        }
+        if !self.quote.is_empty() {
+            blocks.push(Block::Quote(self.quote.join(" ")));
+            self.quote.clear();
+        }
+    }
+}
+
+/// Splits Markdown text into blocks. It never panics, whatever the input.
+pub fn parse_blocks(input: &str) -> Vec<Block> {
+    let mut blocks = Vec::new();
+    let mut pending = Pending::default();
+    let mut lines = input.lines();
+
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix(FENCE) {
+            pending.flush(&mut blocks);
+            let mut code = Vec::new();
+            for inner in lines.by_ref() {
+                if inner.trim() == FENCE {
+                    break;
+                }
+                code.push(inner);
+            }
+            blocks.push(Block::Code { lang: rest.trim().to_string(), text: code.join("\n") });
+        } else if trimmed.is_empty() {
+            pending.flush(&mut blocks);
+        } else if is_rule(trimmed) {
+            pending.flush(&mut blocks);
+            blocks.push(Block::Rule);
+        } else if let Some((level, text)) = heading(trimmed) {
+            pending.flush(&mut blocks);
+            blocks.push(Block::Heading { level, text: text.to_string() });
+        } else if let Some(text) = trimmed.strip_prefix('>') {
+            if pending.quote.is_empty() {
+                pending.flush(&mut blocks);
+            }
+            pending.quote.push(text.trim().to_string());
+        } else if let Some(item) = bullet(trimmed) {
+            if pending.ordered || pending.list.is_empty() {
+                pending.flush(&mut blocks); // another kind of block, or another kind of list
+                pending.ordered = false;
+            }
+            pending.list.push(item.to_string());
+        } else if let Some(item) = ordered_item(trimmed) {
+            if !pending.ordered || pending.list.is_empty() {
+                pending.flush(&mut blocks);
+                pending.ordered = true;
+            }
+            pending.list.push(item.to_string());
+        } else {
+            if pending.paragraph.is_empty() {
+                pending.flush(&mut blocks); // text ends a list or a quote
+            }
+            pending.paragraph.push(trimmed.to_string());
+        }
+    }
+    pending.flush(&mut blocks);
+    blocks
+}
+
+/// "### Title" -> (3, "Title"). "#rust" is not a heading: a space must follow the hashes.
+fn heading(line: &str) -> Option<(u8, &str)> {
+    let hashes = line.chars().take_while(|&c| c == '#').count();
+    if (1..=6).contains(&hashes) {
+        let rest = &line[hashes..]; // '#' is one byte, so this index is always valid
+        if rest.starts_with(' ') {
+            return Some((hashes as u8, rest.trim()));
+        }
+    }
+    None
+}
+
+fn is_rule(line: &str) -> bool {
+    let first = line.chars().next();
+    matches!(first, Some('-') | Some('*') | Some('_'))
+        && line.len() >= 3
+        && line.chars().all(|c| Some(c) == first)
+}
+
+fn bullet(line: &str) -> Option<&str> {
+    line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")).map(str::trim)
+}
+
+/// "12. text" -> "text". "2026 was long" and "1.5 is a number" are not list items.
+fn ordered_item(line: &str) -> Option<&str> {
+    let digits = line.chars().take_while(|c| c.is_ascii_digit()).count();
+    if digits == 0 {
+        return None;
+    }
+    line[digits..].strip_prefix(". ").map(str::trim) // digits are ASCII, so the index is valid
+}
+```
+
+In the renderer add the new arms (replace the `Block::List` arm) and one helper function:
+
+```rust
+            Block::List(items) => render_list(&mut out, "ul", items),
+            Block::Ordered(items) => render_list(&mut out, "ol", items),
+            Block::Quote(text) => {
+                out.push_str(&format!("<blockquote>\n  <p>{}</p>\n</blockquote>\n", render_inline(text)));
+            }
+```
+```rust
+fn render_list(out: &mut String, tag: &str, items: &[String]) {
+    out.push_str(&format!("<{}>\n", tag));
+    for item in items {
+        out.push_str(&format!("  <li>{}</li>\n", render_inline(item)));
+    }
+    out.push_str(&format!("</{}>\n", tag));
+}
+```
+
+**New tests** (add them to `mod tests`):
+
+```rust
+
+    #[test]
+    fn ordered_lists() {
+        assert_eq!(
+            parse_blocks("1. one\n2. two\n10. ten"),
+            vec![Block::Ordered(vec!["one".into(), "two".into(), "ten".into()])]
+        );
+    }
+
+    #[test]
+    fn numbers_that_are_not_list_items_stay_text() {
+        assert_eq!(parse_blocks("2026 was long"), vec![p("2026 was long")]);
+        assert_eq!(parse_blocks("1.5 is a number"), vec![p("1.5 is a number")]);
+    }
+
+    #[test]
+    fn bullet_and_numbered_lists_do_not_mix() {
+        assert_eq!(
+            parse_blocks("- a\n1. b\n- c"),
+            vec![
+                Block::List(vec!["a".into()]),
+                Block::Ordered(vec!["b".into()]),
+                Block::List(vec!["c".into()]),
+            ]
+        );
+    }
+
+    #[test]
+    fn quote_lines_are_joined() {
+        assert_eq!(
+            parse_blocks("> one\n> two\n\nafter"),
+            vec![Block::Quote("one two".into()), p("after")]
+        );
+    }
+
+    #[test]
+    fn stars_around_spaces_are_not_emphasis() {
+        assert_eq!(render_inline("5 * 3 * 2"), "5 * 3 * 2");
+        assert_eq!(render_inline("a ** b ** c"), "a ** b ** c");
+        assert_eq!(render_inline("*italic* and 5 * 3"), "<em>italic</em> and 5 * 3");
+        assert_eq!(render_inline("**bold** and 2 ** 3"), "<strong>bold</strong> and 2 ** 3");
+    }
+
+    #[test]
+    fn emphasis_with_inner_spaces_still_works() {
+        assert_eq!(render_inline("*two words*"), "<em>two words</em>");
+        assert_eq!(render_inline("**two words**"), "<strong>two words</strong>");
+    }
+
+    #[test]
+    fn bold_inside_italic() {
+        assert_eq!(
+            render_inline("*a **b** c*"),
+            "<em>a <strong>b</strong> c</em>"
+        );
+    }
+
+    #[test]
+    fn numbered_lists_and_quotes_render() {
+        assert_eq!(convert("1. a\n2. b"), "<ol>\n  <li>a</li>\n  <li>b</li>\n</ol>\n");
+        assert_eq!(
+            convert("> hi *there*"),
+            "<blockquote>\n  <p>hi <em>there</em></p>\n</blockquote>\n"
+        );
+    }
+
+    fn next(seed: &mut u64) -> u64 {
+        *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        *seed >> 33
+    }
+
+    #[test]
+    fn random_input_never_panics() {
+        let alphabet: Vec<char> = "ab *_`#>-1.[]()\n\t é\u{1F600}".chars().collect();
+        let mut seed = 12345u64;
+        for _ in 0..3000 {
+            let len = (next(&mut seed) % 60) as usize;
+            let text: String = (0..len)
+                .map(|_| alphabet[next(&mut seed) as usize % alphabet.len()])
+                .collect();
+            let _ = convert(&text); // the test passes if nothing panics
+        }
+    }
+```
+
+The last test is the answer to your crash question. It builds 3,000 random strings from an alphabet made of the nasty characters (`*`, `` ` ``, `[`, `(`, `#`, `>`, digits, newlines, tabs, accents, an emoji) and checks that `convert` never panics. It uses a tiny pseudo random generator with a fixed seed instead of a crate, so it is reproducible: if it ever fails, it fails every time.
+
+Run everything:
+
+```
+rustc --edition 2021 --test md.rs -o md_test.exe
+md_test.exe
+```
+
+Result:
+
+```
+running 30 tests
+...
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+And the two things you asked for, with the rebuilt tool:
+
+```
+echo Total: 5 * 3 * 2 = 30 | md.exe
+<p>Total: 5 * 3 * 2 = 30</p>
+
+(input: "> Quote *here*", a blank line, "1. first", "2. second")
+<blockquote>
+  <p>Quote <em>here</em></p>
+</blockquote>
+<ol>
+  <li>first</li>
+  <li>second</li>
+</ol>
+```
+
+What this converter still does not do: nested lists, tables, images, reference-style links, `_underscore_` emphasis, hard line breaks, backslash escapes (`\*`), and raw HTML (which is escaped on purpose). A random-input test shows that it does not panic; it does not show that the output follows the CommonMark rules in every case. If you need full compatibility, use the `pulldown-cmark` crate, and keep this program as a way to understand how such a converter works.
+@@@ END

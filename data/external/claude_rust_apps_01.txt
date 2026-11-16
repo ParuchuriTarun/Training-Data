@@ -1,0 +1,782 @@
+@@@ USER
+How do I make my own error type in Rust so I can use the ? operator on both parse errors and my own errors?
+@@@ ASSISTANT
+Make an enum with one variant per kind of failure, then implement `From` for each error you want `?` to convert automatically. `?` calls `From::from` on the error before returning it, so one function can mix several error types.
+
+```rust
+use std::fmt;
+use std::num::ParseIntError;
+
+#[derive(Debug)]
+enum ConfigError {
+    Missing(String),
+    BadNumber(ParseIntError),
+    OutOfRange { name: String, value: u16 },
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ConfigError::Missing(key) => write!(f, "missing key: {}", key),
+            ConfigError::BadNumber(e) => write!(f, "not a number: {}", e),
+            ConfigError::OutOfRange { name, value } => {
+                write!(f, "{} = {} is out of range (1-65535)", name, value)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
+impl From<ParseIntError> for ConfigError {
+    fn from(e: ParseIntError) -> Self {
+        ConfigError::BadNumber(e)
+    }
+}
+
+fn read_port(text: &str) -> Result<u16, ConfigError> {
+    let line = text
+        .lines()
+        .find(|l| l.starts_with("port="))
+        .ok_or_else(|| ConfigError::Missing("port".to_string()))?;
+    let port: u16 = line["port=".len()..].trim().parse()?; // ParseIntError -> ConfigError
+    if port == 0 {
+        return Err(ConfigError::OutOfRange { name: "port".to_string(), value: port });
+    }
+    Ok(port)
+}
+
+fn main() {
+    for text in ["port=8080", "host=local", "port=abc", "port=0"] {
+        match read_port(text) {
+            Ok(p) => println!("ok: {}", p),
+            Err(e) => println!("error: {}", e),
+        }
+    }
+}
+```
+
+How it works:
+- `.ok_or_else(...)` turns an `Option` into a `Result`, so `?` can be used on it.
+- `.parse()?` returns a `ParseIntError`; because `From<ParseIntError>` exists, `?` converts it to `ConfigError::BadNumber` for you.
+- Implementing `Display` gives readable messages, and `impl std::error::Error` lets the type work with `Box<dyn Error>` later.
+@@@ END
+
+@@@ USER
+What is a trait object in Rust and when should I use `Box<dyn Trait>` instead of generics?
+@@@ ASSISTANT
+A trait object (`dyn Trait`) lets you hold values of different concrete types behind one interface, and the method to call is chosen at run time. A generic (`T: Trait`) is resolved at compile time, so each type gets its own copy of the code.
+
+Use `Box<dyn Trait>` when you need a collection of mixed types, or when the concrete type is only known at run time. Use generics when every value is the same type and you want the fastest code.
+
+```rust
+trait Shape {
+    fn area(&self) -> f64;
+    fn name(&self) -> String;
+}
+
+struct Circle { radius: f64 }
+struct Rect { w: f64, h: f64 }
+
+impl Shape for Circle {
+    fn area(&self) -> f64 { std::f64::consts::PI * self.radius * self.radius }
+    fn name(&self) -> String { "circle".to_string() }
+}
+
+impl Shape for Rect {
+    fn area(&self) -> f64 { self.w * self.h }
+    fn name(&self) -> String { "rectangle".to_string() }
+}
+
+// Generic: one concrete type, decided at compile time.
+fn print_area<T: Shape>(shape: &T) {
+    println!("{} area = {:.2}", shape.name(), shape.area());
+}
+
+fn main() {
+    // Trait objects: a Vec can hold different shapes together.
+    let shapes: Vec<Box<dyn Shape>> = vec![
+        Box::new(Circle { radius: 1.5 }),
+        Box::new(Rect { w: 2.0, h: 4.0 }),
+    ];
+    let total: f64 = shapes.iter().map(|s| s.area()).sum();
+    for s in &shapes {
+        println!("{} -> {:.2}", s.name(), s.area());
+    }
+    println!("total = {:.2}", total);
+
+    print_area(&Circle { radius: 2.0 });
+}
+```
+
+Rules to remember:
+- The `Box` is needed because trait objects have no known size; the box has a fixed size (a pointer).
+- A trait can only be used as `dyn Trait` if it is "object safe": no generic methods and no methods that return `Self`.
+- Calling through `dyn` costs one extra pointer lookup (a vtable), which is rarely a problem in an application.
+@@@ END
+
+@@@ USER
+Write a Rust function that counts how often each word appears in a text and prints the top 3. Use iterators and a HashMap.
+@@@ ASSISTANT
+Split the text into words, normalize them (lowercase, strip punctuation), count with the `entry` API, then sort the counts.
+
+```rust
+use std::collections::HashMap;
+
+fn word_counts(text: &str) -> HashMap<String, usize> {
+    let mut counts = HashMap::new();
+    for word in text
+        .split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .filter(|w| !w.is_empty())
+    {
+        *counts.entry(word).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn top_n(counts: &HashMap<String, usize>, n: usize) -> Vec<(&String, &usize)> {
+    let mut items: Vec<_> = counts.iter().collect();
+    // Highest count first; ties are sorted alphabetically so the output is stable.
+    items.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    items.into_iter().take(n).collect()
+}
+
+fn main() {
+    let text = "The cat sat. The dog sat! The cat ran, and the dog ran.";
+    let counts = word_counts(text);
+    for (word, n) in top_n(&counts, 3) {
+        println!("{:<5} {}", word, n);
+    }
+}
+```
+
+Expected output:
+
+```
+the   4
+cat   2
+dog   2
+```
+
+Why it is written this way:
+- `entry(word).or_insert(0)` gives a mutable reference to the count, so `*... += 1` updates it in place with one lookup.
+- A `HashMap` has no order, so we collect into a `Vec` and sort. Without the tie-break (`.then(...)`), words with equal counts could come out in a different order on each run.
+- `top_n` returns references into the map, so no strings are copied.
+@@@ END
+
+@@@ USER
+How do I model commands for a small terminal app in Rust, like "add milk", "done 2", "list", "quit"? I want to avoid stringly-typed code.
+@@@ ASSISTANT
+Parse each line once into an `enum`, then `match` on the enum. After that, the rest of your code never touches raw strings, and the compiler forces you to handle every command.
+
+```rust
+use std::io::{self, BufRead, Write};
+
+#[derive(Debug, PartialEq)]
+enum Command {
+    Add(String),
+    Done(usize),
+    List,
+    Quit,
+}
+
+fn parse(line: &str) -> Result<Command, String> {
+    let line = line.trim();
+    let (word, rest) = match line.split_once(' ') {
+        Some((w, r)) => (w, r.trim()),
+        None => (line, ""),
+    };
+    match word {
+        "add" if !rest.is_empty() => Ok(Command::Add(rest.to_string())),
+        "add" => Err("add needs some text".to_string()),
+        "done" => rest
+            .parse::<usize>()
+            .map(Command::Done)
+            .map_err(|_| "done needs a number".to_string()),
+        "list" => Ok(Command::List),
+        "quit" => Ok(Command::Quit),
+        "" => Err("type a command".to_string()),
+        other => Err(format!("unknown command: {}", other)),
+    }
+}
+
+fn main() {
+    let mut todos: Vec<(String, bool)> = Vec::new();
+    let stdin = io::stdin();
+    print!("> ");
+    io::stdout().flush().unwrap();
+    for line in stdin.lock().lines() {
+        let line = line.unwrap();
+        match parse(&line) {
+            Ok(Command::Add(text)) => todos.push((text, false)),
+            Ok(Command::Done(n)) if n >= 1 && n <= todos.len() => todos[n - 1].1 = true,
+            Ok(Command::Done(n)) => println!("no item {}", n),
+            Ok(Command::List) => {
+                for (i, (text, done)) in todos.iter().enumerate() {
+                    println!("{} [{}] {}", i + 1, if *done { "x" } else { " " }, text);
+                }
+            }
+            Ok(Command::Quit) => break,
+            Err(msg) => println!("error: {}", msg),
+        }
+        print!("> ");
+        io::stdout().flush().unwrap();
+    }
+}
+```
+
+Notes:
+- `split_once(' ')` splits at the first space, so `add buy milk` gives `("add", "buy milk")`.
+- Match guards (`if n >= 1 && ...`) keep the range check next to the pattern.
+- `io::stdout().flush()` is needed because `print!` does not end with a newline, and output is buffered until a newline.
+- Because `parse` is a pure function, it is easy to unit test without touching stdin.
+@@@ END
+
+@@@ USER
+I get this error in Rust, how do I fix it?
+
+error[E0502]: cannot borrow `v` as mutable because it is also borrowed as immutable
+
+```rust
+fn main() {
+    let mut v = vec![1, 2, 3];
+    let first = &v[0];
+    v.push(4);
+    println!("first = {}", first);
+}
+```
+@@@ ASSISTANT
+**What is wrong:** `first` is a reference into the vector's memory. `v.push(4)` may need to allocate a bigger buffer and move all elements, which would leave `first` pointing at freed memory. Rust refuses to compile this. You cannot change a collection while a reference into it is still going to be used.
+
+**Fix 1: copy the value** (works because `i32` is `Copy`):
+
+```rust
+fn main() {
+    let mut v = vec![1, 2, 3];
+    let first = v[0]; // copy the number, not a reference
+    v.push(4);
+    println!("first = {}", first);
+}
+```
+
+**Fix 2: use the reference before mutating**, so the borrow ends early:
+
+```rust
+fn main() {
+    let mut v = vec![1, 2, 3];
+    let first = &v[0];
+    println!("first = {}", first); // last use of `first`
+    v.push(4); // fine now
+}
+```
+
+Changes made:
+- Fix 1: `&v[0]` became `v[0]`, so `first` holds its own copy and does not borrow `v`.
+- Fix 2: moved the `println!` above `v.push(4)`; a borrow lasts only until its last use.
+
+For non-`Copy` items such as `String`, use `.clone()` in fix 1.
+@@@ END
+
+@@@ USER
+My Rust code gives error[E0308]: mismatched types. What does it mean?
+
+```rust
+fn main() {
+    let count: i32 = "5";
+    println!("{}", count + 1);
+}
+```
+@@@ ASSISTANT
+**What it means:** you promised the variable is an `i32` (a number), but `"5"` is a string slice (`&str`). Rust never converts between types silently, so you must convert on purpose.
+
+Fixed version:
+
+```rust
+fn main() {
+    let count: i32 = "5".parse().unwrap();
+    println!("{}", count + 1);
+}
+```
+
+Changes made:
+- `"5"` became `"5".parse().unwrap()`. `parse` turns text into the type on the left (`i32` here).
+- `parse` returns a `Result`, because the text might not be a number. `unwrap()` is fine for a quick test. In a real program handle the error instead:
+
+```rust
+fn main() {
+    match "5x".parse::<i32>() {
+        Ok(n) => println!("{}", n + 1),
+        Err(e) => println!("not a number: {}", e),
+    }
+}
+```
+
+Tip: the compiler's `expected i32, found &str` line tells you which two types disagree; the fix is nearly always a conversion such as `parse`, `to_string`, `as`, or `.into()`.
+@@@ END
+
+@@@ USER
+How do I share a counter between threads in Rust and also send results back to the main thread?
+@@@ ASSISTANT
+Use `Arc<Mutex<T>>` for shared mutable state, and an `mpsc` channel for sending values back. `Arc` lets several threads own the same data; `Mutex` makes sure only one thread changes it at a time.
+
+```rust
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+
+fn main() {
+    let counter = Arc::new(Mutex::new(0u32));
+    let (tx, rx) = mpsc::channel();
+    let mut handles = Vec::new();
+
+    for id in 0..4 {
+        let counter = Arc::clone(&counter);
+        let tx = tx.clone();
+        handles.push(thread::spawn(move || {
+            for _ in 0..1000 {
+                *counter.lock().unwrap() += 1;
+            }
+            tx.send(format!("worker {} finished", id)).unwrap();
+        }));
+    }
+    drop(tx); // close the original sender so the receiver loop can end
+
+    let mut messages: Vec<String> = rx.iter().collect();
+    messages.sort();
+    for m in &messages {
+        println!("{}", m);
+    }
+    for h in handles {
+        h.join().unwrap();
+    }
+    println!("final count = {}", *counter.lock().unwrap());
+}
+```
+
+Final line: `final count = 4000`.
+
+Key points:
+- `move` gives each thread its own `Arc` clone; cloning an `Arc` only bumps a counter, it does not copy the data.
+- `counter.lock()` returns a guard; the lock is released when the guard is dropped at the end of the statement.
+- `rx.iter()` stops only after every sender is dropped. Forgetting `drop(tx)` is the classic reason this loop hangs forever.
+- For a simple counter, `AtomicU32` is faster than a mutex, but the mutex pattern works for any data.
+@@@ END
+
+@@@ USER
+Explain Rust lifetimes with a simple example. Why do I need `'a` here?
+
+```rust
+fn longest(a: &str, b: &str) -> &str {
+    if a.len() > b.len() { a } else { b }
+}
+```
+@@@ ASSISTANT
+The compiler rejects this with "missing lifetime specifier". The function returns a reference, and the compiler needs to know which input it is borrowed from, so it can check the result is not used after that input is gone. With two inputs it cannot guess.
+
+The fix is to name the relationship:
+
+```rust
+fn longest<'a>(a: &'a str, b: &'a str) -> &'a str {
+    if a.len() > b.len() { a } else { b }
+}
+
+fn main() {
+    let first = String::from("rustacean");
+    let result;
+    {
+        let second = String::from("crab");
+        result = longest(first.as_str(), second.as_str());
+        println!("longest: {}", result); // fine: both are still alive
+    }
+    // Using `result` here would be an error, because `second` is gone
+    // and `result` might point at it.
+}
+```
+
+Changes made:
+- Added `<'a>` after the function name to declare a lifetime parameter.
+- Annotated both inputs and the return value with `'a`. It reads: "the returned reference is valid only as long as both inputs are".
+
+Important: `'a` does not make anything live longer. It only describes how long the references are related, so the compiler can verify your code.
+
+Lifetimes are also needed on structs that hold references:
+
+```rust
+struct Excerpt<'a> {
+    text: &'a str,
+}
+
+fn main() {
+    let novel = String::from("Call me Ishmael. Some years ago...");
+    let first = novel.split('.').next().unwrap();
+    let e = Excerpt { text: first };
+    println!("{}", e.text);
+}
+```
+
+The struct cannot outlive `novel`, and the lifetime parameter is how the type says that.
+@@@ END
+
+@@@ USER
+Show me the builder pattern in Rust for a struct with many optional settings, like an HTTP request config.
+@@@ ASSISTANT
+Keep the settings in a struct with sensible defaults, and give a builder with methods that take `self` and return `Self`, so calls can be chained.
+
+```rust
+#[derive(Debug)]
+struct RequestConfig {
+    url: String,
+    method: String,
+    timeout_secs: u64,
+    retries: u32,
+    headers: Vec<(String, String)>,
+}
+
+struct RequestBuilder {
+    url: String,
+    method: String,
+    timeout_secs: u64,
+    retries: u32,
+    headers: Vec<(String, String)>,
+}
+
+impl RequestBuilder {
+    fn new(url: &str) -> Self {
+        RequestBuilder {
+            url: url.to_string(),
+            method: "GET".to_string(),
+            timeout_secs: 30,
+            retries: 0,
+            headers: Vec::new(),
+        }
+    }
+
+    fn method(mut self, m: &str) -> Self {
+        self.method = m.to_uppercase();
+        self
+    }
+
+    fn timeout(mut self, secs: u64) -> Self {
+        self.timeout_secs = secs;
+        self
+    }
+
+    fn retries(mut self, n: u32) -> Self {
+        self.retries = n;
+        self
+    }
+
+    fn header(mut self, key: &str, value: &str) -> Self {
+        self.headers.push((key.to_string(), value.to_string()));
+        self
+    }
+
+    fn build(self) -> Result<RequestConfig, String> {
+        if !self.url.starts_with("http") {
+            return Err(format!("bad url: {}", self.url));
+        }
+        Ok(RequestConfig {
+            url: self.url,
+            method: self.method,
+            timeout_secs: self.timeout_secs,
+            retries: self.retries,
+            headers: self.headers,
+        })
+    }
+}
+
+fn main() {
+    let cfg = RequestBuilder::new("https://example.com/api")
+        .method("post")
+        .timeout(10)
+        .retries(3)
+        .header("Accept", "application/json")
+        .build();
+    println!("{:?}", cfg);
+
+    let bad = RequestBuilder::new("ftp//oops").build();
+    println!("{:?}", bad);
+}
+```
+
+Why this pattern:
+- Callers set only what they care about; everything else has a default.
+- `build()` is the single place that validates, and it returns `Result`, so an invalid config can never exist as a `RequestConfig`.
+- Methods take `mut self` by value, so each call consumes the old builder and returns it. No clones, no references to manage.
+@@@ END
+
+@@@ USER
+How do I implement `Display` and `Iterator` for my own struct in Rust?
+@@@ ASSISTANT
+Implement `fmt::Display` for printing with `{}`, and `Iterator` by defining an associated type `Item` and a `next` method. Once `next` exists, you get `map`, `filter`, `take`, `sum` and the rest for free.
+
+```rust
+use std::fmt;
+
+struct Countdown {
+    remaining: u32,
+}
+
+impl Iterator for Countdown {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<u32> {
+        if self.remaining == 0 {
+            None
+        } else {
+            let current = self.remaining;
+            self.remaining -= 1;
+            Some(current)
+        }
+    }
+}
+
+struct Temperature {
+    celsius: f64,
+}
+
+impl fmt::Display for Temperature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:.1} C ({:.1} F)", self.celsius, self.celsius * 9.0 / 5.0 + 32.0)
+    }
+}
+
+fn main() {
+    let numbers: Vec<u32> = Countdown { remaining: 5 }.collect();
+    println!("{:?}", numbers); // [5, 4, 3, 2, 1]
+
+    let even_sum: u32 = Countdown { remaining: 10 }.filter(|n| n % 2 == 0).sum();
+    println!("{}", even_sum); // 30
+
+    let t = Temperature { celsius: 21.5 };
+    println!("{}", t); // 21.5 C (70.7 F)
+    let label = t.to_string(); // Display also gives you to_string()
+    println!("{}", label.len());
+}
+```
+
+Notes:
+- `next` returns `Some(item)` while there is data and `None` when finished; after the first `None` the iterator is done.
+- `&mut self` is required because the iterator changes its own state each step.
+- Implementing `Display` automatically provides `.to_string()`.
+@@@ END
+
+@@@ USER
+How should I organize code into modules inside one Rust file, and what do `pub` and `use` do?
+@@@ ASSISTANT
+A `mod` block groups related items. Everything inside is private by default; `pub` makes an item visible outside the module. `use` brings a path into scope so you do not retype it.
+
+```rust
+mod bank {
+    pub struct Account {
+        pub owner: String,
+        balance: i64, // private: only code inside `bank` can touch it
+    }
+
+    impl Account {
+        pub fn new(owner: &str) -> Account {
+            Account { owner: owner.to_string(), balance: 0 }
+        }
+
+        pub fn deposit(&mut self, amount: i64) -> Result<(), String> {
+            if amount <= 0 {
+                return Err("deposit must be positive".to_string());
+            }
+            self.balance += amount;
+            Ok(())
+        }
+
+        pub fn balance(&self) -> i64 {
+            self.balance
+        }
+    }
+
+    pub mod report {
+        use super::Account;
+
+        pub fn summary(a: &Account) -> String {
+            format!("{} has {}", a.owner, a.balance)
+        }
+    }
+}
+
+use bank::report::summary;
+use bank::Account;
+
+fn main() {
+    let mut acc = Account::new("Asha");
+    acc.deposit(250).unwrap();
+    println!("{}", summary(&acc));
+    println!("{:?}", acc.deposit(-5));
+    println!("{}", acc.balance());
+    // acc.balance = 1_000_000; // error: field `balance` is private
+}
+```
+
+What to remember:
+- Private fields force everyone to use your methods, so you can enforce rules (like "deposits must be positive") in one place.
+- `super::` means "the parent module". `self::` means the current one, and `crate::` starts from the top.
+- When a project grows, move `mod bank { ... }` into `bank.rs` and write `mod bank;` in `main.rs`. The code inside stays the same.
+@@@ END
+
+@@@ USER
+How do I use Option methods like map, and_then, and unwrap_or_else instead of lots of nested match statements?
+@@@ ASSISTANT
+Each method handles one situation: `map` transforms the value inside `Some`, `and_then` chains a step that can itself fail, and `unwrap_or_else` gives a fallback. `None` simply passes through the chain.
+
+```rust
+use std::collections::HashMap;
+
+struct User {
+    name: String,
+    manager_id: Option<u32>,
+}
+
+fn main() {
+    let mut users: HashMap<u32, User> = HashMap::new();
+    users.insert(1, User { name: "Ravi".to_string(), manager_id: Some(2) });
+    users.insert(2, User { name: "Meena".to_string(), manager_id: None });
+
+    // Name of user 1's manager, with no nested matches.
+    let manager_name = users
+        .get(&1)                              // Option<&User>
+        .and_then(|u| u.manager_id)           // Option<u32>
+        .and_then(|id| users.get(&id))        // Option<&User>
+        .map(|m| m.name.as_str())             // Option<&str>
+        .unwrap_or("no manager");
+    println!("{}", manager_name); // Meena
+
+    // The top person has no manager.
+    let top = users
+        .get(&2)
+        .and_then(|u| u.manager_id)
+        .and_then(|id| users.get(&id))
+        .map(|m| m.name.clone())
+        .unwrap_or_else(|| "no manager".to_string());
+    println!("{}", top); // no manager
+
+    // Turn text into a number only if it exists and parses.
+    let input: Option<&str> = Some("42");
+    let n = input.and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
+    println!("{}", n);
+}
+```
+
+Which one to pick:
+- `map(f)`: you have a value and want a different value.
+- `and_then(f)`: `f` itself returns an `Option` (or use `.ok()` to convert a `Result`).
+- `unwrap_or(x)`: a cheap fallback value. `unwrap_or_else(|| ...)` runs the closure only when needed, which matters if the fallback is expensive, like allocating a `String`.
+- Avoid plain `unwrap()` in app code; it panics on `None`.
+@@@ END
+
+@@@ USER
+Write a Rust function that reads numbers from a text file, one per line, and returns their sum. Handle errors properly.
+@@@ ASSISTANT
+Return `Result<i64, Box<dyn Error>>`, so the file error and the parse error can both use `?`. Include the line number in the message so the user can find the bad line.
+
+```rust
+use std::error::Error;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+
+fn sum_file(path: &str) -> Result<i64, Box<dyn Error>> {
+    let file = File::open(path).map_err(|e| format!("cannot open {}: {}", path, e))?;
+    let mut total = 0i64;
+    for (index, line) in BufReader::new(file).lines().enumerate() {
+        let line = line?;
+        let line = line.trim();
+        if line.is_empty() {
+            continue; // skip blank lines
+        }
+        let n: i64 = line
+            .parse()
+            .map_err(|e| format!("line {}: '{}' is not a number ({})", index + 1, line, e))?;
+        total += n;
+    }
+    Ok(total)
+}
+
+fn main() {
+    match sum_file("numbers.txt") {
+        Ok(total) => println!("sum = {}", total),
+        Err(e) => {
+            eprintln!("error: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+```
+
+Why:
+- `BufReader` reads in chunks, so even a huge file does not load into memory at once.
+- `?` works on both `io::Error` and the `String` error, because both convert into `Box<dyn Error>`.
+- `eprintln!` writes to standard error and `exit(1)` signals failure to scripts that call your program.
+- A missing `numbers.txt` prints: `error: cannot open numbers.txt: ...`.
+@@@ END
+
+@@@ USER
+How do I write unit tests in Rust and run them?
+@@@ ASSISTANT
+Put tests in a `#[cfg(test)]` module at the bottom of the file and mark each test with `#[test]`. Run them with `cargo test`.
+
+```rust
+fn is_palindrome(s: &str) -> bool {
+    let cleaned: Vec<char> = s
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect();
+    cleaned.iter().eq(cleaned.iter().rev())
+}
+
+fn divide(a: i32, b: i32) -> Result<i32, String> {
+    if b == 0 { Err("division by zero".to_string()) } else { Ok(a / b) }
+}
+
+fn main() {
+    println!("{}", is_palindrome("A man, a plan, a canal: Panama"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_palindromes() {
+        assert!(is_palindrome("Racecar"));
+        assert!(is_palindrome("A man, a plan, a canal: Panama"));
+    }
+
+    #[test]
+    fn rejects_other_text() {
+        assert!(!is_palindrome("hello"));
+    }
+
+    #[test]
+    fn divide_ok() {
+        assert_eq!(divide(10, 2), Ok(5));
+    }
+
+    #[test]
+    fn divide_by_zero_is_error() {
+        assert_eq!(divide(1, 0), Err("division by zero".to_string()));
+    }
+
+    #[test]
+    #[should_panic(expected = "index out of bounds")]
+    fn panics_on_bad_index() {
+        let v = vec![1, 2, 3];
+        let _ = v[10];
+    }
+}
+```
+
+Commands:
+- `cargo test` runs every test; `cargo test palindrome` runs only tests whose name contains that word.
+- `cargo test -- --nocapture` shows `println!` output from passing tests (hidden by default).
+
+Tips:
+- `use super::*;` imports everything from the parent module, including private functions, so you can test them.
+- `assert_eq!` prints both values when it fails, which is far more useful than a plain `assert!`.
+- Put tests that use the public API only in a `tests/` folder next to `src/`; each file there is compiled as a separate crate.
+@@@ END

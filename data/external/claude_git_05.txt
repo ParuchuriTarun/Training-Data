@@ -1,0 +1,464 @@
+@@@ USER
+I am new to Git. How do I start tracking a project, make my first commit, and see what changed? Show the commands and what I should see.
+@@@ ASSISTANT
+Do the one-time setup first, then the four commands you will use all day: `status`, `add`, `commit`, `log`.
+
+**One-time setup** (your name appears on every commit):
+
+```
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+git config --global init.defaultBranch main
+```
+
+**Start a project:**
+
+```
+cd my-project
+git init
+```
+
+Git answers `Initialized empty Git repository in <path>/.git/`. A hidden `.git` folder now holds the whole history. Never edit it by hand, and never delete it unless you want to lose the history.
+
+**Check, stage, commit:**
+
+```
+echo hello > notes.txt
+git status
+```
+
+```
+On branch main
+
+No commits yet
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	notes.txt
+
+nothing added to commit but untracked files present (use "git add" to track)
+```
+
+```
+git add notes.txt
+git status -s
+```
+
+```
+A  notes.txt
+```
+
+```
+git commit -m "Add notes"
+```
+
+```
+[main (root-commit) <hash>] Add notes
+ 1 file changed, 1 insertion(+)
+ create mode 100644 notes.txt
+```
+
+**See what changed later:**
+
+```
+echo "line two" >> notes.txt
+git status -s
+git diff
+```
+
+```
+ M notes.txt
+```
+
+```
+--- a/notes.txt
++++ b/notes.txt
+@@ -1 +1,2 @@
+ hello
++line two
+```
+
+**The idea behind it:** your files live in three places. The **working folder** (what you edit), the **staging area** (what will go into the next commit, filled by `git add`), and the **history** (made by `git commit`). Staging lets you commit only part of your work, so each commit tells one clear story.
+
+Short status codes: `??` new file Git does not know yet, `A` added (staged), `M` modified (a space before `M` means not staged, a space after means staged), `UU` merge conflict.
+
+Useful extras:
+- `git log --oneline` shows the history, one line per commit.
+- `git add -p` lets you stage only some parts of a file.
+- `git commit -am "message"` stages and commits every **already tracked** file in one step (it does not add new files).
+@@@ END
+
+@@@ USER
+I made a mistake in Git. How do I undo things: a change I do not want, a file I staged by accident, a wrong commit message, a bad commit, and untracked junk files?
+@@@ ASSISTANT
+The right command depends on **how far the mistake got**. Here they are from smallest to biggest. In the examples the history is `Add notes` followed by newer commits.
+
+**1. Throw away changes in a file (not committed yet)**
+
+```
+git restore notes.txt
+```
+
+The file goes back to the last commit. **This cannot be undone**, because those edits were never saved in Git.
+
+**2. Unstage a file (keep the edits)**
+
+```
+git add secret.txt
+git restore --staged secret.txt
+git status -s
+```
+
+```
+?? secret.txt
+```
+
+**3. Fix the last commit message** (only if you have not pushed it):
+
+```
+git log --oneline
+```
+
+```
+<hash> Add line tow
+<hash> Add notes
+```
+
+```
+git commit --amend -m "Add line two"
+git log --oneline
+```
+
+```
+<hash> Add line two
+<hash> Add notes
+```
+
+The same trick adds a forgotten file to the last commit: `git add todo.txt` and then `git commit --amend --no-edit`. Amending creates a **new** commit (new hash), so do not amend commits other people already have.
+
+**4. Undo a commit that is already shared: `revert`**
+
+```
+git revert --no-edit HEAD
+git log --oneline
+```
+
+```
+[main <hash>] Revert "Add buggy line"
+<hash> Revert "Add buggy line"
+<hash> Add buggy line
+<hash> Add line two
+<hash> Add notes
+```
+
+`revert` adds a **new commit that does the opposite**. History is kept, so it is safe for shared branches.
+
+**5. Remove commits that only exist on your computer: `reset`**
+
+```
+git reset --hard HEAD~1
+```
+
+```
+HEAD is now at <hash> Revert "Add buggy line"
+```
+
+- `--soft HEAD~2`: go back two commits but keep all the changes **staged**. Good for squashing small "wip" commits into one: afterwards run `git commit -m "Add a and b"`.
+- `--mixed` (the default): the same, but the changes are not staged.
+- `--hard`: also **deletes the changes** in your working folder.
+
+**6. Rescue a commit you lost with reset: `reflog`**
+
+```
+git reflog
+```
+
+```
+<hash> HEAD@{0}: reset: moving to HEAD~1
+<hash> HEAD@{1}: commit: Another bad commit
+<hash> HEAD@{2}: revert: Revert "Add buggy line"
+```
+
+The reflog lists every place `HEAD` has been in the last weeks. To get the lost commit back: `git reset --hard HEAD@{1}`.
+
+**7. Delete untracked junk files**
+
+```
+git clean -n
+```
+
+```
+Would remove junk.txt
+```
+
+`-n` is a dry run that only **shows** what would be deleted. When the list is right, run `git clean -f`. Add `-d` to include folders.
+
+Rules of thumb:
+- Not committed: `restore`. Committed but not shared: `amend` or `reset`. Shared: `revert`.
+- Before any `--hard` or `clean -f`, run `git status` and `git diff`. Those two commands delete work that nothing can bring back.
+@@@ END
+
+@@@ USER
+I got "CONFLICT (content): Merge conflict" when I merged a branch. What does it mean and how do I fix it step by step?
+@@@ ASSISTANT
+A conflict means that **both branches changed the same lines**, and Git cannot know which version you want. Git stops in the middle of the merge and asks you to decide. Nothing is lost.
+
+Here is a complete example. `main` changed `color: blue` to red, and the branch `feature/color` changed the same line to green.
+
+```
+git merge feature/color
+```
+
+```
+Auto-merging config.txt
+CONFLICT (content): Merge conflict in config.txt
+Automatic merge failed; fix conflicts and then commit the result.
+```
+
+```
+git status -s
+```
+
+```
+UU config.txt
+```
+
+`UU` means "both modified, unresolved". Open the file. Git marked the two versions:
+
+```
+title: My App
+<<<<<<< HEAD
+color: red
+=======
+color: green
+>>>>>>> feature/color
+size: 10
+```
+
+How to read it:
+- Between `<<<<<<< HEAD` and `=======` is **your current branch** (`main`).
+- Between `=======` and `>>>>>>> feature/color` is **the branch you are merging in**.
+
+**Steps:**
+1. Edit the file so that it contains exactly what you want, and **delete the three marker lines** (`<<<<<<<`, `=======`, `>>>>>>>`). You can keep one side, the other side, or a mix:
+
+```
+title: My App
+color: green
+size: 10
+```
+
+2. Mark it as solved and finish the merge:
+
+```
+git add config.txt
+git commit -m "Merge feature/color, keep green"
+```
+
+3. Check the result and clean up the branch:
+
+```
+git log --oneline --graph
+git branch -d feature/color
+```
+
+```
+*   <hash> Merge feature/color, keep green
+|\
+| * <hash> Use green
+* | <hash> Use red
+|/
+* <hash> Add config
+```
+
+```
+Deleted branch feature/color (was <hash>).
+```
+
+Tips:
+- To cancel the whole merge and go back to how things were: `git merge --abort`.
+- Search for leftover markers before committing: `git diff --check` warns about them, or search the project for `<<<<<<<`.
+- Conflicts are normal. You get fewer of them with small branches, merging `main` into your branch often, and not two people editing the same lines.
+- Tools such as VS Code show the two sides with buttons "Accept Current / Accept Incoming / Accept Both". They do the same thing as the manual edit.
+@@@ END
+
+@@@ USER
+How do I use git stash, and how do I stop Git from tracking files like .env or the target folder? I already committed .env by mistake.
+@@@ ASSISTANT
+**Stash: put unfinished work aside**
+
+Use it when you must switch branches but your changes are not ready to commit.
+
+```
+git stash
+git status -s
+```
+
+```
+(nothing: the folder is clean again)
+```
+
+```
+git stash list
+```
+
+```
+stash@{0}: WIP on main: <hash> Merge feature/color, keep green
+```
+
+When you are back, bring the work back with `git stash pop` (it re-applies the changes and removes the stash). `git stash apply` re-applies but keeps the stash. By default new, untracked files are not stashed; add `-u` to include them.
+
+**.gitignore: never track these files**
+
+Write one pattern per line in a file called `.gitignore` in the project root:
+
+```
+target/
+.env
+node_modules/
+*.log
+```
+
+Before the file exists, Git shows the files as new:
+
+```
+ M config.txt
+?? .env
+?? target/
+```
+
+After you create it, they disappear from `git status`, and only `.gitignore` shows up as new (`?? .gitignore`). Commit it so the whole team has the same rules:
+
+```
+git add .gitignore
+git commit -m "Add .gitignore"
+```
+
+**If a file is already tracked, .gitignore does not help.** It only affects untracked files. Remove it from Git **without deleting it from your disk**:
+
+```
+git rm --cached .env
+git commit -m "Stop tracking .env"
+git ls-files
+```
+
+```
+.gitignore
+config.txt
+```
+
+`.env` is no longer in the list, but the file still exists in your folder.
+
+**Important for secrets:** a password, API key or token that was ever committed is still in the history and in every copy that was pushed. Removing the file is not enough. **Change the secret** (create a new key and disable the old one) first. Cleaning the history is a second step, and it is only useful after the secret is already invalid.
+
+Good defaults to ignore: build output (`target/`, `dist/`, `build/`), dependencies (`node_modules/`, `.venv/`), secrets (`.env`), editor and system files (`.vscode/`, `.DS_Store`, `Thumbs.db`), and logs.
+@@@ END
+
+@@@ USER
+Something in my project broke and I do not know which commit did it. How can I find the commit that changed a line, or the one that introduced a bug, in Git?
+@@@ ASSISTANT
+Git has three tools, from simple to powerful.
+
+**1. `git blame`: who last changed each line, and in which commit**
+
+```
+git blame app.js
+```
+
+Every line is shown with the commit hash, author and date. Then `git show <hash>` shows that whole commit. In VS Code, the GitLens extension shows the same information next to each line.
+
+**2. `git log -S`: when did this text appear or disappear?**
+
+The file `app.js` had `let timeout = 30;`, and a later commit changed it to 5:
+
+```
+git log -S"timeout = 30" --oneline
+```
+
+```
+<hash> Change timeout
+<hash> Add timeout
+```
+
+It lists the commits where the number of occurrences of that text changed: the one that added it and the one that removed it. Other useful forms: `git log -p app.js` (every change to one file, with the diff) and `git log --oneline -- path/to/file`.
+
+**3. `git bisect`: find the commit that broke something, automatically**
+
+Bisect uses binary search: with 1000 commits it needs only about 10 tests. You give it a commit that is bad, a commit that was good, and a command that tells it which is which (exit code 0 = good, anything else = bad).
+
+Example: the check script `check.sh` returns success only if `settings.txt` contains `price=10`. Commits 1 to 3 have it, commits 4 to 6 do not.
+
+```
+git log --oneline
+```
+
+```
+<hash> Commit 6
+<hash> Commit 5
+<hash> Commit 4
+<hash> Commit 3
+<hash> Commit 2
+<hash> Commit 1
+```
+
+```
+git bisect start
+git bisect bad HEAD
+git bisect good <hash of Commit 1>
+git bisect run ./check.sh
+```
+
+```
+Bisecting: 2 revisions left to test after this (roughly 1 step)
+running './check.sh'
+running './check.sh'
+running './check.sh'
+<hash> is the first bad commit
+```
+
+Git prints the full details of that commit (author, date, message and files changed) after that line, and it says it was Commit 4. Finally, **always** go back to your normal branch:
+
+```
+git bisect reset
+```
+
+If you have no script, run `git bisect start`, then `git bisect bad` and `git bisect good <commit>`. Git checks out a commit in the middle; test your program by hand and type `git bisect good` or `git bisect bad`. Repeat until it names the first bad commit.
+
+This works best when each commit is small and the project builds at every commit, which is another reason to commit often.
+@@@ END
+
+@@@ USER
+How should I write good Git commit messages, and what is a sensible daily Git workflow for a small project when I work alone?
+@@@ ASSISTANT
+**A commit message has two parts:** a short subject line, then (only when needed) a blank line and a longer explanation.
+
+```
+Fix crash when the notes file is empty
+
+The loader called unwrap() on the first line. An empty file has no
+first line, so the program panicked. Return an empty list instead.
+```
+
+Rules that make history useful:
+- **Subject: about 50 characters, no full stop, imperative mood.** Write "Add search box", not "Added search box" or "Adding search box". Test: it should finish the sentence "If applied, this commit will ...".
+- **Say what and why, not how.** The diff already shows how. The body explains the reason, which nobody can read from the code later.
+- **One idea per commit.** If you need the word "and" in the subject, it is probably two commits.
+- Bad: `fix`, `update`, `changes`, `asdf`, `final2`. In three months nobody (including you) knows what they mean.
+
+**A simple daily workflow for a solo project:**
+
+1. Start from a clean, up to date `main`: `git status`, then `git pull` if you use a remote.
+2. Make a branch for each task: `git switch -c feature/search`. Small branches are easy to merge and easy to throw away.
+3. Work in small steps. When something works, commit it: `git add -p` (review what you stage), then `git commit`.
+4. Look at what you are about to commit: `git diff --staged`. It catches debug prints and secrets.
+5. Run your tests before the final commit.
+6. Merge back: `git switch main`, `git merge feature/search`, then `git branch -d feature/search`.
+7. Push to a remote (GitHub, GitLab) at the end of the day: `git push`. Your work is then safe even if your laptop breaks.
+
+**Habits that save you:**
+- Commit before big experiments, so you can always come back.
+- Use `git status` all the time. It is free and tells you what to do next.
+- Add a `.gitignore` in the first commit.
+- Tag releases so you can find them later: `git tag v1.0.0` and `git push --tags`.
+- Never commit passwords, keys or large generated files.
+@@@ END

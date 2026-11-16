@@ -1,0 +1,375 @@
+@@@ USER
+How do I choose between a B-tree and an LSM index for a workload?
+@@@ ASSISTANT
+Match the structure to the read/write ratio and the access pattern.
+
+B-tree:
+- Best for equality, range, and ordered scans. Random reads are fast; updates churn pages.
+- Supports unique constraints, composite indexes, and `INCLUDE` covering. Default for OLTP tables under ~100 M rows.
+
+BRIN (Postgres):
+- Tiny indexes over physically clustered data. Ideal for append-only time series: `CREATE INDEX ON events USING BRIN (created_at)`.
+- Near-zero write overhead. Useless if data is not physically ordered.
+
+LSM (RocksDB/Pebble/Cassandra):
+- Writes are sequential and cheap (WAL + memtable flush). Reads may check multiple levels.
+- Best for write-heavy ingest (millions of rows/sec) with time-ordered keys.
+
+Decision rules:
+1. Append-only, queried by time → BRIN or time partitioning.
+2. Read-heavy OLTP with joins → B-tree with composite covering indexes.
+3. Write-heavy, high ingest, reads tolerate amplification → LSM.
+4. Every B-tree index is updated on every write. Drop unused indexes first.
+5. Measure: `EXPLAIN (ANALYZE, BUFFERS)` for Index Scan vs Seq Scan, and `pg_stat_user_indexes` for idx_scan counts. A zero-scan index is a write tax with no benefit.
+@@@ END
+
+@@@ USER
+How do I design a distributed lock with Redis correctly?
+@@@ ASSISTANT
+Tokenized lock with TTL, release only if owner, fencing token for safety.
+
+```ts
+import crypto from "node:crypto";
+const LOCK_TTL_MS = 10_000;
+
+async function acquireLock(key: string): Promise<string | null> {
+  const token = crypto.randomUUID();
+  const res = await redis.set(key, token, { NX: true, PX: LOCK_TTL_MS });
+  return res === "OK" ? token : null;
+}
+
+async function releaseLock(key: string, token: string): Promise<void> {
+  const script = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`;
+  await redis.eval(script, 1, key, token);
+}
+```
+
+Rules:
+1. Unique token per holder + compare-and-delete release. Never `DEL` unconditionally.
+2. TTL is a safety valve, not a guarantee. Work longer than the TTL lets another holder in.
+3. Fencing token: every resource write carries a monotonically increasing term; storage rejects stale terms. Without it, a paused holder that resumes overwrites newer data.
+4. Redlock guarantees liveness, not safety, under partitions. For money or correctness-critical sections, use `SELECT ... FOR UPDATE` in Postgres instead.
+
+Test:
+- Lock, wait beyond TTL, assert a second acquire succeeds.
+- Release with a wrong token; assert the lock survives.
+- Kill the holder mid-lock; assert takeover after TTL.
+@@@ END
+
+@@@ USER
+What is the transactional outbox pattern?
+@@@ ASSISTANT
+The outbox makes the event part of the same transaction as the state change, solving the dual-write problem.
+
+```sql
+CREATE TABLE orders (id bigserial PRIMARY KEY, user_id uuid NOT NULL, status text NOT NULL);
+CREATE TABLE outbox (
+  id bigserial PRIMARY KEY,
+  aggregate text NOT NULL,
+  aggregate_id bigint NOT NULL,
+  type text NOT NULL,
+  payload jsonb NOT NULL,
+  published_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX outbox_unpublished_idx ON outbox (created_at) WHERE published_at IS NULL;
+```
+
+```ts
+async function createOrder(userId: string, items: Item[]) {
+  return db.transaction(async (tx) => {
+    const order = await tx.query(`INSERT INTO orders (user_id, status) VALUES ($1, 'created') RETURNING *`, [userId]).then(r => r.rows[0]);
+    await tx.query(`INSERT INTO outbox (aggregate, aggregate_id, type, payload) VALUES ('order', $1, 'order.created', $2)`, [order.id, JSON.stringify({ userId, items })]);
+    return order;
+  });
+}
+```
+
+Publisher polls or uses CDC (Debezium) and marks `published_at` after publish. Consumers must be idempotent — at-least-once delivery is the guarantee. For multiple publishers, use `FOR UPDATE SKIP LOCKED`.
+@@@ END
+
+@@@ USER
+How do I implement consistent hashing for a cache tier?
+@@@ ASSISTANT
+Keys and nodes map onto a ring; add/remove moves only `K/N` of the keys.
+
+```ts
+import crypto from "node:crypto";
+function hash(str: string): number { return crypto.createHash("md5").update(str).digest().readUInt32BE(0); }
+
+class ConsistentHash {
+  private ring: { position: number; node: string }[] = [];
+  private nodeSet = new Set<string>();
+  private readonly replicas = 150;
+  addNode(node: string) {
+    if (this.nodeSet.has(node)) return;
+    this.nodeSet.add(node);
+    for (let i = 0; i < this.replicas; i++) this.ring.push({ position: hash(`${node}:${i}`), node });
+    this.ring.sort((a, b) => a.position - b.position);
+  }
+  removeNode(node: string) {
+    if (!this.nodeSet.has(node)) return;
+    this.nodeSet.delete(node);
+    this.ring = this.ring.filter((e) => e.node !== node);
+  }
+  getNode(key: string): string {
+    if (!this.ring.length) throw new Error("no nodes");
+    const pos = hash(key);
+    let lo = 0, hi = this.ring.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (this.ring[mid].position < pos) lo = mid + 1; else hi = mid; }
+    return this.ring[lo].node;
+  }
+}
+```
+
+- Virtual nodes (100–200) smooth distribution with few physical nodes.
+- Use a cryptographic hash for uniformity.
+- Test balance: 100 k keys, each node within ±10% of `K/N`.
+- For hot nodes, walk to the next node up to a load bound.
+@@@ END
+
+@@@ USER
+How do I choose a load balancing algorithm per route?
+@@@ ASSISTANT
+Match the algorithm to traffic shape and backend heterogeneity.
+
+- **Round robin**: even, stateless, homogeneous backends. Safe default.
+- **Least connections**: long-lived or variable-cost requests (LLM inference, reports).
+- **Least response time**: backends with different hardware or noisy neighbors.
+- **IP hash / consistent hash**: sticky sessions that cannot be stored server-side.
+- **Weighted round robin**: different backend capacities. Weight by measured throughput.
+- **Join-the-shortest-queue (power of two choices)**: pick two random backends, send to the one with fewer in-flight. Near-optimal with almost no state.
+
+```ts
+function pickBackend(backends: Backend[]): Backend {
+  let best: Backend | null = null;
+  for (const b of backends) {
+    if (!b.healthy) continue;
+    if (!best || b.inflight < best.inflight) best = b;
+  }
+  if (!best) throw new Error("no healthy backends");
+  best.inflight++;
+  return best;
+}
+```
+
+Health checks drive weights: a failing backend gets zero traffic. Keep backends homogeneous where possible; algorithm choice is a second-order optimization.
+@@@ END
+
+@@@ USER
+How do I use database transactions for money movement?
+@@@ ASSISTANT
+`FOR UPDATE` in ascending id order, check inside the transaction, double-entry ledger.
+
+```sql
+BEGIN;
+SELECT balance_cents FROM accounts WHERE id = 1 FOR UPDATE;
+SELECT balance_cents FROM accounts WHERE id = 2 FOR UPDATE;
+UPDATE accounts SET balance_cents = balance_cents - 1000 WHERE id = 1;
+UPDATE accounts SET balance_cents = balance_cents + 1000 WHERE id = 2;
+INSERT INTO ledger_entries (account_id, amount_cents, transfer_id) VALUES (1, -1000, 'tr_123');
+INSERT INTO ledger_entries (account_id, amount_cents, transfer_id) VALUES (2, 1000, 'tr_123');
+COMMIT;
+```
+
+- Lock in ascending id order to prevent deadlocks.
+- Sum of all ledger entries is always zero.
+- Idempotency key per transfer.
+- No external calls inside the transaction; reconcile with webhooks after commit.
+- Retry deadlocks with backoff; never retry validation errors.
+- Test with 100 concurrent transfers both directions; total unchanged.
+@@@ END
+
+@@@ USER
+How do I implement a circuit breaker for downstream services?
+@@@ ASSISTANT
+Open after repeated failures, fail fast while open, half-open with one probe.
+
+```ts
+type State = "closed" | "open" | "half-open";
+class CircuitBreaker {
+  private state: State = "closed";
+  private failures = 0;
+  private openedAt = 0;
+  constructor(private readonly threshold = 5, private readonly resetAfterMs = 30_000) {}
+  async execute<T>(fn: () => Promise<T>, fallback: () => Promise<T>): Promise<T> {
+    if (this.state === "open") {
+      if (Date.now() - this.openedAt < this.resetAfterMs) return fallback();
+      this.state = "half-open";
+    }
+    try {
+      const result = await fn();
+      this.failures = 0; this.state = "closed";
+      return result;
+    } catch (err) {
+      this.failures += 1;
+      if (this.failures >= this.threshold) { this.state = "open"; this.openedAt = Date.now(); }
+      return fallback();
+    }
+  }
+}
+```
+
+- Count only transient failures (timeouts, 5xx, connection errors). A 400 must not trip it.
+- Fallback must be safe: cached value, queued job, or a clear error. Never an empty success.
+- Short per-call timeout (2–5 s) or callers hang forever.
+- Half-open allows one probe; success closes, failure reopens.
+- Metrics on state changes, rejected calls, fallback rate. Alert when open for minutes.
+@@@ END
+
+@@@ USER
+How do I enforce tenant isolation with row-level security?
+@@@ ASSISTANT
+Enable RLS, force it for the owner, set a transaction-local tenant id.
+
+```sql
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_select ON invoices FOR SELECT USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+CREATE POLICY tenant_insert ON invoices FOR INSERT WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+CREATE INDEX invoices_tenant_created_idx ON invoices (tenant_id, created_at DESC);
+```
+
+```ts
+async function withTenant(tenantId: string, fn: (client: Client) => Promise<unknown>) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+  finally { client.release(); }
+}
+```
+
+- `FORCE` matters: without it the table owner bypasses policies.
+- `set_config(..., true)` is transaction-local. Plain `SET` leaks across pooled connections — the most common RLS bug.
+- The app role must not have `BYPASSRLS` or own the tables.
+- Test the negative case in CI: set tenant A, query for tenant B's id, expect zero rows.
+@@@ END
+
+@@@ USER
+How do I design a queue with visibility timeout and exactly-once effects?
+@@@ ASSISTANT
+At-least-once delivery + idempotent consumers = exactly-once effects. Exactly-once processing across a network is impossible.
+
+```
+Producer -> Queue -> Worker A (marks invisible 30s)
+  Worker A crashes before ack -> visibility expires -> job reappears
+  Worker B picks it up, processes, acks -> job deleted
+```
+
+```ts
+async function handleJob(job: Job) {
+  const claimed = await db.query(`INSERT INTO processed_jobs (job_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING job_id`, [job.id]);
+  if (claimed.rows.length === 0) return; // already processed
+  await processSideEffects(job);
+}
+```
+
+- Visibility timeout longer than p99 processing time (e.g., 5× p99).
+- Ack only after success.
+- Idempotency table keyed by job id; the insert is the lock.
+- Poison pills move to a DLQ after 5 attempts, never loop forever.
+- Test: kill the worker before ack; restart; assert the side effect happened once.
+@@@ END
+
+@@@ USER
+How do I implement leader election with fencing?
+@@@ ASSISTANT
+Lease from a consensus-aware store; every write carries a fencing term.
+
+Postgres advisory lock:
+
+```sql
+SELECT pg_try_advisory_xact_lock(42);
+```
+
+Leader loop:
+
+```ts
+let leader = false;
+let term = 0;
+async function leaderLoop() {
+  while (true) {
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query("SELECT pg_try_advisory_lock(42)");
+      if (rows[0].pg_try_advisory_lock) { leader = true; term += 1; break; }
+      await new Promise((r) => setTimeout(r, 2000));
+    } finally { client.release(); }
+  }
+}
+```
+
+- Fencing token: storage rejects writes from a stale term. Without it, a paused leader that resumes overwrites newer data.
+- Do not trust wall-clock expiry across hosts; use the store's own lease timing.
+- Prefer managed consensus (etcd/Consul/Raft) for production; advisory locks suit a single Postgres deployment.
+- Test: kill the leader mid-write; assert a new leader within seconds and no stale write lands.
+@@@ END
+
+@@@ USER
+How do I handle bulk CSV import at scale?
+@@@ ASSISTANT
+Stream the file, batch inserts, report per-row errors, and make the import resumable.
+
+```ts
+import { createReadStream } from "node:fs";
+import csv from "csv-parser";
+
+async function importCsv(filePath: string, userId: string) {
+  let batch: Row[] = [];
+  let errors: { line: number; message: string }[] = [];
+
+  await new Promise<void>((resolve, reject) => {
+    createReadStream(filePath)
+      .pipe(csv())
+      .on("data", (row) => {
+        batch.push(row);
+        if (batch.length >= 500) pauseAndFlush();
+      })
+      .on("end", async () => { await flush(); resolve(); })
+      .on("error", reject);
+  });
+}
+```
+
+Simpler production pattern:
+- Upload to object storage first; process from storage, never from a request stream.
+- Parse with a streaming parser; validate each row with Zod; batch-insert 500–1000 rows per transaction.
+- Collect per-row errors with line numbers; return a downloadable error report, not a 500.
+- Store an import session: file id, rows processed, rows succeeded, status. Resume from the last offset on retry.
+- Deduplicate on a natural key with `ON CONFLICT DO UPDATE` or skip.
+- Cap file size and row count; a 2 GB CSV import is a job, not a request.
+- Test: import a 100 k-row file with 1% bad rows; assert 99% imported, error report has the rest, and a retry does not duplicate.
+@@@ END
+
+@@@ USER
+How do I implement multi-tenancy with data isolation on shared tables?
+@@@ ASSISTANT
+Shared tables with `tenant_id` on every row is the standard model. Enforce it in the database, not the ORM.
+
+```sql
+CREATE TABLE orders (
+  id bigserial,
+  tenant_id uuid NOT NULL,
+  order_number text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, id),
+  UNIQUE (tenant_id, order_number),
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+);
+CREATE INDEX orders_tenant_created_idx ON orders (tenant_id, created_at DESC);
+```
+
+Rules:
+1. `tenant_id` is part of the primary key and every unique constraint. Any query without it is invalid by construction.
+2. RLS as the backstop: a policy `tenant_id = current_setting('app.tenant_id', true)` so a forgotten `WHERE` clause cannot leak.
+3. Composite foreign keys: child rows reference `(tenant_id, parent_id)`, so cross-tenant references are impossible at the schema level.
+4. Every index starts with `tenant_id` so tenant queries are index-only.
+5. Migrations and background jobs run under a separate role with an explicit tenant context per job.
+6. Test: create two tenants with the same order number, assert both succeed and queries scoped to one tenant never return the other's rows. Run in CI.
+7. For regulated tenants, offer dedicated schemas or databases as a tier; the shared-table model is the default.
+@@@ END

@@ -1,0 +1,286 @@
+@@@ USER
+Why does animating `top` or `left` look janky, while `transform: translateY()` looks smooth? Is it just a browser quirk?
+@@@ ASSISTANT
+It is the rendering pipeline, not a quirk. Changing `top` or `left` invalidates **layout**: the browser must recompute geometry, which can cascade to siblings and ancestors, then repaint and composite. `transform` and `opacity` can be handled by the compositor on the GPU without layout or paint.
+
+The usual order is:
+
+1. **Style** — recompute which CSS rules apply.
+2. **Layout** — compute boxes and positions.
+3. **Paint** — fill pixels into layers.
+4. **Composite** — combine layers on the GPU.
+
+`top` forces steps 1–4. `transform: translateY()` on a promoted layer forces only step 4.
+
+```css
+.card {
+  will-change: transform;
+  transition: transform 200ms ease-out;
+}
+.card:hover {
+  transform: translateY(-4px);
+}
+```
+
+Do not put `will-change: transform` on hundreds of elements; each promoted layer consumes memory. Apply it to the element being animated, and remove it when the animation is done if the element is long-lived.
+
+Two related traps:
+
+- **Layout thrashing.** Reading `offsetHeight` after writing `style.top` forces a synchronous layout. Batch reads and writes:
+
+```js
+// bad: read, write, read, write
+for (const el of items) {
+  el.style.height = el.offsetHeight + 10 + "px";
+}
+
+// good: read all, then write all
+const heights = items.map((el) => el.offsetHeight);
+items.forEach((el, i) => {
+  el.style.height = heights[i] + 10 + "px";
+});
+```
+
+- **Animating layout properties by accident.** `width`, `height`, `margin`, `padding`, `top`, and `left` all trigger layout. For size or position changes, use the FLIP technique: measure `First`, apply the final state, measure `Last`, invert with a transform, then `Play` the transition.
+
+Verify with DevTools Performance: record the animation, then check whether frames contain Layout/Paint work or only Composite. If the purple "Composite" band dominates, the animation is cheap.
+@@@ END
+
+@@@ USER
+My React app ships a 1.8 MB JS bundle. How do I find what is actually large, and what is the correct way to split it?
+@@@ ASSISTANT
+Measure first, then split by route and by interaction.
+
+**1. Find the weight.** With Vite or webpack, generate a stats file and inspect it:
+
+```bash
+# Vite
+npx vite build --mode production
+npx source-map-explorer dist/assets/*.js
+
+# Next.js
+ANALYZE=true next build   # with @next/bundle-analyzer configured
+```
+
+Look for: a charting library imported at the top level, a date library with all locales, an icon package imported as a barrel (`import { FiSearch } from "react-icons/fi"` can pull the whole set in some setups), polyfills for modern browsers, and duplicated copies of the same dependency at different versions.
+
+**2. Split by route.** In React Router or Next.js, lazy-load entire routes:
+
+```tsx
+import { lazy, Suspense } from "react";
+
+const Reports = lazy(() => import("./routes/Reports"));
+
+export function App() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <Routes>
+        <Route path="/reports" element={<Reports />} />
+      </Routes>
+    </Suspense>
+  );
+}
+```
+
+In Next.js App Router this is automatic per route; use `next/dynamic` with `ssr: false` only for components that genuinely cannot render on the server, such as a chart that reads `window`.
+
+**3. Split by interaction.** A heavy editor, map, or PDF viewer should load when the user opens it, not on first paint:
+
+```tsx
+const Editor = lazy(() => import("./Editor"));
+
+function OpenEditorButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Edit document</button>
+      {open && (
+        <Suspense fallback={<Spinner />}>
+          <Editor />
+        </Suspense>
+      )}
+    </>
+  );
+}
+```
+
+**4. Fix the causes, not only the symptoms.**
+
+- Replace barrel-file imports with direct paths when the bundler cannot tree-shake them.
+- Import date-fns functions individually rather than the whole library.
+- Use `sideEffects: false` in your own package.json only if it is true; otherwise tree-shaking breaks.
+- Check that `process.env.NODE_ENV` is `production` and that source maps are not shipped to users.
+- Deduplicate dependencies with `npm ls <package>`; two versions of the same library is a common hidden cost.
+
+**5. Prefetch on intent.** Load the route chunk on hover or focus, not on page load:
+
+```tsx
+<Link
+  to="/reports"
+  onMouseEnter={() => import("./routes/Reports")}
+  onFocus={() => import("./routes/Reports")}
+>
+  Reports
+</Link>
+```
+
+Finally, set a budget in CI: fail the build if the initial route exceeds, for example, 250 KB gzipped. A budget prevents regressions; a one-time cleanup does not.
+@@@ END
+
+@@@ USER
+Our Kubernetes pods receive traffic before the app has finished booting, and during rolling deploys some requests fail. How should readiness, liveness, and startup probes be configured?
+@@@ ASSISTANT
+Use the three probes for three different questions, and add graceful shutdown.
+
+- **Startup probe**: "Has the process finished booting?" While it runs, liveness and readiness are disabled. Use it for apps with slow migrations or cache warmup.
+- **Readiness probe**: "Should this pod receive traffic right now?" Failing it removes the pod from Service endpoints but does not restart it.
+- **Liveness probe**: "Is this process wedged and unrecoverable?" Failing it restarts the container. It must not check dependencies such as the database; a brief database outage would then restart every pod and make the incident worse.
+
+A minimal, correct configuration:
+
+```yaml
+containers:
+  - name: api
+    image: registry.example.com/api:1.4.2
+    ports:
+      - containerPort: 3000
+    startupProbe:
+      httpGet: { path: /healthz, port: 3000 }
+      periodSeconds: 2
+      failureThreshold: 30      # up to 60s to boot
+    readinessProbe:
+      httpGet: { path: /readyz, port: 3000 }
+      periodSeconds: 5
+      timeoutSeconds: 2
+      failureThreshold: 2
+    livenessProbe:
+      httpGet: { path: /healthz, port: 3000 }
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    lifecycle:
+      preStop:
+        exec:
+          command: ["sleep", "5"]
+    terminationGracePeriodSeconds: 30
+```
+
+Endpoint semantics:
+
+```js
+// /healthz: process-level only. No database, no Redis.
+app.get("/healthz", (req, res) => res.status(200).send("ok"));
+
+// /readyz: can this instance serve traffic?
+app.get("/readyz", async (req, res) => {
+  if (!app.locals.acceptingRequests) return res.status(503).send("draining");
+  const dbOk = await pool.query("SELECT 1").then(() => true).catch(() => false);
+  res.status(dbOk ? 200 : 503).send(dbOk ? "ready" : "db unavailable");
+});
+```
+
+Graceful shutdown is the other half. On `SIGTERM`:
+
+1. Set `acceptingRequests = false` so `/readyz` returns 503.
+2. Wait a few seconds for the load balancer to stop sending new requests.
+3. Stop accepting new connections and let in-flight requests finish.
+4. Close the database pool and exit.
+
+```js
+let shuttingDown = false;
+
+process.on("SIGTERM", async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  app.locals.acceptingRequests = false;
+
+  await new Promise((r) => setTimeout(r, 5000)); // endpoint propagation
+  server.close(async () => {
+    await pool.end();
+    process.exit(0);
+  });
+
+  setTimeout(() => process.exit(1), 25_000).unref(); // hard deadline
+});
+```
+
+`preStop: sleep 5` gives the endpoint controller time to remove the pod before the process stops accepting connections; combined with the in-process drain, this removes most 502s during deploys.
+
+Anti-patterns to avoid: liveness checking the database, readiness returning 200 while migrations are still running, a startup probe with the same aggressive thresholds as liveness, and `terminationGracePeriodSeconds` shorter than the longest request. Test the whole path by rolling a deployment under load and watching the error rate; a configuration that looks correct can still fail if the app ignores `SIGTERM`.
+@@@ END
+
+@@@ USER
+How do I test a cart-total function with property-based tests instead of a handful of examples?
+@@@ ASSISTANT
+Property-based testing describes invariants that must hold for *all* inputs, then generates many inputs and shrinks failures to a minimal case. It finds edge cases that example tests miss: empty carts, zero quantities, duplicate SKUs, and discount stacking.
+
+Using `fast-check` with Vitest:
+
+```ts
+import fc from "fast-check";
+import { describe, expect, it } from "vitest";
+import { cartTotal } from "./cart";
+
+const lineItem = fc.record({
+  sku: fc.string({ minLength: 1, maxLength: 12 }),
+  unitCents: fc.integer({ min: 0, max: 500_000 }),
+  quantity: fc.integer({ min: 0, max: 100 }),
+});
+
+describe("cartTotal", () => {
+  it("equals the sum of line totals", () => {
+    fc.assert(
+      fc.property(fc.array(lineItem, { maxLength: 50 }), (items) => {
+        const expected = items.reduce((sum, i) => sum + i.unitCents * i.quantity, 0);
+        expect(cartTotal(items)).toBe(expected);
+      })
+    );
+  });
+
+  it("does not depend on item order", () => {
+    fc.assert(
+      fc.property(fc.array(lineItem, { maxLength: 50 }), (items) => {
+        const shuffled = [...items].sort(() => Math.random() - 0.5);
+        expect(cartTotal(shuffled)).toBe(cartTotal(items));
+      })
+    );
+  });
+
+  it("never returns a negative total", () => {
+    fc.assert(
+      fc.property(fc.array(lineItem, { maxLength: 50 }), (items) => {
+        expect(cartTotal(items)).toBeGreaterThanOrEqual(0);
+      })
+    );
+  });
+
+  it("applying a percentage discount twice is not the same as applying it once, unless it is 0%", () => {
+    fc.assert(
+      fc.property(
+        fc.array(lineItem, { maxLength: 20 }),
+        fc.integer({ min: 1, max: 90 }),
+        (items, percent) => {
+          const once = cartTotal(items, { percentOff: percent });
+          const twice = cartTotal(items, { percentOff: percent, applyTwice: true });
+          if (percent === 0) expect(twice).toBe(once);
+          else expect(twice).toBeLessThan(once);
+        }
+      )
+    );
+  });
+});
+```
+
+Properties worth encoding for money code:
+
+- **Additivity**: splitting a cart into two carts and summing the totals equals the original total.
+- **Order independence**: sorting or shuffling items does not change the total.
+- **Monotonicity**: adding an item never decreases the total.
+- **Bounds**: total is at least zero and at most the sum of unit price times quantity before discounts.
+- **Rounding**: totals are integers in cents; no floating-point currency.
+- **Idempotence** where applicable: recalculating an unchanged cart returns the same value.
+
+Use `fc.pre(condition)` to skip invalid generated cases (for example, a discount greater than the subtotal) rather than weakening the assertion. When a property fails, fast-check shrinks the input and prints the minimal counterexample, which is usually a zero quantity or duplicate SKU; promote that case into a normal example test for fast regression coverage.
+
+Do not replace example tests entirely. Keep a few readable examples for documentation, and use properties for the invariants that are tedious to enumerate.
+@@@ END

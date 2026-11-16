@@ -1,0 +1,428 @@
+@@@ USER
+Our Express API p95 went from 120 ms to 900 ms after a deploy and then recovered 3 hours later. No code change in that window. How do I investigate?
+@@@ ASSISTANT
+Do not guess from the deploy. Get evidence in this order: request logs by route and status, database metrics, then the deploy diff — only if the first two point at the code.
+
+Give me:
+1. p95 by route for the last 24 hours (which route drove the 900 ms).
+2. Database: `pg_stat_statements` top by total time today vs. yesterday, plus CPU and connections.
+3. Infrastructure: any autoscaling, failover, or node churn in that window.
+
+While you gather: check the access logs for the worst route — are slow requests concentrated on one pod, one query, or one customer? A route that is slow for everyone points at code; slow for one customer points at data; slow on one pod points at infrastructure.
+@@@ END
+
+@@@ USER
+Here are p95 by route: orders API is 900 ms, everything else normal. Database CPU is high. Top query: `SELECT * FROM orders WHERE user_id = ? AND status = ? ORDER BY created_at DESC` at 48 ms mean, 2,100 calls. What does that tell you?
+@@@ ASSISTANT
+The database is the bottleneck and that query is the main suspect: 48 ms mean × 2,100 calls, with an `ORDER BY` and two filters. Almost certainly a missing or wrong composite index.
+
+Confirm before fixing:
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM orders WHERE user_id = $1 AND status = 'pending' ORDER BY created_at DESC;
+```
+
+Look for `Seq Scan` or `Bitmap Heap Scan` + `Sort`. That proves the index problem.
+
+Fix: index matching the query, equality columns first, then the sort column.
+
+```sql
+CREATE INDEX CONCURRENTLY orders_user_status_created_idx
+  ON orders (user_id, status, created_at DESC);
+```
+
+`CONCURRENTLY` so the build does not block writes. Then re-run the `EXPLAIN`. Expect `Index Scan` with no sort node and a much lower buffer count.
+
+Also check: did a migration change the `orders` table or drop an index in that deploy? A dropped index explains why it was fast before. What does the deploy diff show for `orders`?
+@@@ END
+
+@@@ USER
+`EXPLAIN` shows Bitmap Heap Scan + Sort. The deploy added a `status` filter to the query but no index. We added the composite index. p95 is 140 ms now. How do we prevent this?
+@@@ ASSISTANT
+Three layers:
+
+1. **Query review rule.** Any new filter or `ORDER BY` in a query requires a matching index in the same pull request. Reviewers check the `EXPLAIN` output, which the PR must include for changed queries.
+2. **CI check.** Run the top 20 queries by total time through `EXPLAIN` on a production-shaped dataset in CI; fail if any produces a Seq Scan on a table over 1 M rows.
+3. **Monitoring.** Alert when a query's mean time doubles week-over-week, and when database CPU exceeds 70% for 10 minutes. `pg_stat_statements` makes both cheap.
+
+Also add the missing-index test to the load test: 2× peak for 30 minutes before any release that touches `orders`.
+
+One more thing: the 3-hour recovery with no code change suggests the connection pool or a replica was saturated and drained. Add p95 and pool wait time to the dashboard so the next incident has a visible answer. Are pool wait times recorded?
+@@@ END
+
+@@@ USER
+Pool wait time is not recorded. We will add it. Now a similar issue: our Playwright tests pass locally but fail in CI with timeouts on the same selectors. How do we debug it?
+@@@ ASSISTANT
+Almost always a timing or environment difference, not the selector itself. Isolate by reproducing one failing test in CI with logs.
+
+1. Run one failing test in CI with `--reporter=list` and save the trace:
+   `playwright test -g "checkout completes" --trace on`
+2. In the trace, look for: the element is visible but not stable, another element intercepts clicks, or the page is still loading.
+3. Check CI CPU and memory: tests that pass locally fail in CI when the runner is slow. Timeouts of 5 s become 30 s of work.
+
+Common causes:
+- Actionability: element is covered by a toast, cookie banner, or animation. Wait for the covering element to disappear.
+- Slow network in CI: seed data or API mocks that are slow. Mock at the network layer.
+- Missing seed: the test assumes data that exists locally but not in a fresh CI database.
+
+Paste the trace's error and the failing step. I will tell you which of these it is.
+@@@ END
+
+@@@ USER
+The trace says "element intercepts pointer events" — a cookie banner covers the button. It only appears in CI. How do we fix it?
+@@@ ASSISTANT
+The cookie banner appears in CI because the test context has no stored consent. Fix by setting consent state up front and making the test independent of incidental UI.
+
+```ts
+test.beforeEach(async ({ context }) => {
+  await context.addCookies([
+    { name: "consent", value: "accepted", domain: "localhost", path: "/" },
+  ]);
+});
+```
+
+And make the interaction robust:
+
+```ts
+await page.getByRole("button", { name: "Checkout" }).click({ timeout: 10_000 });
+```
+
+Rules:
+- Set up the world in `beforeEach`: consent, auth, seed data. Tests must not depend on whatever state happens to exist.
+- Prefer `getByRole` over CSS selectors; role locators fail when the element is not actionable, which is the signal you want.
+- Do not add arbitrary `waitForTimeout`. Wait for a condition: a network request, a URL change, or an element state.
+- Run CI with a production-like build (`next build && next start`), not dev mode, so timing matches production.
+- Keep the trace on failure in CI artifacts; every flaky test review starts with the trace, not a re-run.
+
+Also file the product bug: a cookie banner that covers the primary action is a real usability issue, not only a test issue. Does the banner auto-dismiss?
+@@@ END
+
+@@@ USER
+The banner does not auto-dismiss. We will fix the product side separately. Now: our weekly report job double-charges customers when it retries. It calls a payment API. How do we make it safe?
+@@@ ASSISTANT
+Retries without idempotency will double-charge. Two layers:
+
+1. **Idempotency key per report.** Derive it from the report id and send it on every attempt.
+
+```ts
+async function chargeReport(reportId: string, amount: number) {
+  const key = `report:${reportId}`;
+  return payments.createCharge({
+    amount,
+    currency: "USD",
+    idempotencyKey: key,
+  });
+}
+```
+
+2. **Record the charge before calling.** Store `report_id, charge_id, status` in the database; on retry, check the record first. The payment provider's idempotency is the backstop, the local record is the source of truth.
+
+```ts
+async function chargeReportOnce(reportId: string, amount: number) {
+  const existing = await db.query(`SELECT charge_id FROM report_charges WHERE report_id = $1`, [reportId]);
+  if (existing.rows.length) return existing.rows[0].charge_id;
+  const charge = await payments.createCharge({ amount, currency: "USD", idempotencyKey: `report:${reportId}` });
+  await db.query(`INSERT INTO report_charges (report_id, charge_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [reportId, charge.id]);
+  return charge.id;
+}
+```
+
+Rules:
+- Every external mutating call in a retryable job needs an idempotency key.
+- Never retry a job that captures money without checking the charge record first.
+- Reconcile nightly: charges in the provider with no local record, and local records with no charge. Alert on either.
+- Test: run the job, kill it after the provider call but before the local insert, re-run, and assert one charge.
+
+Are you seeing duplicate charges in the provider dashboard, or only in your own ledger?
+@@@ END
+
+@@@ USER
+We see duplicates in our ledger — the provider shows one charge, but we inserted two rows. How do we fix the ledger and the code?
+@@@ ASSISTANT
+The race is between the check and the insert. Fix with a unique constraint and insert-first logic.
+
+```sql
+CREATE UNIQUE INDEX report_charges_report_id_key ON report_charges (report_id);
+```
+
+```ts
+async function chargeReportOnce(reportId: string, amount: number) {
+  // Insert the claim first; only the winner proceeds.
+  const claimed = await db.query(
+    `INSERT INTO report_charges (report_id, status) VALUES ($1, 'processing') ON CONFLICT DO NOTHING RETURNING report_id`,
+    [reportId]
+  );
+  if (claimed.rows.length === 0) {
+    // Another worker owns this report. Do not charge.
+    return db.query(`SELECT charge_id FROM report_charges WHERE report_id = $1`, [reportId]).then(r => r.rows[0]?.charge_id ?? null);
+  }
+  const charge = await payments.createCharge({ amount, currency: "USD", idempotencyKey: `report:${reportId}` });
+  await db.query(`UPDATE report_charges SET charge_id = $2, status = 'done' WHERE report_id = $1`, [reportId, charge.id]);
+  return charge.id;
+}
+```
+
+Then clean the ledger:
+- Group by `report_id` with count > 1.
+- For each duplicate, verify the provider charge count; keep one row, mark the rest as `duplicate` with a link to the kept row. Never delete financial rows; annotate them.
+- Add a nightly reconciliation job that asserts one charge per report.
+
+Test: fire 10 concurrent charges for one report; expect one provider charge and one `done` row. What retry mechanism is re-running the job — the queue, a cron, or a manual button?
+@@@ END
+
+@@@ USER
+It is a queue with 5 attempts. Now the DLQ has a poison job that fails deterministically. How do we handle it?
+@@@ ASSISTANT
+A deterministic failure must not retry 5 times. Fail fast into the DLQ with the reason.
+
+```ts
+queue.process("charge-report", async (job) => {
+  try {
+    await chargeReportOnce(job.data.reportId, job.data.amount);
+  } catch (err: any) {
+    if (err instanceof ValidationError || err instanceof NotFoundError) {
+      // Deterministic: no retry will help. Move to DLQ immediately.
+      await moveToDlq(job, err.message);
+      return;
+    }
+    throw err; // transient: retry with backoff
+  }
+});
+```
+
+Rules:
+- Classify errors: transient (network, 5xx, timeout) vs. deterministic (validation, not found, malformed payload).
+- Deterministic → DLQ on first attempt with the error message stored.
+- DLQ alert when depth > 0. Replaying a DLQ entry is a manual, deliberate action.
+- Cap the queue's total retries and total attempts per day so one bad job cannot consume the pool.
+- Keep the poison job's payload for debugging; do not delete it until a human reviews.
+
+For the current poison job: read its error, fix the root cause (usually a bad amount or a missing customer), then replay once. If it fails again, it is a product bug, not an infra retry issue. What is the error message in the DLQ?
+@@@ END
+
+@@@ USER
+The error is "amount must be positive" — a report with amount 0. How do we stop this at the source?
+@@@ ASSISTANT
+Validate at creation, not at charge time. A zero-amount report should never be enqueued.
+
+```ts
+const ChargeSchema = z.object({
+  reportId: z.string().min(1),
+  amount: z.number().int().positive(),
+});
+
+async function enqueueCharge(input: z.infer<typeof ChargeSchema>) {
+  const parsed = ChargeSchema.parse(input); // throws before enqueue
+  await queue.add("charge-report", parsed, { attempts: 3 });
+}
+```
+
+Three layers:
+1. **Creation**: validate the report has a positive amount before creating it. A zero-amount report is a data bug; fix where it is produced.
+2. **Enqueue**: schema validation with Zod. Invalid payloads never reach the queue.
+3. **Worker**: the DLQ path you just added, as the last line of defense.
+
+Add a database constraint as the backstop:
+
+```sql
+ALTER TABLE reports ADD CONSTRAINT reports_amount_positive CHECK (amount_cents > 0);
+```
+
+Then replay the DLQ: the zero-amount job will fail validation and stay in the DLQ for a human to delete. That is correct behavior. The fix is upstream, not in the worker.
+
+Final checklist for this incident:
+- Idempotency key + claim-first insert: no duplicate charges.
+- Error classification: transient retries, deterministic to DLQ.
+- Validation at creation/enqueue: no poison jobs.
+- Reconciliation: nightly check for orphan charges.
+
+Anything else on this job, or shall we move on?
+@@@ END
+
+@@@ USER
+Our migration failed halfway and left partial schema changes. We are scared to re-run it. How do we recover?
+@@@ ASSISTANT
+Stop, assess, and make the migration idempotent before re-running. Do not blindly re-run.
+
+1. **Freeze deploys.** No new migrations until the schema is known.
+2. **Inventory the actual schema.** Compare it against the migration's intended end state:
+
+```sql
+-- What exists?
+SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';
+-- Which columns exist?
+SELECT column_name FROM information_schema.columns WHERE table_name = 'orders';
+```
+
+3. **Classify each statement** in the migration: done, not done, or half-done (e.g., index built but not validated, column added but backfill not finished).
+
+Give me the migration text and the `information_schema` output. I will mark each statement and tell you the safe path.
+@@@ END
+
+@@@ USER
+The migration: add column `status_v2`, backfill from `status`, add index, drop old column. The column exists, backfill is 60% done, index is missing, old column still exists. What is the safe plan?
+@@@ ASSISTANT
+The safe path is resume, not restart. The migration as written is not idempotent, so wrap the remaining steps in checks.
+
+1. **Make the backfill resumable** (it already is row-wise, if the update is conditional):
+
+```sql
+UPDATE orders
+SET status_v2 = status
+WHERE status_v2 IS NULL
+  AND id IN (
+    SELECT id FROM orders WHERE status_v2 IS NULL ORDER BY id LIMIT 10000
+  );
+-- Repeat until 0 rows affected.
+```
+
+2. **Verify the backfill**: `SELECT count(*) FROM orders WHERE status_v2 IS NULL` must be 0 before indexing.
+
+3. **Add the index concurrently** (does not block writes):
+
+```sql
+CREATE INDEX CONCURRENTLY CONCURRENTLY_IF_NOT_EXISTS orders_status_v2_idx ON orders (status_v2);
+```
+
+4. **Only after 2 and 3 succeed**, drop the old column in a separate migration. Never drop a column in the same migration that adds its replacement — a failed drop leaves no way back.
+
+5. **Rollback plan**: if the backfill cannot finish, the old column is still there and the app still reads it. No data loss. The new column is ignored until a later migration switches reads.
+
+Rules for all future migrations:
+- One logical change per migration file.
+- Every statement guarded: `IF NOT EXISTS`, conditional updates, `CONCURRENTLY` for indexes.
+- Never drop a column in the same migration that adds its replacement.
+- Test the migration on a production-shaped backup before running it in production.
+
+After this, add a migration CI step that runs each migration twice against a test database. The second run must be a no-op.
+@@@ END
+
+@@@ USER
+Backfill finished and the index is built. How do we switch reads to the new column safely?
+@@@ ASSISTANT
+Dual-write, then dual-read, then cut over. Never switch and drop in one step.
+
+1. **Dual-write** (deploy 1): application writes both `status` and `status_v2` on every update. Reads still use `status`.
+
+```ts
+await db.query(`UPDATE orders SET status = $2, status_v2 = $2 WHERE id = $1`, [id, next]);
+```
+
+2. **Dual-read verification** (deploy 2, for a week): read `status_v2`, compare to `status` in a background check; log mismatches. Alert if the mismatch rate exceeds 0.
+
+```sql
+SELECT count(*) FROM orders WHERE status_v2 IS DISTINCT FROM status;
+```
+
+3. **Cut over reads** (deploy 3): read from `status_v2` only. Keep writing both.
+
+4. **Stop writing the old column** (deploy 4): write `status_v2` only. Keep the column for one release.
+
+5. **Drop the old column** (separate migration, one release later): now that nothing reads or writes it.
+
+At each step the previous state is still valid, so a rollback is a redeploy, not a data migration. The key rule: the column drop is always last, in its own migration, after a full release of dual-write.
+
+Verify step 2 daily with that count query. Zero for a week is the signal to cut over. How long is your release cycle — weekly or daily?
+@@@ END
+
+@@@ USER
+We ship daily. Now a different issue: our WebSocket server hit 50k connections and started dropping messages. How do we scale it?
+@@@ ASSISTANT
+50k connections need backpressure, a fan-out design, and load testing — not just more memory.
+
+1. **Backpressure**: never block the event loop on a slow client. Buffer per connection with a cap, and disconnect clients that exceed it.
+
+```ts
+ws.on("message", (data) => {
+  const payload = JSON.stringify(data);
+  for (const client of roomClients) {
+    if (client.bufferedAmount > 1_000_000) { client.terminate(); continue; }
+    client.send(payload);
+  }
+});
+```
+
+2. **Fan-out**: one server cannot hold 50k connections. Use a pub/sub layer (Redis) so any server can publish to any room:
+
+```ts
+await redis.publish(`room:${roomId}`, JSON.stringify(msg));
+// each server subscribes and forwards to its local clients in that room
+```
+
+3. **Connection admission**: cap connections per server (e.g., 10k), reject with `1013` (try again later) beyond the cap, and scale horizontally.
+4. **Heartbeat + timeout**: ping every 30 s; close dead connections. Dead sockets are the usual cause of "memory grows forever".
+
+Give me: connections per server today, and the message rate per connection. That decides whether this is a memory, CPU, or design problem.
+@@@ END
+
+@@@ USER
+We have 25k connections per server, ~2 messages/sec per connection. Redis is used for presence only. How do we get to 50k?
+@@@ ASSISTANT
+25k × 2 msg/s = 50k messages/sec per server, fanned out to room members. Redis as pub/sub removes the single-server ceiling.
+
+Plan:
+
+1. **Redis pub/sub as the bus.** Each server subscribes to the rooms its local clients are in, and publishes outbound messages to Redis. Any server can therefore reach any room.
+
+```ts
+const sub = createClient();
+await sub.connect();
+await sub.subscribe(`room:*`, (msg, channel) => {
+  const roomId = channel.split(":")[1];
+  forwardToLocalClients(roomId, msg);
+});
+```
+
+2. **Two servers at 25k each** is enough for 50k if the fan-out is correct. Add a third for failover headroom.
+3. **Presence**: keep it in Redis with a TTL and heartbeat; do not broadcast presence changes to the whole room on every join/leave.
+4. **Load test**: ramp to 60k connections with a tool like `k6` or `ws` scripts at 2 msg/s each. Watch CPU (serialization), memory (buffers), and Redis throughput. The bottleneck is usually CPU in `JSON.stringify` — pre-serialize once per message, not once per recipient.
+
+```ts
+const payload = JSON.stringify(msg); // once
+for (const client of roomClients) client.send(payload);
+```
+
+5. **Backpressure**: per-connection buffered cap as in the previous answer; slow clients get terminated, not buffered forever.
+
+Test plan: 60k connections, 2 msg/s, for 30 minutes. Assert p99 send latency under 100 ms and zero dropped messages for healthy clients. What is the largest room size in your product?
+@@@ END
+
+@@@ USER
+Largest room is 5,000 users. A single message fans out to 5,000 sockets. That is the hot spot. How do we handle it?
+@@@ ASSISTANT
+5,000 sockets per message is the design problem. Serialize once, send in batches, and do not block the event loop.
+
+```ts
+const payload = JSON.stringify(msg);
+const clients = [...roomClients]; // snapshot
+let i = 0;
+function sendBatch() {
+  const end = Math.min(i + 500, clients.length);
+  for (; i < end; i++) {
+    const c = clients[i];
+    if (c.readyState === 1 && c.bufferedAmount < 1_000_000) c.send(payload);
+    else if (c.bufferedAmount >= 1_000_000) c.terminate();
+  }
+  if (i < clients.length) setImmediate(sendBatch); // yield the loop
+}
+sendBatch();
+```
+
+Rules:
+- **Serialize once** per message, not per recipient. This is usually 80% of the win.
+- **Batch in chunks** (`setImmediate` every 500) so a 5,000-fan-out does not block the event loop for hundreds of milliseconds.
+- **Buffer cap + terminate** slow clients. One slow client must not consume memory for 5,000.
+- For very large rooms, consider a tiered fan-out: one server owns the room and publishes to other servers via Redis, which then fan out locally. That spreads the 5,000 sends across servers.
+- Measure with per-send latency, not just throughput. p99 send latency is the user-visible number.
+
+Retest: 5,000-member room, one message, assert p99 send latency under 100 ms and the event loop stays responsive (a concurrent request is served during the fan-out).
+
+Final checklist for 50k:
+- Redis pub/sub for fan-out, 2–3 servers at 25k.
+- Serialize once, batched sends, per-connection buffer cap.
+- Heartbeat + dead-socket reaping.
+- Load test at 60k for 30 min before production.
+
+That is the full path. Anything else on this?
+@@@ END

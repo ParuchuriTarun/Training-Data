@@ -1,0 +1,1163 @@
+@@@ USER
+My button styles are duplicated across 40 components. How do I set up design tokens with CSS variables so a future redesign does not break everything?
+@@@ ASSISTANT
+Start with semantic tokens, not raw colors. Components reference meaning (`--color-action`), tokens reference values (`--palette-blue-600`), and one theme defines the values.
+
+```css
+:root {
+  --palette-blue-600: #1d4ed8;
+  --palette-gray-50: #f9fafb;
+  --palette-gray-900: #111827;
+  --color-surface: var(--palette-gray-50);
+  --color-text: var(--palette-gray-900);
+  --color-action: var(--palette-blue-600);
+  --color-action-contrast: #ffffff;
+  --radius-md: 8px;
+  --space-2: 8px;
+  --space-4: 16px;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+}
+
+[data-theme="dark"] {
+  --color-surface: #0f172a;
+  --color-text: #e2e8f0;
+  --color-action: #60a5fa;
+  --color-action-contrast: #0f172a;
+}
+
+.btn {
+  background: var(--color-action);
+  color: var(--color-action-contrast);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
+  font-family: var(--font-sans);
+}
+
+.btn:hover { filter: brightness(1.08); }
+.btn:focus-visible { outline: 2px solid var(--color-action); outline-offset: 2px; }
+```
+
+Rules:
+1. Never use `--palette-*` in components; use semantic `--color-*`. A rebrand changes one file.
+2. Dark mode changes only the semantic layer; components never change.
+3. Keep spacing on a scale (`--space-*`); reject arbitrary values in review.
+4. Contrast-check every semantic pair against WCAG AA (4.5:1 for normal text). Automated token tests catch regressions.
+
+Then add a tokens test that asserts no component file contains a hex color or a raw `px` value outside `tokens.css`. That single lint rule prevents the duplication from returning.
+@@@ END
+
+@@@ USER
+How do I fetch data in React Server Components without creating waterfalls?
+@@@ ASSISTANT
+Server Components run on the server, so you can issue all independent fetches in parallel with the `async`/`await` pattern at the component level. The waterfall happens when a child component fetches data that its parent could have started.
+
+```tsx
+// app/dashboard/page.tsx
+import { Suspense } from "react";
+import { Stats } from "./stats";
+import { Activity } from "./activity";
+import { Billing } from "./billing";
+
+async function getUser(id: string) {
+  const res = await fetch(`https://api.example.com/users/${id}`, {
+    next: { revalidate: 60 },
+  });
+  if (!res.ok) throw new Error("failed to load user");
+  return res.json();
+}
+
+export default async function DashboardPage({
+  params,
+}: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const user = await getUser(id);
+
+  return (
+    <main>
+      <h1>{user.name}</h1>
+      <Suspense fallback={<StatsSkeleton />}>
+        <Stats userId={id} />
+      </Suspense>
+      <Suspense fallback={<ActivitySkeleton />}>
+        <Activity userId={id} />
+      </Suspense>
+      <Suspense fallback={<BillingSkeleton />}>
+        <Billing userId={id} />
+      </Suspense>
+    </main>
+  );
+}
+```
+
+```tsx
+// app/dashboard/stats.tsx — fetches independently, in parallel with siblings
+export async function Stats({ userId }: { userId: string }) {
+  const res = await fetch(`https://api.example.com/users/${userId}/stats`, {
+    next: { revalidate: 60 },
+  });
+  const stats = await res.json();
+  return <section>{stats.total} total orders</section>;
+}
+```
+
+Key points:
+- `Suspense` boundaries let slow sections stream in without blocking fast ones.
+- Use `next: { revalidate }` for cacheable data; use `cache: "no-store"` only when the data must be fresh.
+- Deduplicate fetches with React `cache()` when the same data is needed in multiple components.
+- Do not fetch in a waterfall: if component B needs data that component A already fetched, pass it down as a prop, or fetch both at the page level in parallel with `Promise.all`.
+- Measure with Next.js network logs: a chain of sequential requests each waiting on the previous is the tell.
+@@@ END
+
+@@@ USER
+How do I implement optimistic UI updates correctly? My list sometimes shows the wrong values after a failed request.
+@@@ ASSISTANT
+Optimistic UI shows the expected result immediately, but you must roll back to the true server state on failure and reconcile on refetch.
+
+```tsx
+"use client";
+import { useState } from "react";
+
+type Todo = { id: string; title: string; done: boolean };
+
+export function TodoList({ initial }: { initial: Todo[] }) {
+  const [todos, setTodos] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggle(id: string) {
+    setError(null);
+    const previous = todos;
+    // 1) optimistic update
+    setTodos((cur) => cur.map((t) => t.id === id ? { ...t, done: !t.done } : t));
+
+    try {
+      // 2) real request
+      const res = await fetch(`/api/todos/${id}/toggle`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const updated = await res.json();
+      // 3) reconcile with server truth
+      setTodos((cur) => cur.map((t) => t.id === id ? updated : t));
+    } catch {
+      setTodos(previous); // 4) rollback
+      setError("Could not save. Your change was reverted.");
+    }
+  }
+
+  return (
+    <div>
+      {error && <p role="alert">{error}</p>}
+      {todos.map((t) => (
+        <label key={t.id}>
+          <input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} />
+          {t.title}
+        </label>
+      ))}
+    </div>
+  );
+}
+```
+
+Rules:
+- Always keep the pre-update snapshot for rollback.
+- Reconcile with the server response; do not trust that the optimistic value was correct.
+- Debounce rapid toggles or disable the control while a request is in flight to avoid out-of-order responses.
+- Use `useOptimistic` from React 19 where available; it handles the rollback and reset for you.
+- Surface failures inline, not via a toast that disappears before the user reads it.
+- Never let the optimistic value diverge permanently: on any error, refetch the list.
+@@@ END
+
+@@@ USER
+Show me file uploads with progress, chunked upload, and pause/resume for large files.
+@@@ ASSISTANT
+Use XHR for progress events (fetch has no upload progress), chunked uploads with per-chunk retry, and a persisted session so a refresh can resume.
+
+```ts
+type Chunk = { index: number; start: number; end: number; status: "pending" | "done" | "failed" };
+
+async function uploadFile(file: File, onProgress: (pct: number) => void, signal: AbortSignal) {
+  const CHUNK = 5 * 1024 * 1024;
+  const session = await createSession(file.name, file.size); // POST /uploads -> { id }
+
+  for (let off = 0; off < file.size; off += CHUNK) {
+    if (signal.aborted) throw new DOMException("aborted", "AbortError");
+    const slice = file.slice(off, Math.min(off + CHUNK, file.size));
+
+    // retry each chunk up to 3 times
+    let attempts = 0;
+    while (true) {
+      try {
+        await putChunk(session.id, off, slice, signal);
+        break;
+      } catch (err) {
+        attempts++;
+        if (attempts >= 3) throw err;
+        await new Promise((r) => setTimeout(r, 500 * attempts));
+      }
+    }
+    onProgress(Math.min(100, ((off + slice.size) / file.size) * 100));
+  }
+  return completeSession(session.id); // POST /uploads/:id/complete -> { url }
+}
+
+function putChunk(id: string, offset: number, body: Blob, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", `/api/uploads/${id}/chunks/${offset}`);
+    xhr.signal = signal;
+    xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`chunk ${xhr.status}`));
+    xhr.onerror = () => reject(new Error("network"));
+    xhr.send(body);
+  });
+}
+```
+
+Server side:
+- `POST /uploads` creates a session and returns an id plus expected parts.
+- `PUT /uploads/:id/chunks/:offset` stores the chunk; offsets make retries idempotent.
+- `POST /uploads/:id/complete` assembles and verifies size + checksum, then returns the final URL.
+
+For resume after refresh: persist `{ sessionId, uploadedOffsets[] }` in IndexedDB on each completed chunk, and on load, ask the server which offsets already exist. For a simple progress bar without chunking, use `xhr.upload.onprogress`.
+@@@ END
+
+@@@ USER
+My dashboard renders 10,000 rows and the browser freezes. How do I virtualize the list?
+@@@ ASSISTANT
+Render only the rows in the viewport plus a small overscan. Use a windowing approach: a tall spacers div for total scroll height, and absolutely positioned rows for the visible slice.
+
+```tsx
+"use client";
+import { useEffect, useRef, useState } from "react";
+
+const ROW_H = 36;
+const OVERSCAN = 8;
+
+export function VirtualTable({ rows }: { rows: { id: string; name: string }[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [height, setHeight] = useState(600);
+
+  useEffect(() => {
+    const el = scrollRef.current!;
+    const update = () => setHeight(el.clientHeight);
+    update();
+    new ResizeObserver(update).observe(el);
+  }, []);
+
+  const start = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const visibleCount = Math.ceil(height / ROW_H) + OVERSCAN * 2;
+  const end = Math.min(rows.length, start + visibleCount);
+  const slice = rows.slice(start, end);
+
+  return (
+    <div
+      ref={scrollRef}
+      data-testid="viewport"
+      style={{ height: 600, overflowY: "auto", position: "relative" }}
+      onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
+    >
+      <div style={{ height: rows.length * ROW_H }}>
+        {slice.map((row, i) => (
+          <div
+            key={row.id}
+            style={{ position: "absolute", top: (start + i) * ROW_H, height: ROW_H, width: "100%" }}
+          >
+            {row.name}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+Rules:
+- Measure row height accurately; variable heights need a measurement cache.
+- Keep overscan modest (5–10 rows) or the scroll position flickers.
+- Keyboard navigation: the active row must stay in the rendered window; move the window on focus change.
+- For very large data, paginate or fetch pages on scroll instead of loading all rows in memory.
+- Libraries like TanStack Virtual do the same thing and are worth using once the hand-rolled version works.
+@@@ END
+
+@@@ USER
+My search input fires a request per keystroke and sometimes shows stale results. Fix it.
+@@@ ASSISTANT
+Debounce input, abort stale requests, and guard against out-of-order responses by sequence number.
+
+```tsx
+"use client";
+import { useEffect, useRef, useState } from "react";
+
+export function SearchBox() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<string[]>([]);
+  const requestId = useRef(0);
+
+  useEffect(() => {
+    if (query.trim().length < 2) { setResults([]); return; }
+    const id = ++requestId.current;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        // Ignore responses that are no longer current.
+        if (requestId.current !== id) return;
+        setResults(data.items);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setResults([]);
+      }
+    }, 300); // debounce
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [query]);
+
+  return (
+    <div>
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search products..."
+        aria-label="Search products"
+      />
+      <ul>{results.map((r) => <li key={r}>{r}</li>)}</ul>
+    </div>
+  );
+}
+```
+
+Key details:
+- Debounce 250–400ms; combine with a minimum length to avoid useless requests.
+- Always abort the previous request on each keystroke so stale network work is cancelled.
+- If abort is unavailable (for example a non-fetch API), keep a monotonically increasing request id and render only the latest result.
+- Clear results when the query becomes too short so old results do not linger.
+- Consider caching short queries with the query client (`staleTime: 30000`) so going back is instant.
+@@@ END
+
+@@@ USER
+How do I keep filter state in the URL so users can share links and use the Back button?
+@@@ ASSISTANT
+Treat the URL as the source of truth for shareable state. Encode filters, sort, and pagination in search params; keep ephemeral UI state in React state.
+
+```tsx
+"use client";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useState } from "react";
+
+export function FilterBar() {
+  const router = useRouter();
+  const params = useSearchParams();
+
+  const status = params.get("status") ?? "all";
+  const sort = params.get("sort") ?? "newest";
+  const page = Math.max(1, Number(params.get("page") ?? 1));
+
+  const update = useCallback((patch: Record<string, string>) => {
+    const next = new URLSearchParams(params.toString());
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === "" || v === null) next.delete(k);
+      else next.set(k, v);
+    }
+    router.push(`?${next.toString()}`, { scroll: false });
+  }, [params, router]);
+
+  return (
+    <div>
+      <select value={status} onChange={(e) => update({ status: e.target.value, page: "1" })}>
+        <option value="all">All</option>
+        <option value="active">Active</option>
+        <option value="archived">Archived</option>
+      </select>
+      <select value={sort} onChange={(e) => update({ sort: e.target.value })}>
+        <option value="newest">Newest</option>
+        <option value="price-asc">Price low to high</option>
+      </select>
+      <button onClick={() => update({ page: String(page + 1) })}>Next</button>
+    </div>
+  );
+}
+```
+
+Rules:
+- Validate params on the server: unknown values fall back to defaults; never cast raw query strings into SQL or React keys without checks.
+- Reset the page to 1 whenever a filter changes.
+- Keep text inputs debounced and controlled, so typing does not push a new history entry per keystroke (use `router.replace` for typing, `router.push` for deliberate changes).
+- Server reads the same params, so shared links render identically.
+- Accessibility: `aria-current="page"` on the active filter; use a real `<form method="get">` when JavaScript is off.
+@@@ END
+
+@@@ USER
+How do I handle token refresh and CORS correctly for an SPA using httpOnly cookies?
+@@@ ASSISTANT
+Use short-lived access tokens in memory, a refresh token in an httpOnly cookie, and explicit CORS origins with credentials.
+
+Server cookie setup:
+
+```ts
+// login response
+res.cookie("refresh_token", token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict", // or "lax" for top-level navigations
+  path: "/auth/refresh", // scope the cookie to the refresh endpoint only
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
+
+// CORS — never use "*" with credentials
+app.use(cors({
+  origin: "https://app.example.com",
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 86400,
+}));
+```
+
+Client refresh with a single-flight queue so 10 failed requests do not fire 10 refresh calls:
+
+```ts
+let refreshPromise: Promise<boolean> | null = null;
+
+async function refreshToken(): Promise<boolean> {
+  refreshPromise ??= fetch("/auth/refresh", {
+    method: "POST",
+    credentials: "include",
+  }).then((res) => res.ok && res.json().then((d) => saveAccessToken(d.accessToken)) === true);
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+async function api(path: string, init: RequestInit = {}) {
+  let res = await fetch(path, { ...init, credentials: "include" });
+  if (res.status === 401 && path !== "/auth/refresh") {
+    const ok = await refreshToken();
+    if (ok) res = await fetch(path, { ...init, credentials: "include" });
+  }
+  return res;
+}
+```
+
+Security rules:
+- Rotate the refresh token on every use and reuse-detect: if an old token is replayed, revoke the whole family.
+- Access tokens live in memory only (`sessionStorage` survives reload but persists across tabs; in-memory is safer).
+- `Path=/auth/refresh` limits exposure; a leaked request to another endpoint cannot include it.
+- CSRF: with `SameSite=strict` plus an explicit origin check, state-changing requests are safe. For `SameSite=lax` or cross-site deployments, add a CSRF token.
+- Preflight: the browser sends `OPTIONS` automatically; the server must answer with `Access-Control-Allow-Origin`, `Access-Control-Allow-Credentials: true`, and `Access-Control-Allow-Methods`.
+@@@ END
+
+@@@ USER
+My site has a 2.5 second LCP. How do I use preload, preconnect, and dns-prefetch correctly without making it worse?
+@@@ ASSISTANT
+Apply each hint only for resources that block first paint, and never preload something you do not immediately render.
+
+```html
+<link rel="preconnect" href="https://api.example.com" crossorigin>
+<link rel="preconnect" href="https://cdn.example.com" crossorigin>
+<link rel="dns-prefetch" href="https://analytics.example.com">
+<link rel="preload" as="image" href="/hero.jpg" fetchpriority="high" imagesrcset="/hero.jpg 1x, /hero-2x.jpg 2x">
+<link rel="preload" as="style" href="/critical.css">
+<link rel="preload" as="font" href="/fonts/inter.woff2" type="font/woff2" crossorigin>
+```
+
+Rules:
+- `preconnect` pays a TCP/TLS cost up front: use it for at most 2–3 critical origins. For non-critical ones, `dns-prefetch` is cheaper.
+- `preload` tells the browser to fetch before CSS/JS parsing reaches the reference. Preload exactly one hero image and the critical font. Preloading 10 images delays the one that matters.
+- Font preload: use `font/woff2` + `crossorigin`; when you use `font-display: swap`, FOIT is avoided but layout shift tradeoffs apply.
+- `fetchpriority="high"` on the LCP image, `loading="lazy"` + `fetchpriority="low"` below the fold.
+- Never preload a resource that is also `async`/`defer` in a conflicting way; the browser may fetch it twice.
+- Measure with Lighthouse `diagnostics` and a production trace: if a preloaded resource is unused, it will show as wasted network. Remove it.
+- For critical CSS, inline the first-view styles and preload the full sheet, or use `media="print" onload` shim patterns carefully. Inlining too much CSS bloats HTML.
+
+Also add `width`/`height` or `aspect-ratio` to images so the LCP element does not shift while loading.
+@@@ END
+
+@@@ USER
+When should I use a Web Worker, and what are the pitfalls?
+@@@ ASSISTANT
+Use a Worker when computation blocks the main thread for more than ~50ms: parsing, image processing, compression, search, or running a tokenizer.
+
+```ts
+// worker.ts
+self.onmessage = (e) => {
+  const { id, payload } = e.data;
+  const result = heavyCompute(payload); // no DOM access here
+  (self as any).postMessage({ id, result });
+};
+
+// main.ts
+const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
+const pending = new Map<string, { resolve: (v: any) => void }>();
+
+worker.onmessage = (e) => {
+  const { id, result } = e.data;
+  pending.get(id)?.resolve(result);
+  pending.delete(id);
+};
+
+export function runHeavy(payload: any): Promise<any> {
+  const id = crypto.randomUUID();
+  return new Promise((resolve) => {
+    pending.set(id, { resolve });
+    worker.postMessage({ id, payload });
+  });
+}
+```
+
+Pitfalls:
+- No DOM, no `localStorage`, no `window`. Pass data in and out; never reference `document`.
+- Structured clone has a cost: transferring large `ArrayBuffer`s with `postMessage(msg, [buffer])` avoids copies.
+- Terminate workers on unmount or route change, or they accumulate.
+- Creating a worker per message is wasteful; create one and reuse, or a small pool for parallel tasks.
+- Module workers: use `{ type: "module" }` to import shared code; older browsers need a non-module fallback.
+- Errors: `worker.onerror` gives a basic event; send structured errors back via `postMessage` for actionable messages.
+- For search/indexing, consider SharedArrayBuffer + `Atomics` only when cross-origin isolated; otherwise keep the message boundary.
+@@@ END
+
+@@@ USER
+How do I add server-side rendering with SEO metadata in Next.js App Router?
+@@@ ASSISTANT
+Export `metadata` and `generateMetadata` from page/layout files; use `generateStaticParams` for known routes and `revalidate` for stale-while-revalidate.
+
+```tsx
+// app/products/[slug]/page.tsx
+import type { Metadata } from "next";
+
+type Props = { params: Promise<{ slug: string }> };
+
+export async function generateStaticParams() {
+  // pre-render the top 500 product pages at build time
+  const res = await fetch("https://api.example.com/products?limit=500");
+  const data = await res.json();
+  return data.map((p: any) => ({ slug: p.slug }));
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params;
+  const res = await fetch(`https://api.example.com/products/${slug}`, {
+    next: { revalidate: 3600 },
+  });
+  const product = await res.json();
+  return {
+    title: `${product.name} | Example Store`,
+    description: product.description.slice(0, 160),
+    alternates: { canonical: `/products/${slug}` },
+    openGraph: {
+      title: product.name,
+      description: product.description.slice(0, 160),
+      images: [product.imageUrl],
+      url: `/products/${slug}`,
+    },
+    twitter: { card: "summary_large_image" },
+    robots: { index: true, follow: true },
+  };
+}
+
+export default async function ProductPage({ params }: Props) {
+  const { slug } = await params;
+  const res = await fetch(`https://api.example.com/products/${slug}`, {
+    next: { revalidate: 3600 },
+  });
+  const product = await res.json();
+  return (
+    <main>
+      <h1>{product.name}</h1>
+      <p>{product.description}</p>
+    </main>
+  );
+}
+```
+
+Rules:
+- One `generateMetadata` per route; it replaces manual `<head>` management.
+- Fetch once and cache with `cache()`: both `generateMetadata` and the page call the same fetcher.
+- Use `notFound()` for missing products so the 404 page returns a real 404 status.
+- Add a sitemap (`app/sitemap.ts`) and `robots.ts`.
+- Test with `curl` and the Rich Results Test: check the rendered HTML contains the title, meta description, and JSON-LD, not only the client-rendered version.
+- Never rely on client-side-only rendering for SEO-critical routes.
+@@@ END
+
+@@@ USER
+How do I make a site accessible with skip links, landmarks, and keyboard support?
+@@@ ASSISTANT
+Three things cover most failures: a "Skip to content" link, correct landmarks, and visible focus with correct keyboard behavior.
+
+```html
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<header>...</header>
+<nav aria-label="Primary">...</nav>
+<main id="main-content" tabindex="-1">...</main>
+<aside aria-label="Related">...</aside>
+<footer>...</footer>
+```
+
+```css
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px; height: 1px;
+  overflow: hidden;
+}
+.skip-link:focus {
+  position: fixed;
+  top: 0; left: 0;
+  width: auto; height: auto;
+  padding: 12px 20px;
+  background: #111; color: #fff;
+  z-index: 100;
+}
+:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+```
+
+Rules:
+- Landmarks: one `<main>`, one `<nav>` per purpose with `aria-label`, `<header>`/`<footer>` once. This lets screen-reader users jump by section.
+- Focus: never remove outlines without a replacement. `:focus-visible` should have a high-contrast indicator.
+- Keyboard: every interactive element must be reachable and operable with Tab + Enter/Space. For modals, trap focus and return it to the trigger on close.
+- Skip link target needs `tabindex="-1"` so focus actually moves in all browsers.
+- Test with keyboard only: unplug the mouse and complete the core task (search, filter, submit).
+- Run axe in CI on every route; a11y regressions are cheap to catch automatically.
+- `prefers-reduced-motion` disables non-essential animation; `prefers-contrast` adjusts borders for high-contrast users.
+@@@ END
+
+@@@ USER
+My data table is unusable on mobile. How do I handle wide tables and filtering on small screens?
+@@@ ASSISTANT
+Do not shrink the table to 8pt text. Use a scrollable region with a sticky first column, or transform rows into cards under a breakpoint.
+
+```css
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+table {
+  min-width: 640px;
+  border-collapse: collapse;
+}
+th:first-child, td:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--color-surface);
+  z-index: 1;
+}
+
+@media (max-width: 640px) {
+  thead { display: none; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  tr { border: 1px solid var(--line); margin-bottom: 12px; border-radius: 8px; padding: 8px; }
+  td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    display: block;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+}
+```
+
+```html
+<table>
+  <thead>
+    <tr><th>Name</th><th>Status</th><th>Amount</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td data-label="Name">Acme</td>
+      <td data-label="Status">Paid</td>
+      <td data-label="Amount">$1,240.00</td>
+    </tr>
+  </tbody>
+</table>
+```
+
+Rules:
+- Card layout needs `data-label` matching the column; keep the mobile and desktop HTML in sync via server-rendered attributes.
+- Sticky column + horizontal scroll works for 4–8 columns; cards work better beyond that.
+- Provide `aria-label` on the scroll region and `tabindex="0"` so keyboard users can scroll it.
+- Filters must be usable at 360px wide: full-width inputs, 44px tap targets, no hover-only affordances.
+- Row actions (edit/delete) must not be hover-only; keep them visible or behind a button.
+@@@ END
+
+@@@ USER
+How do I add print stylesheets for invoices and reports?
+@@@ ASSISTANT
+Use `@media print` to hide navigation, chat widgets, and buttons, and to make tables repeat headers on every page.
+
+```css
+@media print {
+  .no-print, nav, header, footer, .sidebar { display: none !important; }
+  body { background: white; color: #000; font-size: 11pt; }
+  .invoice { width: 100%; border: none; }
+  thead { display: table-header-group; }
+  tr, img { page-break-inside: avoid; }
+  a[href]::after { content: " (" attr(href) ")"; font-size: 9pt; }
+  .page-break { page-break-before: always; }
+  .invoice tr:nth-child(even) { background: #f3f4f6 !important; }
+}
+
+@page { margin: 12mm; }
+```
+
+```html
+<div class="invoice">
+  <table>
+    <thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead>
+    <tbody>...</tbody>
+    <tfoot><tr><td colspan="3">Total: $1,240</td></tr></tfoot>
+  </table>
+  <button class="no-print" onclick="window.print()">Print invoice</button>
+</div>
+```
+
+Rules:
+- `thead` as `table-header-group` repeats headers; `tfoot` repeats on last page in some browsers.
+- Colors: use `print-color-adjust: exact` only for essential shading, and always ensure grayscale is still readable; many users print in black and white.
+- Page breaks: never split a row; use `page-break-inside: avoid`.
+- Hide everything outside the printable area; test with `Ctrl+P` preview.
+- For PDFs, also offer a server-rendered PDF (`pdf-lib`, Puppeteer, or a dedicated service) so printing matches exactly.
+- Include page numbers and the invoice id in the printed header via `@page` margins or an on-screen footer repeated per page.
+@@@ END
+
+@@@ USER
+How do I handle debounced search, loading, empty, and error states cleanly in one React component?
+@@@ ASSISTANT
+Use a single state machine where exactly one state is active: idle, loading, success, empty, or error. Do not combine booleans that can contradict each other.
+
+```tsx
+"use client";
+import { useEffect, useRef, useState } from "react";
+
+type State =
+  | { status: "idle" }
+  | { status: "loading"; query: string }
+  | { status: "success"; query: string; items: string[] }
+  | { status: "empty"; query: string }
+  | { status: "error"; query: string; message: string };
+
+export function ProductSearch() {
+  const [query, setQuery] = useState("");
+  const [state, setState] = useState<State>({ status: "idle" });
+  const seq = useRef(0);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setState({ status: "idle" }); return; }
+    const id = ++seq.current;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setState({ status: "loading", query: q });
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (seq.current !== id) return;
+        setState(data.items.length ? { status: "success", query: q, items: data.items } : { status: "empty", query: q });
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (seq.current === id) setState({ status: "error", query: q, message: "Search failed. Try again." });
+      }
+    }, 300);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [query]);
+
+  return (
+    <div>
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search..." aria-label="Search" />
+      {state.status === "loading" && <p role="status">Searching for "{state.query}"...</p>}
+      {state.status === "empty" && <p>No results for "{state.query}". Try a different term.</p>}
+      {state.status === "error" && <p role="alert">{state.message}</p>}
+      {state.status === "success" && (
+        <ul>{state.items.map((i) => <li key={i}>{i}</li>)}</ul>
+      )}
+    </div>
+  );
+}
+```
+
+Why a union works: `items` cannot be read when `status` is not `"success"`; `message` only exists on `"error"`. TypeScript enforces it. Add `aria-live="polite"` for the result count and `role="status"` for loading so screen readers announce changes without stealing focus.
+@@@ END
+
+@@@ USER
+How do I implement pricing page with a monthly/annual toggle that also updates the URL?
+@@@ ASSISTANT
+Keep billing interval in the URL so shared links land on the right price, and format prices once with `Intl.NumberFormat`.
+
+```tsx
+"use client";
+import { useRouter, useSearchParams } from "next/navigation";
+
+const PLANS = [
+  { id: "pro", name: "Pro", monthly: 1200, annual: 9600 },
+  { id: "team", name: "Team", monthly: 4900, annual: 39200 },
+];
+
+function formatCents(cents: number, interval: "monthly" | "annual") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(cents / (interval === "annual" ? 12 : 1));
+}
+
+export function Pricing() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const interval = params.get("interval") === "annual" ? "annual" : "monthly";
+
+  return (
+    <main>
+      <div role="group" aria-label="Billing interval">
+        <button aria-pressed={interval === "monthly"} onClick={() => router.push("?interval=monthly", { scroll: false })}>
+          Monthly
+        </button>
+        <button aria-pressed={interval === "annual"} onClick={() => router.push("?interval=annual", { scroll: false })}>
+          Annual (save 20%)
+        </button>
+      </div>
+      <section>
+        {PLANS.map((p) => (
+          <article key={p.id}>
+            <h3>{p.name}</h3>
+            <p>{formatCents(interval === "annual" ? p.annual / 12 : p.monthly, interval)}/month</p>
+            <p>{interval === "annual" ? "Billed annually" : "Billed monthly"}</p>
+          </article>
+        ))}
+      </section>
+    </main>
+  );
+}
+```
+
+Details:
+- Prices in cents on the server; format with `Intl.NumberFormat` to handle locales and currencies correctly.
+- `aria-pressed` announces the toggle state to assistive tech.
+- Server should read the same `interval` param so SSR output matches the shared link.
+- Announce price changes: put the price in a `<output aria-live="polite">` if the toggle is AJAX.
+- Test both URLs with `curl` to confirm the server returns a 200 and the correct price in HTML, not only client-rendered.
+@@@ END
+
+@@@ USER
+What is the difference between `loading="lazy"`, `decoding="async"`, and `fetchpriority="low"` on images?
+@@@ ASSISTANT
+They control three different things: *when* the browser fetches, *how* decoding is scheduled, and *priority* among competing requests.
+
+```html
+<!-- Above the fold, LCP candidate -->
+<img src="/hero.jpg" fetchpriority="high" decoding="async" alt="...">
+
+<!-- Below the fold -->
+<img src="/chart.png" loading="lazy" decoding="async" fetchpriority="low" alt="...">
+
+<!-- Decorative, non-critical -->
+<img src="/divider.svg" loading="lazy" decoding="async" alt="" aria-hidden="true">
+```
+
+- `loading="lazy"`: defers fetch until the image is near the viewport. Use below the fold. Never use it on the LCP image; it delays first meaningful paint.
+- `decoding="async"`: allows image decoding off the main thread so the page stays responsive. Pair with `loading="lazy"` for below-fold images, `sync` only if decode order matters (rare).
+- `fetchpriority="high|low|auto"`: relative priority. `high` for LCP, `low` for non-critical below-fold images, defaults to `auto`.
+
+Rules:
+- Always set `width` + `height` or CSS `aspect-ratio` with lazy images to prevent layout shift when they load.
+- `loading="lazy"` alone on an off-screen image that is inside a carousel or tabs may never load; use your own IntersectionObserver for complex widgets.
+- Lighthouse reports unused images: if a preloaded image is also `loading="lazy"`, the browser may fetch it twice. Pick one strategy.
+- Use `srcset` + `sizes` alongside these attributes so mobile does not download the desktop file.
+@@@ END
+
+@@@ USER
+How do I build a real-time activity feed without polling?
+@@@ ASSISTANT
+For one-way server-to-client updates, use SSE with `EventSource`, or a fetch-based stream when you need POST or custom headers. Polling is the worst option for latency, battery, and server load.
+
+```ts
+// server
+app.get("/api/feed", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const send = (id: number, type: string, data: unknown) => {
+    res.write(`id: ${id}\nevent: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  const heartbeat = setInterval(() => res.write(": ping\n\n"), 15_000);
+  let lastId = 0;
+
+  const onActivity = (activity: unknown) => {
+    lastId += 1;
+    send(lastId, "activity", activity);
+  };
+  bus.on("activity", onActivity);
+
+  // Support reconnection: client sends Last-Event-ID via query param on reconnect
+  const since = Number(req.query.since ?? 0);
+  replayMissed(since).forEach((a) => onActivity(a));
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    bus.off("activity", onActivity);
+  });
+});
+```
+
+```ts
+// client
+const source = new EventSource("/api/feed?since=0");
+source.addEventListener("activity", (e) => {
+  const item = JSON.parse(e.data);
+  prependToFeed(item);
+});
+source.onerror = () => showReconnecting();
+```
+
+Rules:
+- Include an event id so the client can resume from `Last-Event-ID`; replay missed events on reconnect.
+- Heartbeats keep proxies from closing idle connections.
+- For bidirectional needs (chat, cursor sharing) switch to WebSockets; for one-way feeds SSE is simpler and scales on plain HTTP infra.
+- New items should prepend without shifting the user's scroll position; if the user is scrolled down, show a "3 new items" button instead of moving content.
+@@@ END
+
+@@@ USER
+How do I implement optimistic form submission with server validation errors?
+@@@ ASSISTANT
+Submit optimistically, then merge server field errors back into the form state. Keep everything typed.
+
+```ts
+import { useActionState } from "react";
+
+type FieldErrors = Partial<Record<"email" | "password", string[]>>;
+type State = { ok: boolean; errors: FieldErrors; message: string | null };
+
+async function loginAction(_prev: State, formData: FormData): Promise<State> {
+  const email = String(formData.get("email") ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  const res = await fetch("/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json();
+
+  if (res.ok) return { ok: true, errors: {}, message: null };
+  return {
+    ok: false,
+    message: data.message ?? "Login failed",
+    errors: (data.fieldErrors ?? {}) as FieldErrors,
+  };
+}
+
+export function LoginForm() {
+  const [state, formAction, pending] = useActionState(loginAction, {
+    ok: false, errors: {}, message: null,
+  } as State);
+
+  return (
+    <form action={formAction}>
+      <label>
+        Email
+        <input name="email" type="email" required defaultValue="" />
+        {state.errors.email && <span role="alert">{state.errors.email.join(", ")}</span>}
+      </label>
+      <label>
+        Password
+        <input name="password" type="password" required />
+        {state.errors.password && <span role="alert">{state.errors.password.join(", ")}</span>}
+      </label>
+      {state.message && <p role="alert">{state.message}</p>}
+      <button disabled={pending}>{pending ? "Signing in..." : "Sign in"}</button>
+    </form>
+  );
+}
+```
+
+Client-side, mirror the same rules with a schema (Zod) for instant feedback, but never trust client validation alone: the server must re-validate and return field errors in the same shape. On a network failure, keep the typed values; on a 401 with a redirect, hand off to the browser.
+@@@ END
+
+@@@ USER
+Why does `100vh` break on mobile Safari, and how do I fix full-screen layouts?
+@@@ ASSISTANT
+`100vh` includes the area under the collapsible browser chrome, so the content is hidden behind the address bar when the chrome appears. Use dynamic viewport units.
+
+```css
+.hero {
+  height: 100vh; /* fallback */
+  height: 100dvh; /* dynamic viewport height */
+}
+
+@supports (height: 100svh) {
+  .hero {
+    height: 100svh; /* small viewport height: stable, excludes dynamic UI */
+  }
+  .modal { height: 100svh; }
+}
+```
+
+- `svh` (small viewport height): stable, always accounts for browser chrome. Good for layouts that must not jump when chrome hides.
+- `dvh` (dynamic viewport height): changes as chrome shows/hides. Good for full-bleed heroes that should fill the visible area.
+- `lvh` (large viewport height): largest possible, the opposite of `svh`.
+
+Also:
+- For fixed navbars, use padding inside the container, not `position: fixed` overlapping content.
+- Test on real devices: iOS Safari and Chrome Android both collapse chrome on scroll; `100vh` will overflow by the chrome height.
+- For modals, use `100svh` with `overflow-y: auto` so the sheet scrolls internally instead of being clipped.
+@@@ END
+
+@@@ USER
+How do I debounce search input in React with cleanup and a minimum length?
+@@@ ASSISTANT
+Use an effect with a timeout and cleanup, plus an `AbortController` to cancel stale requests.
+
+```tsx
+"use client";
+import { useEffect, useState } from "react";
+
+export function SearchInput() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<string[]>([]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setResults([]); return; }
+
+    const controller = new AbortController();
+    const id = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        setResults(data.items);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setResults([]);
+      }
+    }, 250);
+
+    return () => {
+      clearTimeout(id);
+      controller.abort();
+    };
+  }, [query]);
+
+  return (
+    <div>
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search..." />
+      <ul>{results.map((r) => <li key={r}>{r}</li>)}</ul>
+    </div>
+  );
+}
+```
+
+Rules:
+- Debounce 200–350ms; shorter values fire too many requests, longer feel laggy.
+- Minimum length 2 to avoid useless single-char searches.
+- Abort on cleanup so stale responses cannot overwrite newer ones.
+- Show a loading indicator (`role="status"`) and keep the previous results visible while fetching.
+- Consider caching with `staleTime` in TanStack Query for repeated queries.
+@@@ END
+
+@@@ USER
+How do I fix CLS caused by late-loading ads and embeds?
+@@@ ASSISTANT
+Reserve space for everything that loads late: ads, embeds, charts, and late web fonts.
+
+```css
+.ad-slot {
+  min-height: 250px; /* match the ad size */
+  aspect-ratio: 300 / 250;
+  background: #f3f4f6;
+  display: grid;
+  place-items: center;
+}
+iframe[src*="youtube"], iframe[src*="vimeo"] {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  height: auto;
+}
+```
+
+```html
+<div class="ad-slot" data-ad-slot="leaderboard" aria-hidden="true">...</div>
+<div style="min-height: 320px">
+  <canvas id="chart" width="800" height="320"></canvas>
+</div>
+```
+
+Rules:
+- Every ad slot, iframe, canvas, and chart needs explicit dimensions or `aspect-ratio` before the content loads.
+- Do not insert content above existing content after load; append below or reserve a fixed slot.
+- Images: always `width` + `height` or CSS aspect ratio.
+- Fonts: use `font-display: swap` with a metric-adjusted fallback (`@font-face` with `ascent-override`/`descent-override`) so text does not reflow.
+- Skeleton screens must match final dimensions.
+- Measure with Web Vitals in production; CLS above 0.1 needs investigation. Lighthouse `layout-shifts` detail names the offending nodes.
+@@@ END
+
+@@@ USER
+How do I implement theme toggle with system preference and no flash of wrong theme?
+@@@ ASSISTANT
+Set the theme in a tiny blocking script in `<head>` before first paint, and keep React state in sync.
+
+```tsx
+// app/layout.tsx
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                var t = localStorage.getItem("theme");
+                if (t === "dark" || (!t && matchMedia("(prefers-color-scheme: dark)").matches)) {
+                  document.documentElement.classList.add("dark");
+                }
+              } catch (e) {}
+            `,
+          }}
+        />
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+```tsx
+"use client";
+import { useEffect, useState } from "react";
+
+export function ThemeToggle() {
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    setDark(document.documentElement.classList.contains("dark"));
+  }, []);
+
+  function toggle() {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+  }
+
+  return (
+    <button onClick={toggle} aria-pressed={dark}>
+      {dark ? "Light mode" : "Dark mode"}
+    </button>
+  );
+}
+```
+
+Rules:
+- The blocking script runs before render, so there is no flash of the wrong theme.
+- Store the choice in `localStorage`; default to `prefers-color-scheme` when absent.
+- `suppressHydrationWarning` on `<html>` is correct here because the script mutates the class before hydration; do not use it to hide other mismatches.
+- Style with CSS variables: `:root` light, `.dark` dark. Components never hard-code colors.
+- `color-scheme: light dark` on `:root` so native controls match.
+@@@ END

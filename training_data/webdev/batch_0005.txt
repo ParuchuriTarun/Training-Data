@@ -1,0 +1,573 @@
+@@@ USER
+How do I design CSS design tokens that survive a redesign?
+@@@ ASSISTANT
+Three layers: primitive values, semantic meaning, component aliases. Never use the first layer in components.
+
+```css
+:root {
+  --palette-blue-600: #1d4ed8;
+  --palette-gray-50: #f9fafb;
+  --color-surface: var(--palette-gray-50);
+  --color-text: #111827;
+  --color-action: var(--palette-blue-600);
+  --color-action-contrast: #ffffff;
+  --radius-md: 8px;
+  --space-2: 8px;
+  --space-4: 16px;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+}
+[data-theme="dark"] {
+  --color-surface: #0f172a;
+  --color-text: #e2e8f0;
+  --color-action: #60a5fa;
+  --color-action-contrast: #0f172a;
+}
+.btn { background: var(--color-action); color: var(--color-action-contrast); border-radius: var(--radius-md); padding: var(--space-2) var(--space-4); }
+```
+
+- Semantic layer changes for dark mode and rebrands; primitives rarely do.
+- Contrast-check semantic pairs to WCAG AA (4.5:1).
+- Lint rule: no hex colors or raw `px` outside `tokens.css`.
+@@@ END
+
+@@@ USER
+How do I fetch data in React Server Components without waterfalls?
+@@@ ASSISTANT
+Issue independent fetches in parallel; let children stream via `Suspense`.
+
+```tsx
+import { Suspense } from "react";
+
+export default async function DashboardPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const user = await getUser(id);
+  return (
+    <main>
+      <h1>{user.name}</h1>
+      <Suspense fallback={<StatsSkeleton />}><Stats userId={id} /></Suspense>
+      <Suspense fallback={<ActivitySkeleton />}><Activity userId={id} /></Suspense>
+    </main>
+  );
+}
+
+export async function Stats({ userId }: { userId: string }) {
+  const res = await fetch(`https://api.example.com/users/${userId}/stats`, { next: { revalidate: 60 } });
+  const stats = await res.json();
+  return <section>{stats.total} total orders</section>;
+}
+```
+
+- `Suspense` lets slow sections stream without blocking fast ones.
+- Deduplicate fetches with React `cache()`.
+- If B needs data that A fetched, pass it down or fetch both at the page level with `Promise.all`.
+- Chain of sequential requests each waiting on the previous is the tell.
+@@@ END
+
+@@@ USER
+How do I use Web Workers for heavy computation without blocking the UI?
+@@@ ASSISTANT
+Move parsing, indexing, or image work off the main thread.
+
+```ts
+// worker.ts
+self.onmessage = (e) => {
+  const { id, payload } = e.data;
+  const result = heavyCompute(payload);
+  (self as any).postMessage({ id, result });
+};
+// main.ts
+const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
+const pending = new Map<string, { resolve: (v: any) => void }>();
+worker.onmessage = (e) => { const { id, result } = e.data; pending.get(id)?.resolve(result); pending.delete(id); };
+export function runHeavy(payload: any): Promise<any> {
+  const id = crypto.randomUUID();
+  return new Promise((resolve) => { pending.set(id, { resolve }); worker.postMessage({ id, payload }); });
+}
+```
+
+- No DOM, `localStorage`, or `window` in workers. Data in, result out.
+- Transfer large buffers with `postMessage(msg, [buffer])` to avoid copies.
+- Terminate workers on unmount; reuse one worker, do not create per message.
+- Errors via `worker.onerror` plus structured `postMessage` errors.
+@@@ END
+
+@@@ USER
+How do I make a data table usable on mobile?
+@@@ ASSISTANT
+Sticky first column with horizontal scroll, or cards under a breakpoint.
+
+```css
+.table-scroll { overflow-x: auto; }
+table { min-width: 640px; border-collapse: collapse; }
+th:first-child, td:first-child { position: sticky; left: 0; background: var(--color-surface); }
+@media (max-width: 640px) {
+  thead { display: none; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  tr { border: 1px solid var(--line); margin-bottom: 12px; border-radius: 8px; padding: 8px; }
+  td::before { content: attr(data-label); font-weight: 600; display: block; font-size: 12px; text-transform: uppercase; }
+}
+```
+
+```html
+<table>
+  <thead><tr><th>Name</th><th>Status</th></tr></thead>
+  <tbody><tr><td data-label="Name">Acme</td><td data-label="Status">Paid</td></tr></tbody>
+</table>
+```
+
+- `data-label` matches the column; keep mobile and desktop HTML in sync.
+- Scroll region gets `tabindex="0"` and `aria-label`.
+- Filters usable at 360 px with 44 px targets. Row actions never hover-only.
+@@@ END
+
+@@@ USER
+How do I implement infinite scroll with a virtual list?
+@@@ ASSISTANT
+Fetch pages as the user nears the bottom; render only the visible window.
+
+```tsx
+"use client";
+import { useEffect, useRef, useState } from "react";
+
+export function InfiniteFeed() {
+  const [items, setItems] = useState<string[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const sentinel = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = sentinel.current!;
+    const io = new IntersectionObserver(async (entries) => {
+      if (entries[0].isIntersecting && !loading) {
+        setLoading(true);
+        const res = await fetch(`/api/feed?cursor=${cursor ?? ""}`);
+        const data = await res.json();
+        setItems((cur) => [...cur, ...data.items]);
+        setCursor(data.nextCursor);
+        setLoading(false);
+      }
+    }, { rootMargin: "400px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [cursor, loading]);
+
+  return (
+    <div>
+      {items.map((i) => <article key={i}>{i}</article>)}
+      {loading && <p role="status">Loading more...</p>}
+      <div ref={sentinel} />
+    </div>
+  );
+}
+```
+
+- `rootMargin` pre-fetches before the user hits the bottom.
+- Guard with `loading` so overlapping fetches cannot fire.
+- For 10k+ rows, virtualize in addition to paginating.
+- Preserve scroll position on route return; announce result counts with `aria-live`.
+@@@ END
+
+@@@ USER
+How do I handle form validation errors from the server in React?
+@@@ ASSISTANT
+Client validation for instant feedback; server validation as the source of truth; merge field errors back.
+
+```ts
+import { useActionState } from "react";
+
+async function loginAction(_prev: any, formData: FormData) {
+  const email = String(formData.get("email") ?? "");
+  const password = String(formData.get("password") ?? "");
+  const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+  const data = await res.json();
+  if (res.ok) return { ok: true, errors: {}, message: null };
+  return { ok: false, message: data.message ?? "Login failed", errors: data.fieldErrors ?? {} };
+}
+
+export function LoginForm() {
+  const [state, formAction, pending] = useActionState(loginAction, { ok: false, errors: {}, message: null });
+  return (
+    <form action={formAction}>
+      <label>Email<input name="email" type="email" required />{state.errors.email && <span role="alert">{state.errors.email.join(", ")}</span>}</label>
+      <label>Password<input name="password" type="password" required />{state.errors.password && <span role="alert">{state.errors.password.join(", ")}</span>}</label>
+      {state.message && <p role="alert">{state.message}</p>}
+      <button disabled={pending}>{pending ? "Signing in..." : "Sign in"}</button>
+    </form>
+  );
+}
+```
+
+- Never trust client validation alone; the server re-validates.
+- Keep typed values on failure; server errors render inline per field.
+@@@ END
+
+@@@ USER
+How do I fix layout shift from late-loading web fonts?
+@@@ ASSISTANT
+Use `font-display: swap` with metric-adjusted fallback, and reserve space for the font.
+
+```css
+@font-face {
+  font-family: "Inter";
+  src: url("/inter.woff2") format("woff2");
+  font-display: swap;
+  ascent-override: 90%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+```
+
+- Trigger preload for the critical font only: `<link rel="preload" as="font" href="/inter.woff2" type="font/woff2" crossorigin>`.
+- Fallback stack with similar metrics: `system-ui, sans-serif`.
+- Reserve min-heights for text containers where shift matters.
+- CLS above 0.1 needs investigation in Web Vitals.
+@@@ END
+
+@@@ USER
+How do I implement a modal that is accessible and traps focus?
+@@@ ASSISTANT
+Focus trap, Escape to close, return focus to the trigger, labelled dialog.
+
+```tsx
+"use client";
+import { useEffect, useRef } from "react";
+
+export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<Element | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    trigger.current = document.activeElement;
+    const el = ref.current!;
+    el.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "Tab") {
+        const focusable = el.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])");
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); (trigger.current as HTMLElement)?.focus(); };
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <div role="presentation" onClick={onClose}>
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+        <h2>{title}</h2>{children}
+      </div>
+    </div>
+  );
+}
+```
+
+- `aria-modal="true"` + labelled dialog so screen readers announce it.
+- Trap Tab within the dialog; return focus on close.
+- Test with keyboard only: open, tab through, Escape, verify focus returns.
+@@@ END
+
+@@@ USER
+How do I implement client-side validation with Zod and keep it in sync with the server?
+@@@ ASSISTANT
+Share one schema package between client and server.
+
+```ts
+// packages/schemas/auth.ts
+import { z } from "zod";
+export const LoginSchema = z.object({
+  email: z.string().email("Enter a valid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+export type LoginInput = z.infer<typeof LoginSchema>;
+```
+
+Client:
+
+```tsx
+const result = LoginSchema.safeParse({ email, password });
+if (!result.success) {
+  setErrors(Object.fromEntries(result.error.issues.map((i) => [i.path.join("."), i.message])));
+  return;
+}
+```
+
+Server: same `LoginSchema.safeParse` before any write; return field errors in the `{ error: { code, message, details, requestId } }` shape.
+
+- Client validation is for UX; server validation is for correctness.
+- One shared schema avoids drift. A rule changed in one place updates both.
+- Money, auth, and permissions are always server-validated.
+@@@ END
+
+@@@ USER
+How do I make a print stylesheet for invoices?
+@@@ ASSISTANT
+Hide app chrome; repeat headers; keep rows together.
+
+```css
+@media print {
+  .no-print, nav, header, footer, .sidebar { display: none !important; }
+  body { background: white; color: #000; font-size: 11pt; }
+  thead { display: table-header-group; }
+  tr, img { page-break-inside: avoid; }
+  .page-break { page-break-before: always; }
+}
+@page { margin: 12mm; }
+```
+
+```html
+<div class="invoice">
+  <table>
+    <thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead>
+    <tbody>...</tbody>
+    <tfoot><tr><td colspan="3">Total: $1,240</td></tr></tfoot>
+  </table>
+  <button class="no-print" onclick="window.print()">Print invoice</button>
+</div>
+```
+
+- Ensure grayscale readability; `print-color-adjust: exact` only for essential shading.
+- For exact fidelity, offer a server-rendered PDF.
+@@@ END
+
+@@@ USER
+How do I implement drag and drop for reordering with keyboard support?
+@@@ ASSISTANT
+HTML5 drag for pointer users; buttons or arrow keys for keyboard users.
+
+```tsx
+"use client";
+import { useState } from "react";
+
+export function ReorderList({ initial }: { initial: string[] }) {
+  const [items, setItems] = useState(initial);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+
+  function move(from: number, to: number) {
+    if (from === to) return;
+    setItems((cur) => {
+      const next = [...cur];
+      const [m] = next.splice(from, 1);
+      next.splice(to, 0, m);
+      return next;
+    });
+  }
+
+  return (
+    <ol>
+      {items.map((item, i) => (
+        <li key={item}
+          draggable
+          onDragStart={() => setDragIdx(i)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={() => { if (dragIdx !== null) move(dragIdx, i); setDragIdx(null); }}>
+          <span>{item}</span>
+          <button aria-label={`Move ${item} up`} disabled={i === 0} onClick={() => move(i, i - 1)}>Up</button>
+          <button aria-label={`Move ${item} down`} disabled={i === items.length - 1} onClick={() => move(i, i + 1)}>Down</button>
+        </li>
+      ))}
+    </ol>
+  );
+}
+```
+
+- Drag is a pointer enhancement; the Up/Down buttons are the keyboard path.
+- Announce moves with `aria-live="polite"`.
+- Persist order to the server; optimistic update with rollback on failure.
+@@@ END
+
+@@@ USER
+How do I implement responsive images with srcset and sizes?
+@@@ ASSISTANT
+Serve the right file for the viewport and the device pixel ratio.
+
+```html
+<img
+  src="/hero-800.jpg"
+  srcset="/hero-400.jpg 400w, /hero-800.jpg 800w, /hero-1200.jpg 1200w"
+  sizes="(max-width: 640px) 100vw, 50vw"
+  width="800" height="450"
+  fetchpriority="high" decoding="async" alt="...">
+```
+
+```html
+<!-- Below the fold -->
+<img src="/chart.png" srcset="/chart-400.png 400w, /chart-800.png 800w" sizes="100vw" width="800" height="400" loading="lazy" decoding="async" fetchpriority="low" alt="...">
+```
+
+- `sizes` must match the layout width, or the browser picks wrongly.
+- Generate 2–3 breakpoints, not 10. Use `w` descriptors with `sizes`.
+- `width`/`height` prevent layout shift.
+- LCP image: `fetchpriority="high"`, never `loading="lazy"`.
+@@@ END
+
+@@@ USER
+How do I fix slow animations and layout thrashing?
+@@@ ASSISTANT
+Animate `transform` and `opacity`; batch reads and writes.
+
+```css
+.card { transition: transform 200ms ease-out; }
+.card:hover { transform: translateY(-4px); }
+```
+
+```js
+// Bad: read, write, read, write forces synchronous layout.
+for (const el of items) { el.style.height = el.offsetHeight + 10 + "px"; }
+// Good: read all, then write all.
+const heights = items.map((el) => el.offsetHeight);
+items.forEach((el, i) => { el.style.height = heights[i] + 10 + "px"; });
+```
+
+- `top`/`left`/`width` trigger layout; `transform` is composited.
+- Measure in DevTools Performance: frames with Layout/Paint are expensive; Composite-only is cheap.
+- Do not put `will-change` on hundreds of elements.
+@@@ END
+
+@@@ USER
+How do I handle loading, empty, and error states in one React component?
+@@@ ASSISTANT
+One discriminated union; exactly one state active.
+
+```tsx
+"use client";
+import { useEffect, useState } from "react";
+
+type State =
+  | { status: "idle" }
+  | { status: "loading"; query: string }
+  | { status: "success"; query: string; items: string[] }
+  | { status: "empty"; query: string }
+  | { status: "error"; query: string; message: string };
+
+export function ProductSearch() {
+  const [query, setQuery] = useState("");
+  const [state, setState] = useState<State>({ status: "idle" });
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setState({ status: "idle" }); return; }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setState({ status: "loading", query: q });
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setState(data.items.length ? { status: "success", query: q, items: data.items } : { status: "empty", query: q });
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setState({ status: "error", query: q, message: "Search failed. Try again." });
+      }
+    }, 300);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [query]);
+
+  return (
+    <div>
+      <input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search" />
+      {state.status === "loading" && <p role="status">Searching for "{state.query}"...</p>}
+      {state.status === "empty" && <p>No results for "{state.query}".</p>}
+      {state.status === "error" && <p role="alert">{state.message}</p>}
+      {state.status === "success" && <ul>{state.items.map((i) => <li key={i}>{i}</li>)}</ul>}
+    </div>
+  );
+}
+```
+
+`items` cannot be read when `status` is not `"success"`; TypeScript enforces it.
+@@@ END
+
+@@@ USER
+How do I implement a testimonial carousel that is accessible?
+@@@ ASSISTANT
+Buttons + live region, pause on hover/focus, no auto-play without a stop control.
+
+```tsx
+"use client";
+import { useEffect, useState } from "react";
+
+const QUOTES = [
+  { text: "Cut reporting from two hours to five minutes.", author: "Lena, Finance" },
+  { text: "The export finally just works.", author: "Daniel, Ops" },
+  { text: "We shipped billing in three days.", author: "Maya, Founder" },
+];
+
+export function Testimonials() {
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (paused) return;
+    const id = setInterval(() => setIndex((i) => (i + 1) % QUOTES.length), 6000);
+    return () => clearInterval(id);
+  }, [paused]);
+
+  const q = QUOTES[index];
+  return (
+    <section aria-roledescription="carousel" aria-label="Customer testimonials"
+      onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)} onBlur={() => setPaused(false)}>
+      <blockquote aria-live="polite">
+        <p>"{q.text}"</p>
+        <cite>{q.author}</cite>
+      </blockquote>
+      <button aria-label="Previous testimonial" onClick={() => setIndex((i) => (i - 1 + QUOTES.length) % QUOTES.length)}>Previous</button>
+      <button aria-label={paused ? "Play testimonials" : "Pause testimonials"} onClick={() => setPaused(!paused)}>{paused ? "Play" : "Pause"}</button>
+      <button aria-label="Next testimonial" onClick={() => setIndex((i) => (i + 1) % QUOTES.length)}>Next</button>
+      <p>{index + 1} of {QUOTES.length}</p>
+    </section>
+  );
+}
+```
+
+- Auto-play must stop on hover, focus, and `prefers-reduced-motion`.
+- Announce slides politely; never move focus.
+@@@ END
+
+@@@ USER
+How do I handle big forms with multiple steps and autosave?
+@@@ ASSISTANT
+One step at a time, validate per step, autosave drafts to the server.
+
+```tsx
+"use client";
+import { useState } from "react";
+
+const STEPS = ["Account", "Details", "Review"] as const;
+
+export function Wizard() {
+  const [step, setStep] = useState(0);
+  const [data, setData] = useState({ name: "", email: "", plan: "pro" });
+  const [saving, setSaving] = useState(false);
+
+  async function save(patch: Partial<typeof data>) {
+    const next = { ...data, ...patch };
+    setData(next);
+    setSaving(true);
+    try {
+      await fetch("/api/draft", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next) });
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div>
+      <p>Step {step + 1} of {STEPS.length}: {STEPS[step]} {saving && <span role="status">Saving...</span>}</p>
+      {step === 0 && <input value={data.name} onChange={(e) => save({ name: e.target.value })} placeholder="Full name" aria-label="Full name" />}
+      {step === 1 && <input value={data.email} onChange={(e) => save({ email: e.target.value })} placeholder="Email" aria-label="Email" />}
+      {step === 2 && <p>Review: {data.name}, {data.email}, {data.plan}</p>}
+      <button disabled={step === 0} onClick={() => setStep(step - 1)}>Back</button>
+      <button disabled={step === STEPS.length - 1} onClick={() => setStep(step + 1)}>Next</button>
+    </div>
+  );
+}
+```
+
+- Validate each step before advancing; surface errors inline.
+- Autosave debounced (500 ms) so every keystroke is not a request.
+- On reload, fetch the draft and resume at the last step.
+- Progress indicator uses `aria-current="step"`.
+@@@ END

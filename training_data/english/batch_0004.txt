@@ -1,0 +1,744 @@
+@@@ USER
+How should I write button labels and calls to action so people know what will happen?
+@@@ ASSISTANT
+A button label names the result of pressing it, in one to three words, starting with a verb. The reader should be able to predict what happens without reading the surrounding paragraph.
+
+Weak:
+
+- "OK", "Submit", "Continue", "Click Here", "Yes"
+
+Strong:
+
+- "Create account", "Save draft", "Delete project", "Subscribe to newsletter", "Download invoice"
+
+Rules:
+1. **Verb + object.** "Save changes" beats "Save". "Delete project" beats "Delete" when the object is not obvious from context.
+2. **Match the confirmation.** If the button says "Delete project", the dialog title should say "Delete project?" and the confirm button should repeat "Delete project", not "Yes".
+3. **One verb per screen.** If two buttons compete, make the primary action the most specific: "Send invoice" over "Continue".
+4. **Title case is for titles, not buttons.** Sentence case ("Save changes") reads faster and matches modern style guides.
+5. **Destructive actions name the object.** "Delete" alone is ambiguous; "Delete 12 messages" is not.
+6. **Accessibility.** Screen readers announce the label alone. "Learn more" is useless out of context; "Learn more about pricing" is not.
+7. **Placeholders are not labels.** Use `<label>` with visible text; the button itself is the label.
+
+Exercise: fix these labels.
+
+1. "Click Here" on a download link
+2. "OK" on a form that creates an account
+3. "Submit"
+
+Answers:
+
+1. "Download the 2026 tax report (PDF)"
+2. "Create account"
+3. "Send message" or "Publish post" — the verb must match the action.
+@@@ END
+
+@@@ USER
+How do I write error messages that users can actually act on?
+@@@ ASSISTANT
+An error message must tell the user three things: what happened, what it means for them, and the next step. One sentence where possible.
+
+Weak:
+
+- "Error 500"
+- "Something went wrong."
+- "Invalid input."
+- "Failed"
+
+Strong:
+
+- "We couldn't save your changes. Check your internet connection and try again."
+- "This email is already registered. Try signing in instead."
+- "The file is larger than 25 MB. Choose a smaller file or compress it."
+- "Your session expired. Sign in again to continue."
+
+Rules:
+1. **Name the problem in user language.** "We couldn't reach the payment service" beats "Failed to connect to gateway".
+2. **Give the next action.** "Try again", "Sign in", "Choose a different file". Every error without a next step is a dead end.
+3. **Say what was saved and what was not.** "Your draft is saved. The payment did not go through." Prevents duplicate work.
+4. **Blame the system, not the user.** "We couldn't load your orders" beats "You have no orders" when the request failed.
+5. **No codes in the main message.** Error codes belong in a details disclosure or the request id, not the headline.
+6. **Inline beats toasts for fields.** "Enter a valid email address" next to the field, not a popup that disappears.
+7. **Stay consistent.** "Delete" and "Remove" are not synonyms; pick one verb per action across the product.
+8. **Keep tone calm.** Never "Oops!" for a payment failure. Brevity is reassuring.
+
+Exercise: rewrite these.
+
+1. "400 Bad Request"
+2. "You must enter a valid value."
+3. "Unknown error occurred."
+
+Answers:
+
+1. "We couldn't read that request. Check the fields and try again. (Error 400, request req_9fK2)"
+2. "Enter a valid email address, for example name@example.com."
+3. "Something went wrong on our side. Your work is saved. Try again in a minute."
+@@@ END
+
+@@@ USER
+How do I write empty states and onboarding copy that guide without nagging?
+@@@ ASSISTANT
+Empty states have three jobs: acknowledge, explain the value, and offer one clear next step. Onboarding should teach by doing, not by lecturing.
+
+Weak empty state:
+
+- "No data found."
+- "Nothing here yet."
+
+Strong:
+
+- "No projects yet. Create your first project to start tracking work."
+  [Create project]
+- "No notifications. You're all caught up."
+- "Your inbox is empty. Invite a teammate to get started."
+  [Invite teammate]
+
+Rules:
+1. **One primary action.** "Create project" is the button. A second, secondary link is fine ("View a sample project").
+2. **Acknowledge the state.** Users check whether the system is broken or empty. "You're all caught up" answers that.
+3. **Explain the value in one line.** "Create a project to assign tasks and track progress."
+4. **Illustration is optional.** A simple icon signals "this is intentional"; a complex illustration adds weight without meaning.
+5. **Onboarding in three steps, not twelve.** Welcome → first real action → done. Each step should complete a task, not read a tip.
+6. **Progressive disclosure.** Show advanced options after the first success, not before.
+7. **Never block the product on onboarding.** Users must reach the core value within 30 seconds.
+8. **Test with five users.** If a first-time user cannot create the first item without help, the empty state failed.
+
+Exercise: write an empty state for a new billing page with no invoices.
+
+Answer: "No invoices yet. When you create your first invoice, it will appear here." [Create invoice] — acknowledges, explains, one action.
+@@@ END
+
+@@@ USER
+How do I write a cover letter for a career change without sounding apologetic?
+@@@ ASSISTANT
+Do not apologize for switching fields. Transfer evidence: show that your past work already required the skills the new role needs, in a different context.
+
+Weak opening:
+
+- "Although I have no experience in this field, I am a hard worker and eager to learn..."
+
+Strong opening:
+
+- "Over five years automating warehouse reporting in Python, I built data pipelines, scheduled jobs, and documented them for non-technical users. I want to bring that same practice to backend engineering, where the problems are the same and the stakes are higher."
+
+Structure:
+
+1. **One hook paragraph.** Why this role, why now, in two sentences. Name the specific work, not the industry.
+2. **Three transferable proofs.** Each proof: situation, skill used, result with a number. "Reduced report generation from 4 hours to 20 minutes with a scheduled Python pipeline."
+3. **Why this company.** Reference a real product, value, or engineering practice. Generic praise ("innovative, fast-moving") reads as filler.
+4. **Close with a low-friction ask.** "I would welcome a 30-minute conversation about how I could contribute to [team]."
+
+Rules:
+- Never say "passionate", "fast learner", or "hard worker" without evidence. Those are claims, not proof.
+- One page. Address hiring manager by name where known.
+- Do not repeat the resume. The letter explains the narrative; the resume lists the facts.
+- Quantify: time saved, errors reduced, users served, cost cut.
+- Acknowledge the switch in one sentence, then move on. Two sentences max.
+
+Exercise: rewrite this line.
+
+- "I have no experience with Kubernetes but I am willing to learn."
+
+Answer: "I have deployed and operated containerized services with Docker and systemd units for three years, and I am now learning Kubernetes orchestration for multi-service deployments." One honest sentence, plus evidence.
+@@@ END
+
+@@@ USER
+How do I answer "Tell me about a time you disagreed with a teammate" using STAR?
+@@@ ASSISTANT
+STAR is Situation, Task, Action, Result. The interviewer wants to see how you reason, not who was right.
+
+Structure:
+
+- **Situation (2 sentences).** Set the scene with roles and the decision. "We were designing the payments API and my teammate wanted to store card tokens in our database."
+- **Task (1 sentence).** What you had to decide. "I needed to pick a storage model before the contract with our processor was signed."
+- **Action (the bulk).** What you did: what you asked, what data you brought, what you proposed. "I asked for the compliance requirements from our processor, wrote a one-page comparison of tokenized vs. raw storage, and proposed a trial with the token vault."
+- **Result (1–2 sentences with numbers).** What happened. "We adopted the vault; card data never touches our servers, and the audit passed without findings. I also documented the decision so the next team would not relitigate it."
+
+Rules:
+- Stay on your actions. Never "he was wrong" or "management forced us". Describe evidence and process.
+- Admit what you learned. "I should have involved security earlier" shows growth.
+- Keep it under 90 seconds spoken. Details only if asked.
+- No confidential details: company names, figures, and unpublished features stay out.
+- End with the outcome, not the conflict.
+
+Exercise: answer in 90 seconds.
+
+Prompt: "Tell me about a production bug you caused."
+
+Answer shape: Situation (checkout totals wrong after a deploy), Task (find and fix before the afternoon peak), Action (checked recent deploys, found a rounding change, reverted and added a property test over totals), Result (bug fixed in 40 minutes, zero customer impact, test now in CI).
+@@@ END
+
+@@@ USER
+How do I write a postmortem that is blameless and actually useful?
+@@@ ASSISTANT
+A postmortem is a timeline of facts, a list of verified causes, and a set of owned fixes. It is not a verdict on any person.
+
+Structure:
+
+1. **Summary (3 lines).** What happened, when, for how long, and the user impact.
+2. **Timeline.** Timestamped facts only: deploys, alerts, actions taken, workarounds. No interpretation in this section.
+3. **Root causes.** Verified, with evidence. "The migration added a non-null column without a default, and the new code path wrote before the migration finished."
+4. **What worked.** Detection, rollback, communication. Credit the system and the responders.
+5. **What did not work.** Where the system allowed the error: missing test, no load test, alert that fired late.
+6. **Action items.** Each item: owner, deadline, and a measurable done criterion. "Add a migration smoke test to CI. Owner: Dana. Due: Dec 5."
+7. **Follow-ups.** Open questions and monitoring to add.
+
+Rules:
+- "Human error" is never a root cause. If a person could make the mistake, the system must prevent it. Replace it with the missing guardrail.
+- Blame the process, not the person: "The deploy checklist did not include a migration dry run" beats "Alex forgot to check".
+- Quantify impact: users affected, duration, error rate, data loss (or confirmed none).
+- Name the detection gap: how long until the first alert, and why.
+- Publish internally within 48 hours. A postmortem that never ships changes nothing.
+- Review action items monthly until closed. An action item without a date is a wish.
+
+Exercise: rewrite this root cause.
+
+- Root cause: "The engineer made a typo in the SQL."
+
+Answer: "The migration was applied without a dry-run in CI, and the schema change was not idempotent, so a retry produced a partial state. Fixes: idempotent migrations, a CI dry-run step, and a rollback script tested weekly."
+@@@ END
+
+@@@ USER
+How do I write a product launch announcement that respects time?
+@@@ ASSISTANT
+Lead with the one thing the reader can do differently. Write for skimmers: headline, one-line value, screenshot or demo, two bullet proof points, one link.
+
+Structure:
+
+- **Headline = outcome.** "Export any report to CSV in one click" beats "Introducing our new data export feature."
+- **One sentence of value.** Who it helps, what problem it removes.
+- **Show it.** One screenshot or 15-second GIF. Text-only announcements underperform.
+- **Two proof points.** A number or a quote: "Cut manual reporting from 2 hours to 5 minutes per week." "Used by 400 teams in beta."
+- **One link and one date.** "Try it today" with a single URL. No three links, no "sign up, read docs, join webinar".
+- **What it does not do.** One honest limitation prevents disappointment.
+
+Rules:
+- 120 words maximum for email; longer is fine for a blog post but skimmability still wins.
+- One announcement per launch. A digest with ten features teaches nothing.
+- No "revolutionary", "game-changing", "next-generation". Adjectives are cheap; outcomes are not.
+- Mention pricing or plan requirements in the same message, not after a click.
+- Send to the users who benefit, not the whole list. Relevance beats reach.
+- Include a text alternative for the screenshot: alt text describing the screen.
+
+Exercise: rewrite this subject line.
+
+- Subject: "New Feature Announcement: Advanced Analytics 2.0 is Here!"
+- Better: "Now you can export any report to CSV in one click"
+@@@ END
+
+@@@ USER
+How do I write a data-retention policy in plain English that non-lawyers can follow?
+@@@ ASSISTANT
+State what is kept, why, for how long, how to delete it, and who is responsible. Avoid legal jargon; every sentence should survive being read aloud.
+
+Template:
+
+**What we keep**
+
+- Account name, email, and billing contact: to run the service and bill you.
+- Usage logs (last 12 months): to debug problems and detect abuse.
+- Support tickets (3 years): to answer follow-up questions and meet tax record duties.
+- Invoices (7 years): for tax and accounting law.
+
+**What we delete**
+
+- Deleted accounts: anonymized within 30 days; backups purged within 90 days.
+- Marketing emails without consent: never stored after unsubscribing.
+- File uploads marked temporary: deleted after 30 days.
+
+**How to delete your data**
+
+- Settings → Privacy → Export data, then Delete account. Export is available for 30 days after a delete request.
+- Email privacy@example.com for deletion requests that the settings page cannot do. We respond within 30 days.
+
+**Who is responsible**
+
+- Product owner approves any change to retention periods.
+- Engineering purges expired data with an automated monthly job.
+- Legal reviews this policy once a year.
+
+Rules:
+- One table: data type, purpose, retention, deletion method. Plain words, no "shall", "hereby", "pursuant to".
+- Numbers are mandatory. "As long as necessary" means nothing.
+- Explain backups honestly: deletion from live systems now, from backups within 90 days.
+- Name the human or role who owns the policy. Anonymous policies are not maintained.
+- Provide a non-technical path: settings page or email, not "submit a form in triplicate".
+@@@ END
+
+@@@ USER
+How do I write a support reply that is human and not robotic?
+@@@ ASSISTANT
+Name the person, acknowledge the friction, give the fix in steps, state the timeframe, and ask one question. No filler.
+
+Template:
+
+"Hi Maya,
+
+Thanks for reporting this — I can reproduce the export issue on large accounts, and I'm sorry it blocked your billing run.
+
+Here's what to try:
+1. Open Settings → Exports and set the date range to the last 90 days.
+2. If the export still fails, I can trigger a server-side export for you today.
+
+I expect the full fix to ship next Tuesday. Is the 90-day range enough for your close, or do you need the full year?
+
+Best,
+Daniel"
+
+Rules:
+1. **Open with the person's name and the specific problem.** "Sorry you're having trouble" is filler.
+2. **Acknowledge impact, not just the bug.** "Blocked your billing run" beats "understood".
+3. **Number the steps.** Two to four steps, each one action.
+4. **Give a timeframe.** "Next Tuesday" is a commitment; "soon" is not.
+5. **Ask one question.** A short list of questions gets no answer. One question gets a reply.
+6. **Sign with a name.** "Support Team" is a faceless department; "Daniel" is a person.
+7. **Do not paste the docs.** Refuse, explain, offer the path: "I can't email the invoice, but you can download it in Settings → Billing."
+
+Exercise: rewrite this reply.
+
+- "Dear user, we apologize for any inconvenience. Please refer to our help center article."
+
+Answer: "Hi Sara, your invoice from March is in Settings → Billing → Documents. If you still need it after that, I can resend it today."
+@@@ END
+
+@@@ USER
+How do I write a cold outreach email that does not read as spam?
+@@@ ASSISTANT
+One specific observation, one relevant proof, and one small ask. If it cannot be about them, it is spam.
+
+Template:
+
+Subject: Your Q3 report export time
+
+"Hi Lena,
+
+I noticed your team exports the weekly usage report manually. Two similar finance teams cut that from two hours to five minutes a month by scheduling the export.
+
+Happy to send a two-minute demo showing the scheduled export, or a sample of the output. Would Tuesday at 10am work?
+
+Best,
+Tom"
+
+Rules:
+- **Personalize the first line with a verifiable fact.** Their report process, a recent hire, a public post. "I saw your blog post on X" is not personalization; it is detection.
+- **One proof point.** A number, not three. "Cut reporting from 2 hours to 5 minutes" beats a feature list.
+- **One small ask.** "Would a 2-minute demo work?" beats "Can I pick your brain about synergies?"
+- **Subject = the observation.** "Your Q3 report export time" beats "Quick question" and "Partnership opportunity".
+- **Under 100 words.** Every extra sentence lowers the reply rate.
+- **Honest opt-out.** "If this is not a priority, no need to reply" removes pressure and surprisingly improves replies.
+- **Do not fake a reply thread.** No "Re:" on a first email. No "circling back" before you have gone.
+
+Exercise: fix this opener.
+
+- "Dear Sir/Madam, I hope this email find you well. We are a leading provider of innovative solutions..."
+
+Answer: "Hi Lena, I saw your team is hiring two data engineers — that usually means reporting is becoming a bottleneck." Specific, timely, no salutation filler.
+@@@ END
+
+@@@ USER
+How do I write a conference talk abstract that an organizer will accept?
+@@@ ASSISTANT
+An abstract promises one outcome, one approach, and one proof. Organizers read hundreds; the first sentence decides.
+
+Template:
+
+Title: "Cutting p95 latency from 900ms to 120ms without rewriting the API"
+
+Abstract:
+
+"Our orders API was timing out during peak hours. We profiled the hot path, found that 70% of the time was spent in three unindexed queries and a synchronous external call, and fixed it with two composite indexes, a read replica for reporting, and an async webhook for the external dependency.
+
+You will leave with the profiling workflow we used, the exact index definitions, and the load test we now run in CI. The talk includes before/after traces and the failure modes we hit."
+
+Rules:
+1. **Title = result.** Numbers win. "How we improved performance" does not.
+2. **First sentence = the problem and the stakes.** Timeouts during peak hours is a problem; "we cared about performance" is not.
+3. **One approach, three concrete steps.** Organizers reject vague talks ("concepts for the future").
+4. **What the audience takes home.** A workflow, a checklist, or code. Promise something they can use Monday.
+5. **Under 250 words.** Longer abstracts signal unclear thinking.
+6. **No marketing.** Name tools and tradeoffs, not your company. A talk that reads as an ad will be rejected.
+7. **Speaker credibility in one line.** "I run platform infrastructure for a 40-person SaaS" beats a biography.
+
+Exercise: rewrite this abstract opening.
+
+- "In this talk we will discuss how to build scalable, reliable, and performant microservices using modern technologies."
+
+Answer: "We migrated 14 services from a shared database to per-service schemas in six weeks without downtime. This talk covers the strangler pattern we used, the dual-write reconciliation job, and the rollback plan that saved us twice."
+@@@ END
+
+@@@ USER
+How do I write speaker notes that keep a talk on time?
+@@@ ASSISTANT
+Notes are a script with time cues and fallback lines, not a copy of the slides. One card per slide: claim, evidence, transition.
+
+Per-slide card:
+
+```
+Slide 7 — "Indexes cut 70% of p95" (2 min)
+Claim: Two composite indexes took p95 from 900ms to 280ms.
+Evidence: trace before/after; point at the query plan, not the result.
+If asked: "The index is (user_id, status, created_at DESC). It serves the filter and the sort."
+Transition: "That fixed the database. The other 620ms was an external call..."
+```
+
+Rules:
+1. **One idea per card.** If a slide needs two paragraphs, it needs two slides.
+2. **Time each card.** Write the running total at the bottom. At slide 7 you should know you are at 14 minutes.
+3. **First sentence per card is the line to say.** If you forget everything, that sentence carries the talk.
+4. **Include a fallback.** "If I run short, skip this slide and keep the demo." Decide in advance what to cut.
+5. **Include the demo contingency.** "If the demo fails, show the recording at 0:40." Rehearse the failure path.
+6. **Include the question answer.** One line for the most likely question, so you do not improvise under pressure.
+7. **Write the opening and closing verbatim.** Memorize them word for word; improvise the middle.
+8. **Bold the transition sentences.** Transitions are where talks die; they must be rehearsed.
+
+Exercise: turn this slide into a card.
+
+- Slide: "Caching" with a bullet list of four cache types.
+
+Answer: "Claim: A 60-second TTL cache removed 80% of read traffic. Evidence: before/after request count. Transition: 'The cache hides reads, but writes still need invalidation — that is next.'"
+@@@ END
+
+@@@ USER
+How do I write a support macro that is helpful and not robotic?
+@@@ ASSISTANT
+A macro has placeholders for the facts and a tone for the person. Write the template once, then fill in specifics every time. Never send it unedited.
+
+Template:
+
+"Hi {first_name},
+
+Thanks for reaching out. I can see {specific_fact} on your account, and I understand that blocked {impact}.
+
+Here's what I've done so far:
+- {action_1}
+- {action_2}
+
+{Next step for the customer}
+
+I'll check back {timeframe}. If you need this sooner, reply to this email and I'll escalate it.
+
+Best,
+{agent_name}"
+
+Example filled:
+
+"Hi Maya,
+
+Thanks for reaching out. I can see your export from Tuesday is stuck at 42%, and I understand that blocked your billing run.
+
+Here's what I've done so far:
+- Restarted your export job and cleared the failed chunk.
+- Confirmed the file is under the 100 MB limit.
+
+Please try the export again in Settings → Exports. I'll check back at 3pm today. If you need it sooner, reply here and I'll escalate.
+
+Best,
+Daniel"
+
+Rules:
+- At least two fields must be specific to the account. Zero specific fields = spam.
+- Delete any sentence that is true for every customer. If it does not mention their data, cut it.
+- Keep the sign-off short. "Best, Daniel" is human; a 4-line signature is not.
+- Review macros monthly. Delete the ones that repeat the same workaround; those are product bugs.
+- Measure: macro with tweaks vs. raw macro. The tweaked version should have a measurably lower re-contact rate.
+@@@ END
+
+@@@ USER
+How do I paraphrase a source without plagiarizing it?
+@@@ ASSISTANT
+Paraphrasing changes structure and emphasis; plagiarism is reusing ideas or phrases without credit. The test: a reader who never saw the original should learn the idea from your words.
+
+Original:
+
+"Primary keys should be immutable and unique. A surrogate integer key is simple, but it requires an extra lookup for business queries, so many teams prefer a natural key."
+
+Weak paraphrase (patchwriting — plagiarizing):
+
+- "Immutable and unique primary keys are recommended. Surrogate integer keys are simple, though they need an extra lookup for business queries, so natural keys are preferred by many teams."
+
+Proper rewrite (your analysis):
+
+- "In our schema, we make the primary key a UUID generated by the database and never updated. We keep business identifiers (such as order numbers) in a separate unique column because joins on UUIDs are fast enough, and lookups by order number are handled by an index."
+
+Rules:
+1. **Read, close, write.** Close the source, then write from memory. If you can see it, you will patchwrite it.
+2. **Change the structure, not the synonyms.** Swapping "recommended" for "suggested" is not a paraphrase.
+3. **Cite anyway.** Ideas need credit even when the words are yours. "Following the guidance in [source], we chose..." is the correct form.
+4. **Add your own content.** A paraphrase that adds a decision, a number, or a tradeoff is not plagiarism; it is scholarship.
+5. **Short quotes are fine with quotation marks and a citation.** Long unmarked quotes are not.
+6. **Common knowledge does not need citation.** "Caches reduce database load" is common knowledge; a specific empirical claim needs a source.
+
+Exercise: rewrite this sentence in your own words with citation.
+
+- "Indexes should be created on the columns used in WHERE clauses."
+
+Answer: "For our orders table, we indexed `(user_id, status, created_at)` because those three columns appear together in the most common query (see "Indexing for Query Patterns", example.com). In your own schema, create indexes that match the queries you actually run."
+@@@ END
+
+@@@ USER
+How do I describe a chart or dashboard to an executive in one paragraph?
+@@@ ASSISTANT
+State the takeaway, the evidence, and the implication. Never describe the axes.
+
+Weak:
+
+- "This dashboard shows a line chart with weeks on the x-axis and revenue on the y-axis, with a blue and gray line comparing two regions."
+
+Strong:
+
+- "Revenue from the North region fell 12% in February while the South rose 5%. The decline is driven by three churned enterprise accounts. If churn stays at this rate, Q1 revenue will miss target by $180k; retaining those three accounts would close the gap."
+
+Rules:
+1. **First sentence = the takeaway.** Executives read one line. Put the conclusion first.
+2. **Evidence with numbers.** "Fell 12%", "$180k", "three accounts". No numbers = no credibility.
+3. **Implication.** What should they decide or watch? "Retaining those three accounts closes the gap."
+4. **Time frame and comparison.** "In February" and "while the South rose 5%" give the numbers meaning.
+5. **One paragraph, five sentences maximum.** A longer summary is a report, not a summary.
+6. **No jargon without a gloss.** "Churn" is fine for a CFO; "p95" is not.
+7. **Caveats belong in a second sentence, not the first.** "This excludes one-time services revenue" goes after the takeaway.
+
+Exercise: summarize this chart in one paragraph.
+
+- Chart: p95 latency by deploy, last 90 days. Flat at 800ms, then drops to 120ms after the index deploy on day 45, with a 600ms spike on day 71 during a migration.
+
+Answer: "p95 latency dropped from 800ms to 120ms after the index deploy on day 45 and has stayed there, except for a 45-minute spike to 600ms during the day-71 migration. The migration window is the only remaining risk; scheduling it off-peak removes the spike."
+@@@ END
+
+@@@ USER
+How do I write release notes for end users, not engineers?
+@@@ ASSISTANT
+Describe what the user can do now, not what changed in the codebase. One line per change: action + benefit.
+
+Weak:
+
+- "Refactored the notification service to use Redis pub/sub and removed deprecated API endpoints."
+
+Strong:
+
+- "Export any report to CSV in one click (Settings → Reports → Export)."
+- "Notifications now arrive within seconds instead of minutes."
+- "Fixed a bug where deleted projects reappeared in search results."
+
+Rules:
+1. **User verb first.** "Export", "See", "Get". The engineer verb ("Refactor", "Migrate") belongs in the changelog.
+2. **Where to find it.** Every item needs a path: "Settings → Billing". A feature the user cannot find does not exist.
+3. **One line per item.** If it needs two lines, it is two items.
+4. **Say who it helps.** "For admins:" or "For all users:" sets expectations.
+5. **Include fixes users noticed.** If users reported it, name it: "Fixed the duplicate-charge bug some users saw on November 3."
+6. **No internal codes.** No PR numbers, no tickets, no "TECH-1234".
+7. **Breaking changes go first, with a migration path.** "We removed CSV import. Use Settings → Data → Import instead."
+8. **Illustrate one feature.** One screenshot for the headline change; text for the rest.
+
+Exercise: rewrite this changelog line.
+
+- "Fixed N+1 query in the projects endpoint and added a composite index."
+
+Answer: "Projects now load in under a second, even for accounts with hundreds of projects."
+@@@ END
+
+@@@ USER
+How do I write a privacy notice summary that a normal person can understand?
+@@@ ASSISTANT
+A summary is a short, layered version of the legal notice. Answer five questions in plain words.
+
+Summary:
+
+**What we collect**
+- Account and contact details (name, email) to run your account.
+- What you create in the app (files, projects, settings) to show it back to you.
+- Technical logs (IP address, device, time) to keep the service secure and working.
+- Payment details are handled by our payment provider; we never see your card number.
+
+**Why**
+- To provide the service you asked for.
+- To send transactional emails (receipts, password resets).
+- To improve the product, using anonymized aggregate statistics.
+- Marketing emails only with your explicit consent.
+
+**Who sees it**
+- Only you, unless you share it or invite collaborators.
+- Our subprocessors (hosting, email, payments) process it under contract and only to run the service.
+- We never sell personal data.
+
+**How long**
+- While your account is active, plus 30 days after you delete it.
+- Backups are purged within 90 days of deletion.
+- Invoices are kept 7 years for tax law, without your files.
+
+**Your controls**
+- Export everything: Settings → Privacy → Export data.
+- Delete your account: Settings → Privacy → Delete account.
+- Opt out of marketing: unsubscribe link in every email.
+- Contact: privacy@example.com. We respond within 30 days.
+
+Rules:
+- Link to the full legal notice; do not replace it.
+- Numbers, locations, and the word "never" are allowed when true. If you cannot promise it, do not write it.
+- No "third-party partners may use data to personalize experiences". Either name the category or do not collect it.
+- Test readability: a 14-year-old should understand the summary. If not, simplify.
+@@@ END
+
+@@@ USER
+How do I write a bug report that gets fixed in days instead of weeks?
+@@@ ASSISTANT
+A bug report that gets fixed has: environment, steps, expected vs. actual, and evidence. Everything else is noise.
+
+Template:
+
+```
+Title: Export to CSV fails with 500 for accounts with >10k rows
+
+Environment:
+- Production, app version 2.4.1, Chrome 130, account id 48291
+- Request id: req_9fK2a
+
+Steps to reproduce:
+1. Sign in as admin.
+2. Go to Reports → Usage.
+3. Set date range to 2026-01-01 to 2026-10-01.
+4. Click Export CSV.
+
+Expected:
+- File downloads within 30 seconds.
+
+Actual:
+- 500 Internal Server Error, request id req_9fK2a.
+- Browser console: no error.
+
+Evidence:
+- curl command + response (redact the token)
+- Server log excerpt with request id
+- Screenshot of the failed request in DevTools
+- What we tried: smaller date range (90 days) succeeds.
+
+Impact:
+- Blocks monthly billing. Workaround: split into 3 exports.
+```
+
+Rules:
+1. **Title = symptom + scope.** "Export fails for >10k rows" beats "Bug in export".
+2. **Steps must be runnable by someone who has never seen the bug.** Numbers, page names, and exact values.
+3. **Expected vs. actual.** One line each. If you cannot write them, you have not understood the bug.
+4. **Evidence, not opinion.** Request ids, logs, curl commands, screenshots. "I think it is the database" is a hypothesis; label it as one.
+5. **Environment.** Version, browser, account type, and whether it reproduces in staging.
+6. **What you already tried.** This saves the engineer an hour.
+7. **Impact and workaround.** Priority is set by impact, not by who reported it.
+8. **One bug per report.** Five symptoms in one report become zero fixes.
+
+Exercise: fill the template.
+
+- Bug: "The search sometimes shows old results."
+
+Answer: Title: "Search shows stale results after filter change in 1 of 3 cases". Steps: type "acme", wait 3s, change filter to "Active", observe old "acme" results for 2s. Expected: results match the active filter. Actual: previous results shown. Evidence: request ids + timestamps showing out-of-order responses.
+@@@ END
+
+@@@ USER
+How do I write documentation for an API endpoint that developers actually read?
+@@@ ASSISTANT
+Lead with when to use it, show one minimal request/response pair, then the errors, limits, and examples. Reference details belong below the fold.
+
+Template:
+
+```
+POST /v1/invoices
+
+Creates a draft invoice for a customer. Use this to prepare a bill before sending it.
+Requires the `invoices:write` scope.
+
+Request
+POST /v1/invoices
+Content-Type: application/json
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+
+{
+  "customerId": "cus_123",
+  "lines": [{ "description": "Consulting", "quantity": 2, "unitPriceCents": 15000 }],
+  "currency": "USD"
+}
+
+Response 201
+{
+  "id": "inv_456",
+  "status": "draft",
+  "totalCents": 30000,
+  "createdAt": "2026-11-07T12:00:00Z"
+}
+
+Errors
+- 400 — validation_error: body failed schema validation
+- 401 — unauthenticated: missing or expired token
+- 403 — forbidden: scope invoices:write required
+- 409 — duplicate_resource: Idempotency-Key already used with a different body
+
+Limits
+- 100 requests/minute per account.
+- Max 200 line items per invoice.
+
+Notes
+- The invoice is created as a draft. Call POST /v1/invoices/:id/send to issue it.
+```
+
+Rules:
+1. **First line = when to use it.** "Creates a draft invoice" is better than "This endpoint allows creation of invoices".
+2. **One minimal example per section.** Copy-pasteable `curl` matters more than a second example.
+3. **Errors before parameters.** Developers hit errors first; the parameter table is reference.
+4. **Idempotency, pagination, and limits are mandatory fields.** If an endpoint does not have them, say "Not applicable" explicitly.
+5. **Units and formats.** "unitPriceCents" beats "price". ISO 8601 for dates. State the timezone.
+6. **Scope and role requirements.** State them at the top.
+7. **Breaking-change policy.** One line: "Field removals require 12 months notice."
+8. **Keep the reference table collapsed.** Prose first, table second, examples last.
+
+Exercise: add the missing sections.
+
+- Endpoint: `GET /v1/customers/:id`
+- Missing: required scope, pagination for nested resources, error codes.
+
+Answer: add "Requires `customers:read`", a "Related resources" section with cursors for nested lists, and the standard error table (400/401/403/404/429).
+@@@ END
+
+@@@ USER
+How do I write meeting agendas and follow-ups that get things done?
+@@@ ASSISTANT
+An agenda states decisions to make, not topics to discuss. A follow-up lists decisions, owners, and dates.
+
+Agenda:
+
+```
+Team sync — Nov 7, 10:00, 30 min
+Goal: decide the export architecture before Friday.
+
+1. (5 min) Context: current export fails for >10k rows. (Priya)
+2. (10 min) Options: sync CSV (simple, slow), async job (scalable, complex).
+3. (10 min) Decision: pick one. Criteria: ship by Nov 21, support 100k rows.
+4. (5 min) Owners and dates for the chosen path.
+
+Pre-read: 1 page on the failure, link to the trace.
+```
+
+Follow-up:
+
+```
+Decisions made
+- Async job export. Sync path stays for <1k rows.
+- Owner: Daniel. Ship by Nov 21.
+- Progress update every Tuesday until shipped.
+
+Actions
+- [ ] Daniel: add job table + worker by Nov 10.
+- [ ] Priya: load test to 100k rows by Nov 14.
+- [ ] Maya: update billing docs by Nov 18.
+
+Open questions
+- Who owns the DLQ alert? (decide next sync)
+```
+
+Rules:
+1. **Decisions, not topics.** "Pick the export architecture" beats "Discuss exports".
+2. **Timebox each item.** A total under 30 minutes forces focus.
+3. **Name the owner per item** in the agenda itself.
+4. **Pre-read, not in-meeting reading.** One page maximum; link it.
+5. **Follow-up within 24 hours.** Decisions, owners, dates. If it is not written, it did not happen.
+6. **Action items are verbs with dates.** "Daniel: add job table by Nov 10" beats "Daniel to look at jobs".
+7. **Close with open questions** explicitly, so they are not lost.
+8. **Cancel if there is no decision.** A sync with no decision is an email. Return the time.
+@@@ END

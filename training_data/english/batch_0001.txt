@@ -1,0 +1,439 @@
+@@@ USER
+I never know whether to write who or whom. Is there a rule I can actually apply without guessing?
+@@@ ASSISTANT
+Use who when the pronoun is the subject of a verb, and whom when it is the object of a verb or a preposition. A reliable test is to substitute he or him: if he fits, use who; if him fits, use whom.
+
+Wrong: Whom is responsible for the schedule? Here the pronoun is the subject of is, so the formal form is who. Corrected: Who is responsible for the schedule?
+
+Wrong: The analyst who we hired last month resigned. We hired him, so the pronoun is an object. Corrected: The analyst whom we hired last month resigned.
+
+Whom is also required after a preposition in formal prose: To whom should I send the draft? In relative clauses, test the pronoun's role inside its own clause: The candidate who called is waiting (who is the subject of called); The candidate whom I called is waiting (I called him).
+
+In everyday speech, who often replaces whom when it is not directly after a preposition, and that is usually acceptable. In academic, legal, or carefully edited business writing, use whom for objects. Do not insert whom merely because it sounds formal; Whom is calling? is an overcorrection because the pronoun is the subject.
+
+Practice: choose who or whom.
+
+1. The witness ___ testified first was clearly nervous.
+2. The client ___ I telephoned yesterday has not replied.
+
+Answer: 1. who, because the witness is the subject of testified. 2. whom, because the client is the object of telephoned; I telephoned him.
+@@@ END
+
+@@@ USER
+My draft has several instances of it's, and I am not sure which ones should be its. How can I tell them apart quickly?
+@@@ ASSISTANT
+It's is a contraction: it means it is or it has. Its is a possessive pronoun: it means belonging to it. The test is mechanical. Replace the word with it is or it has. If the sentence still works, write it's. If not, write its. Possessive pronouns do not take apostrophes, just as his, hers, ours, and theirs do not.
+
+Wrong: The company changed it's policy after it's board meeting. Expanding gives "it is policy" and "it is board meeting," both impossible. Corrected: The company changed its policy after its board meeting.
+
+Correct uses of the contraction: It's clear that the deadline has moved. It's been a difficult quarter. In both, it is or it has fits.
+
+A common trap is the phrase its own. The committee revised its own proposal. Here its means the committee's; there is no omitted is or has, so no apostrophe.
+
+Do not rely on sound alone, because its and it's sound identical. Apply the expansion test every time, especially in short sentences where the missing verb is easy to overlook.
+
+Practice: fill each blank with its or it's.
+
+1. ___ clear that the dog has lost ___ collar.
+2. ___ been three weeks since the office changed ___ schedule.
+
+Answer: 1. It's clear that the dog has lost its collar. 2. It's been three weeks since the office changed its schedule.
+@@@ END
+
+@@@ USER
+I keep mixing up affect and effect. What is the core difference, and are there any exceptions I should know?
+@@@ ASSISTANT
+In ordinary sentences, affect is a verb meaning "to influence," and effect is a noun meaning "a result." That contrast covers most cases.
+
+Wrong: The delay had a serious affect on morale. The word is the object of had and names a result, so it must be the noun effect. Corrected: The delay had a serious effect on morale.
+
+Wrong: The delay effected morale. Here the intended meaning is influenced, so the verb must be affected. Corrected: The delay affected morale.
+
+There are two less common uses worth recognizing. Effect can be a verb meaning "to bring about or accomplish," usually in formal writing: The new director effected sweeping changes. That means she caused the changes, not that she influenced them. Affect can be a noun in psychology, where it means an observable emotional state: The patient displayed a flat affect. Outside that technical context, use effect for the noun.
+
+A useful memory aid is that affect starts with an a, as do action and influence, while effect starts with an e, as do end and result. The aid is not a substitute for checking the sentence's grammar, because the rare verb effect breaks the pattern.
+
+Practice: choose affect or effect.
+
+1. The medication's most common side ___ was drowsiness.
+2. Fatigue can ___ a driver's judgment.
+3. The reform ___ real change in how permits were issued.
+
+Answer: 1. effect, a noun meaning result. 2. affect, a verb meaning influence. 3. effected, a verb meaning brought about.
+@@@ END
+
+@@@ USER
+Should I write lay down or lie down? I also get confused about laid and lain.
+@@@ ASSISTANT
+The difference is transitivity: lay takes a direct object, and lie does not. Lay means "to put or place something." Its forms are lay, laid, laid, laying. Lie means "to recline or rest." Its forms are lie, lay, lain, lying. A separate verb, lie meaning "to tell a falsehood," is lie, lied, lied, lying.
+
+Wrong: I am going to lay down for a few minutes. There is no object; the person is reclining. Corrected: I am going to lie down for a few minutes.
+
+Correct: She laid the folder on the desk. The folder is the object. Correct: The folder lay on the desk all morning. Lay here is the past tense of lie, not the transitive verb lay.
+
+The most common error is using laid when no object follows: He laid on the couch. Corrected: He lay on the couch. If you can ask "laid what?", you need lay or laid. If you cannot, use a form of lie.
+
+Practice: choose the correct verb.
+
+1. Yesterday the cat ___ in the sun for hours.
+2. Please ___ the packages by the door.
+3. The letters have ___ unopened since Monday.
+
+Answer: 1. lay, the past tense of lie. 2. lay, the base form of the transitive verb. 3. lain, the past participle of lie.
+@@@ END
+
+@@@ USER
+When should I use fewer instead of less? I have seen less used with numbers, which makes the rule seem unreliable.
+@@@ ASSISTANT
+Use fewer with plural countable nouns and less with mass nouns, measurements, and abstract quantities. Fewer answers "how many?"; less answers "how much?"
+
+Wrong: There were less people at the workshop than last year. People is a plural count noun, so use fewer. Corrected: There were fewer people at the workshop than last year.
+
+Wrong: The project requires fewer time than expected. Time is treated as a mass quantity here. Corrected: The project requires less time than expected.
+
+The apparent exceptions usually involve a measurement treated as a single amount. Idiomatic English says less than five miles, less than twenty dollars, and less than three hours, even though miles, dollars, and hours are countable, because the phrase expresses a quantity on a scale. Standard usage also accepts one less problem and similar fixed expressions.
+
+In edited writing, apply the basic distinction unless a measurement or established idiom calls for less. Grocery signs that say "ten items or less" are common, but "ten items or fewer" is the more defensible formal version. Do not use fewer with a singular mass noun: fewer traffic, fewer equipment, and fewer information are all wrong.
+
+Practice: choose fewer or less.
+
+1. The venue has ___ chairs than we need.
+2. There is ___ noise in the new office.
+3. The drive takes ___ than twenty minutes.
+
+Answer: 1. fewer, because chairs are countable. 2. less, because noise is a mass noun. 3. less, because the phrase is a measurement of time.
+@@@ END
+
+@@@ USER
+Should I use the Oxford comma? People tell me it is required, but other people tell me it is wrong.
+@@@ ASSISTANT
+The Oxford comma is the comma before and or or in a list of three or more items: We studied grammar, punctuation, and style. It is not a universal law. Many publishers require it; others, including the Associated Press, normally omit it unless it prevents misreading. The defensible rule is to follow the required style guide and to use the comma whenever it makes the list clearer.
+
+Use it when the final item could otherwise be read as part of the previous item. Wrong: I want to thank my parents, Ayn Rand and God. Without the comma, the sentence implies that your parents are Ayn Rand and God. Corrected: I want to thank my parents, Ayn Rand, and God. The comma separates the final item from the appositive-like phrase.
+
+Avoid the comma in a two-item list: bread and butter, not bread, and butter. Avoid it when a style guide forbids it and no ambiguity results. Also avoid forcing it into a list whose items already contain commas; use semicolons instead: The panel included Rivera, a biologist; Chen, an engineer; and Okafor, a teacher. Here semicolons separate the major items, so an Oxford comma would be confusing.
+
+Consistency matters more than dogma. Choose a policy, apply it throughout a document, and make an exception when clarity demands one.
+
+Practice: add the Oxford comma only where it prevents misreading. "She interviewed the CEO, a former senator and an author."
+
+Answer: If she interviewed three separate people, write "She interviewed the CEO, a former senator, and an author." If the CEO is the former senator and author, rewrite the sentence to say that directly instead of relying on commas.
+@@@ END
+
+@@@ USER
+When should I use a semicolon instead of a dash? They both seem to connect ideas.
+@@@ ASSISTANT
+A semicolon joins two independent clauses that are closely related and roughly equal in importance: The deadline is Friday; the client needs the files by noon. It signals a measured connection, often contrast or consequence, without the stronger interruption of a dash. A dash is more dramatic. It can introduce an explanation, mark an abrupt turn, set off a parenthetical remark, or summarize what came before: The team had one weakness—its testing process.
+
+Neither mark can join an independent clause to a dependent clause. Wrong: The launch failed; because testing was incomplete. The because-clause cannot stand alone. Corrected: The launch failed because testing was incomplete. Alternatively: The launch failed; testing was incomplete.
+
+A semicolon also separates items in a list when the items contain commas: The committee included Rivera, a biologist; Chen, an engineer; and Okafor, a teacher. A semicolon is not a substitute for a colon before a list. Wrong: We need three supplies; paper, ink, and staples. The words after the semicolon are not an independent clause. Corrected: We need three supplies: paper, ink, and staples.
+
+Use dashes sparingly in formal prose. One well-placed dash can emphasize a contrast; several in a paragraph make the writing feel breathless. Use a semicolon when the relationship is calm and logical, and a dash when you deliberately want emphasis or interruption.
+
+Practice: choose a semicolon or a dash.
+
+1. The team was exhausted ___ it had worked all night.
+2. Only one thing worried her ___ the deadline.
+
+Answer: 1. The team was exhausted; it had worked all night. A semicolon suits the neutral cause-and-effect relationship. 2. Only one thing worried her—the deadline. A dash gives the revelation emphasis.
+@@@ END
+
+@@@ USER
+My editor keeps marking passive voice, but sometimes it seems like the only reasonable choice. When is passive voice actually correct?
+@@@ ASSISTANT
+Passive voice has the form be or get plus a past participle: The report was written. It makes the receiver of the action the subject and often omits the actor. Active voice is usually stronger when the actor matters: The finance team wrote the report. But passive voice is not an error, and it is the right choice in several situations.
+
+Use passive when the actor is unknown or irrelevant: The server was patched overnight. Use it when the receiver is the topic you are developing: The vaccine was administered to 200 participants; each dose was recorded. Use it in technical and scientific procedures where the method, not the technician, is the focus: Samples were heated to 80°C for ten minutes. It can also be appropriate in official records or when a statement must avoid assigning blame prematurely.
+
+The problem arises when passive voice hides responsibility or adds empty words. Wrong: Mistakes were made in the refund process. If the writer knows who made them, this construction evades accountability. Corrected: The finance team miscalculated several refunds.
+
+A passive sentence is not automatically wordy, but adding by someone often is. The report was written by me is better as I wrote the report unless the report is the paragraph's topic. Test each passive sentence by asking: Does the reader need to know the actor? If yes, name the actor and use active voice. If no, keep the passive.
+
+Practice: rewrite the euphemistic sentence. "The decision was made to cancel the pilot."
+
+Answer: If a specific group decided, name it: The research committee canceled the pilot. If the actor is genuinely unknown, keep the passive but add the relevant detail: The pilot was canceled after the funding was withdrawn.
+@@@ END
+
+@@@ USER
+What exactly is parallel structure, and how do I fix a sentence that is not parallel?
+@@@ ASSISTANT
+Parallel structure means that items joined by a list, a comparison, or a correlative pair use the same grammatical form. If the first item is a gerund, the others should be gerunds; if one is an infinitive, the others should be infinitives.
+
+Wrong: The internship involves researching cases, drafting memos, and to attend hearings. The first two items are gerunds, but the third is an infinitive. Corrected: The internship involves researching cases, drafting memos, and attending hearings.
+
+Wrong: The new plan is not only cheaper but also it saves time. The correlative pair not only ... but also should join matching forms. Corrected: The new plan is not only cheaper but also faster.
+
+Comparisons also need matching structures. Wrong: Her proposal was clearer and more detailed than her colleague. The comparison is between a proposal and a colleague. Corrected: Her proposal was clearer and more detailed than her colleague's proposal.
+
+Parallelism is not only a matter of elegance; it helps readers see which ideas belong together. Check every list, every comparison using than or as, and every pair such as either ... or, neither ... nor, and both ... and. Do not mix a noun with a clause or an adjective with a verb phrase.
+
+Practice: repair the list. "The workshop teaches students to plan projects, manage deadlines, and they learn how to communicate with clients."
+
+Answer: The workshop teaches students to plan projects, manage deadlines, and communicate with clients. All three items are bare infinitives after to.
+@@@ END
+
+@@@ USER
+Why does my writing sometimes sound as if an object did something no person could do? I think I have a dangling modifier problem.
+@@@ ASSISTANT
+A dangling modifier is an introductory word or phrase that does not logically modify the subject of the main clause. The reader instinctively attaches the modifier to the nearest noun, which may be the wrong one.
+
+Wrong: After finishing the report, the printer jammed. Grammatically, the printer finished the report. Corrected: After finishing the report, I found that the printer had jammed. Alternatively: After I finished the report, the printer jammed.
+
+Wrong: To reduce costs, the software should be updated. The software cannot intend to reduce costs. Corrected: To reduce costs, we should update the software.
+
+The fix is usually to name the true actor as the subject of the main clause, or to turn the modifier into a full clause with its own subject. Ask: Who is doing the action in the opening phrase? That person or thing must appear immediately after the comma.
+
+Dangling modifiers are especially common with present participles (walking, reviewing, using), past participles (written, exhausted), and infinitives (to improve, to qualify). They are not the same as misplaced modifiers, which sit next to the wrong word but still have a plausible subject. A dangling modifier has no stated subject in the main clause for the opening phrase to modify.
+
+Practice: correct the sentence. "Walking through the archive, the missing file was discovered by the researcher."
+
+Answer: Walking through the archive, the researcher discovered the missing file. The researcher is now the subject of the main clause, so the opening phrase has someone to modify.
+@@@ END
+
+@@@ USER
+Does a collective noun like team take a singular or plural verb? I see both, and I want to be consistent.
+@@@ ASSISTANT
+Collective nouns name a group: team, committee, jury, family, government, audience, staff. In American English, they usually take a singular verb when the group acts as one unit: The committee has issued its report. The jury is deliberating.
+
+A plural verb is appropriate when the members are acting separately or are divided: The committee are arguing among themselves over the budget. British English uses this plural construction more readily than American English. The important point is to keep the verb and any pronoun consistent with the meaning you intend.
+
+Wrong: The jury have reached its verdict. The verb is plural, but the pronoun is singular. Corrected as a unit: The jury has reached its verdict. Corrected as individuals: The jury have reached their verdict. The second is unusual in American English, so the singular version is usually the safer choice there.
+
+Watch for related nouns. Police normally takes a plural verb: The police are investigating. Staff can be singular or plural depending on whether you mean the body or its members. The number of applicants is singular, but a number of applicants is plural. Do not let a prepositional phrase between the noun and verb confuse you: The board of directors has approved the plan.
+
+Practice: choose the verb and pronoun that fit the intended meaning.
+
+1. The staff ___ (is/are) arguing among themselves.
+2. The staff ___ (is/are) preparing its annual report.
+
+Answer: 1. are, because the members are acting individually; use their if a pronoun follows. 2. is, because the staff acts as one body and the pronoun its confirms singular agreement.
+@@@ END
+
+@@@ USER
+My short story switches between past and present tense without meaning to. How do I keep tense consistent in a narrative?
+@@@ ASSISTANT
+Establish a baseline tense, usually simple past for narration, and change tense only for a clear reason. Keep the action in the foreground in that baseline. Use past perfect for events that happened before the main timeline, present tense for timeless truths or habitual facts, and present tense for a character's direct thoughts or dialogue if that is your convention.
+
+Wrong: She walked into the room, sees the letter, and froze. Walked establishes past, but sees jumps to present. Corrected: She walked into the room, saw the letter, and froze.
+
+Tense shifts can be legitimate. In She opened the box. Inside lay a letter she had written years earlier, had written is past perfect because the writing occurred before the opening. In Water boils at 100°C, the present tense expresses a general truth inside a past narrative. A flashback may use past perfect to signal the earlier layer, then return to simple past.
+
+Do not overuse past perfect. A page of had done, had seen, had thought becomes heavy. Establish the earlier time, then let simple past carry the scene until you signal the return. Also check embedded clauses: He said he was leaving refers to past speech and a contemporaneous action; He says he is leaving is present narration.
+
+Practice: repair the inconsistent verbs. "Maya opens the letter and read the first line. She recognizes the handwriting and started to cry."
+
+Answer: Maya opened the letter and read the first line. She recognized the handwriting and started to cry. If you want present-tense narration, the whole sequence should be opens, reads, recognizes, starts.
+@@@ END
+
+@@@ USER
+I need to ask my professor for an extension, but my email sounds too casual. How do I shift into a formal register without sounding stiff?
+@@@ ASSISTANT
+Register is the level of formality you choose for an audience and situation. Formal academic writing tends to use complete sentences, standard vocabulary, fewer contractions, explicit transitions, and a respectful distance. Informal writing uses contractions, phrasal verbs, slang, and direct personal phrasing. Neither is inherently better; the mistake is using the wrong register for the occasion.
+
+Wrong, in an email to a professor: Hey Prof, I'm swamped and can't finish the paper by Friday. Can I get a few more days? The contractions, slang, and demands are too casual for a formal request. Corrected: Dear Professor Lee, I am writing to request a short extension on the seminar paper. An unexpected conflict this week has limited my preparation time, and I would be grateful for three additional days. I understand that an extension may not be possible; if not, I will submit the paper by Friday.
+
+The revision is formal without being ornate. It uses a salutation, a clear request, a brief reason, a specific new deadline, and an acknowledgment of the professor's discretion. It avoids fake formality such as "I am endeavoring to ascertain whether you might possibly be inclined to consider." Plain standard English is usually more respectful than inflated vocabulary.
+
+Practice: rewrite this message for a formal email. "Hey, can you send me the file ASAP?"
+
+Answer: "Could you please send me the file by Friday?" Add a greeting, a subject line, and a courteous close if the message stands alone. The exact deadline should reflect what you actually need.
+@@@ END
+
+@@@ USER
+Please make this email shorter and more professional without making it rude. "Dear Ms. Patel, I am writing to follow up in regard to the proposal that we had the opportunity to discuss during our meeting on Monday. At that time, you mentioned that you would be able to provide your feedback at your earliest convenience. I wanted to reach out to see if you might possibly have any updates that you could share with me at this point in time. Thank you in advance for your time and consideration. Best regards, Jordan"
+@@@ ASSISTANT
+Revised email:
+
+Dear Ms. Patel,
+
+I am following up on Monday's meeting. Do you have feedback on the proposal? If possible, please send it by Friday so we can finalize the timeline.
+
+Thank you,
+Jordan
+
+The original is not grammatically wrong, but it buries the request under formal padding. I removed "I am writing to," "in regard to," "had the opportunity to," "at your earliest convenience," "I wanted to reach out," "might possibly," and "at this point in time." I also added a concrete deadline, which makes the request easier to answer and reduces another round of email.
+
+Concision in business writing usually means leading with the purpose, keeping one clear ask, and cutting nominalizations such as "provide your feedback" when a direct verb works: "send feedback." Courtesy does not require length. A short email can still be warm if it uses a greeting, a polite request, and a thank-you.
+
+Practice: revise this sentence. "Due to the fact that the client has not yet provided approval, we are not in a position to move forward with the launch at this time."
+
+Answer: "Because the client has not approved the launch, we cannot proceed." The revision replaces a wordy prepositional phrase and a nominalization with a direct cause and a direct verb. If the date matters, add it: "Because the client has not approved the launch, we cannot proceed on Monday."
+@@@ END
+
+@@@ USER
+This paragraph is too wordy for a customer-facing notice. Can you edit it and explain what you cut? "It is important to note that in the event that a customer is not satisfied with their purchase, they should not hesitate to get in touch with our support team for the purpose of requesting a refund."
+@@@ ASSISTANT
+Revised: Customers who are unhappy with a purchase should contact support to request a refund.
+
+The original uses 37 words to say something that fits in 14. I removed the empty opener "It is important to note that," replaced "in the event that" with "who are," cut "not hesitate to get in touch with" to "contact," and reduced "for the purpose of requesting" to "to request." None of the meaning changes: the customer is dissatisfied, the action is contacting support, and the goal is a refund.
+
+Wordiness often comes from four habits. First, expletive openers such as "It is important to note that" delay the point. Second, nominalizations turn verbs into nouns: "provide notification" instead of "notify." Third, prepositional chains pile up: "in regard to the matter of." Fourth, redundant pairs repeat an idea: "each and every," "future plans," "close proximity." Cut these unless they carry real emphasis or legal precision.
+
+Editing for concision is not just deleting words. Keep the sentence's actor, action, and condition. In the revision, Customers is the actor, contact is the action, and who are unhappy with a purchase is the condition. That structure is easier to scan and harder to misread.
+
+Practice: revise this sentence. "There are a number of employees who have a tendency to arrive late on a regular basis."
+
+Answer: "Several employees often arrive late." The revision removes the expletive "There are," the inflated "a number of," and the redundant "have a tendency to ... on a regular basis."
+@@@ END
+
+@@@ USER
+Why is this sentence ambiguous? "She served cake to the children on paper plates." I meant that the cake was on the plates, but my reader thought the children were.
+@@@ ASSISTANT
+The phrase on paper plates is a misplaced modifier: it sits next to the children, so readers naturally attach it to them. English readers expect a modifier to be as close as possible to the word or phrase it describes.
+
+Wrong: She served cake to the children on paper plates. Corrected: She served cake on paper plates to the children. Now the phrase follows cake, the thing actually on the plates.
+
+Misplaced modifiers often involve prepositional phrases, adverbs, and the word only. Wrong: I almost read every chapter in the book. This says you nearly read all of it. Corrected: I read almost every chapter in the book. Wrong: The museum displayed a dinosaur skeleton that was discovered in 1998 in the main hall. The final phrase could describe where the discovery happened or where the skeleton is displayed. Corrected: In the main hall, the museum displayed a dinosaur skeleton discovered in 1998.
+
+Scope words deserve special attention. "Only the manager approved the request" means no one else approved it. "The manager only approved the request" suggests she did nothing else to it. "The manager approved only the request" means she approved nothing else. Place only immediately before the word it limits.
+
+Revision usually means moving the modifier, not adding commas. A comma cannot repair a phrase that is attached to the wrong noun. Read the sentence and ask which word the modifier explains; if it is not adjacent, move it.
+
+Practice: repair the scope ambiguity. "I only need to revise the introduction and conclusion."
+
+Answer: "I need to revise only the introduction and conclusion." This means those two sections are the only ones needing revision, which is probably the intended meaning. If you mean you need to do nothing except revise, say "All I need to do is revise the introduction and conclusion."
+@@@ END
+
+@@@ USER
+How should I organize a paragraph so it feels unified instead of like a pile of related facts?
+@@@ ASSISTANT
+A unified paragraph develops one controlling idea. It usually opens with a topic sentence that states that idea, follows with supporting details or evidence, explains how the evidence connects to the claim, and closes with a sentence that draws out the significance or transitions to the next point. Not every paragraph needs a formal conclusion, but every sentence should serve the same idea.
+
+Weak paragraph: Public libraries have changed. My aunt visits one every week. Many now lend laptops and offer job-search workshops. The building downtown was renovated last year. These services help residents without home internet.
+
+The paragraph has a promising idea, but "My aunt visits one every week" is personal filler, and the renovation detail is not connected to the claim. The order also jumps from examples to an unrelated fact. Revised: Public libraries now offer more than books. Many lend laptops, and others run job-search workshops. These services matter because residents without home internet can still apply for jobs and complete coursework. For a modest investment, the library extends opportunity to people who might otherwise be excluded.
+
+The revision has a topic sentence, two supporting examples, an explanation of why they matter, and a closing implication. Each sentence earns its place.
+
+When revising, underline the topic sentence's key terms. Then ask of every other sentence: Does this support, explain, qualify, or illustrate that idea? If not, cut it or move it. Also check order: general to specific, cause to effect, or chronological sequence usually reads more smoothly than random association.
+
+Practice: which sentence is irrelevant? "Online reviews influence purchases. A recent survey found that most shoppers read reviews before buying. The company redesigned its logo in 2019. Shoppers often trust detailed reviews more than advertisements."
+
+Answer: "The company redesigned its logo in 2019" is irrelevant to the paragraph's claim about reviews and purchasing. The other sentences support the same idea.
+@@@ END
+
+@@@ USER
+What makes a topic sentence effective? Mine often sound like announcements: "This paragraph is about..."
+@@@ ASSISTANT
+An effective topic sentence makes a specific, supportable claim and establishes the paragraph's direction. It should be more than an announcement of the subject and more than a broad fact. The rest of the paragraph should be able to demonstrate, explain, or qualify that claim.
+
+Weak: This paragraph is about why cities should fund night buses. The sentence announces a topic but takes no position. Corrected: Cities should fund night buses because they connect low-wage workers to jobs that start before dawn. The revision states a position and previews a reason the paragraph can develop.
+
+Another weak version is too broad: Public transportation is important. It is hard to disagree with, and it gives the paragraph no focus. A stronger sentence narrows the scope: Reliable night buses reduce the number of missed shifts among hospital and restaurant workers.
+
+A topic sentence does not have to be the first sentence in every kind of writing. In narrative or descriptive prose, it may be implied or delayed for effect. In academic and business paragraphs, placing it first is usually the clearest choice because readers can immediately see the paragraph's purpose. It also helps the writer test unity.
+
+Avoid making the topic sentence a fact that requires no argument: The library opens at nine. That may be a supporting detail, not a controlling idea. Avoid a question unless you immediately answer it, and avoid a claim so large that one paragraph cannot support it.
+
+Practice: write a topic sentence for a paragraph explaining how public libraries help people find jobs.
+
+Answer: A defensible version is "Public libraries help job seekers by providing free internet access, résumé workshops, and staff who can guide them through online applications." It makes a claim and previews three supports that the paragraph can develop in order.
+@@@ END
+
+@@@ USER
+How do I use transitions without making my writing sound like a template? My paragraphs feel choppy even when I add words like also and furthermore.
+@@@ ASSISTANT
+Transitions are signposts that show the relationship between ideas: addition, contrast, cause, example, sequence, concession, or conclusion. The problem with "also" and "furthermore" is that they mark addition vaguely and can be repeated until they stop carrying information. Choose a transition that names the actual logical move.
+
+Weak: The city added bike lanes. Bike ridership rose. Store owners complained about parking. The policy had mixed results. The sentences are accurate, but the reader has to infer every connection.
+
+Revised: The city added protected bike lanes last year. Ridership rose 18 percent, but some store owners complained that parking became harder to find. The policy therefore produced both environmental gains and political friction.
+
+Here but signals contrast, and therefore signals a conclusion drawn from the two facts. Notice that cohesion also comes from repeating key terms (bike lanes, parking, policy) and from putting old information before new information. A pronoun such as this or these can point back, but only if the referent is unmistakable.
+
+Do not sprinkle in transitions as decoration. If two sentences already flow in chronological order, next may be unnecessary. If the relationship is addition, and can be enough. If the relationship is cause, use because or as a result, not also. Conjunctive adverbs such as however and therefore need a semicolon or a period before them, not a comma joining two independent clauses.
+
+Practice: choose however, therefore, or for example.
+
+"The new schedule reduced overtime costs. ___, it made weekend coverage more difficult."
+
+Answer: However. The second sentence contrasts a benefit with a drawback. Therefore would imply the difficulty was a result of the savings, and for example would introduce an illustration, not an opposing point.
+@@@ END
+
+@@@ USER
+What is the difference between connotation and denotation? I want my word choice to be precise, not just technically correct.
+@@@ ASSISTANT
+Denotation is a word's literal, dictionary meaning. Connotation is the set of associations, feelings, and evaluations the word carries. Two words can share a denotation while differing sharply in connotation.
+
+Cheap and affordable both denote a low price, but cheap often suggests poor quality or stinginess, while affordable suggests a reasonable price within reach. A nonprofit would probably write "affordable housing," not "cheap housing," even if both are literally accurate. Similarly, slender, thin, and skinny all describe low body weight, but slender is often approving, thin is neutral, and skinny can be critical.
+
+Wrong, in a grant proposal: The program provides cheap housing for low-income families. The sentence risks sounding dismissive of the people it intends to help. Corrected: The program provides affordable housing for low-income families. The denotation is similar; the connotation is more respectful and professional.
+
+Connotation is context-dependent. Regime can be a neutral term for a system of government, but it often carries a negative charge. A "childlike sense of wonder" is a compliment; "childish behavior" is not. Words also carry associations that vary by culture, region, and generation, so a dictionary alone cannot settle every choice.
+
+To edit for connotation, identify the attitude you want readers to take toward the subject, then check whether each loaded word supports that attitude. Do not use a euphemism to obscure a real problem, and do not use a harsh word when a neutral one is more accurate.
+
+Practice: choose childlike or childish. "Her ___ curiosity made the interview delightful."
+
+Answer: childlike. It suggests innocent, open curiosity, which fits the positive sentence. Childish would imply immaturity and would clash with "delightful."
+@@@ END
+
+@@@ USER
+I always second-guess complement and compliment, principal and principle, and stationary and stationery. Can you give me the distinctions and a way to remember them?
+@@@ ASSISTANT
+Complement means to complete, match, or go well with something; as a noun, it means something that completes another thing. Compliment means praise or a courteous expression. The memory hook is that complement contains complete: the pieces complement each other and make a complete whole. "The colors complement the furniture." "She paid him a compliment."
+
+Principal can be an adjective meaning main, a noun meaning a school leader, or a noun meaning a sum of money. Principle is a rule, belief, or fundamental law. A principal is often your pal at school, which links the -pal ending to the person; principle ends in -ple, like rule. "The principal goal is retention." "The school principal announced the policy." "She refused on principle."
+
+Stationary means not moving. Stationery means paper, envelopes, and writing supplies. Stationery has an e, as in envelope; stationary has an a, as in stay. "The bike remained stationary." "The office ordered new stationery."
+
+Wrong paragraph: The new principal's principle goal was to improve morale. She complimented the staff, and the colors in the lobby compliment the new furniture. The supply closet is full of stationary. Corrected: The new principal's principal goal was to improve morale. She complimented the staff, and the colors in the lobby complement the new furniture. The supply closet is full of stationery.
+
+Practice: fill each blank. 1. The two software tools ___ each other. 2. He received a ___ on his presentation. 3. The ___ of least surprise is a design guideline. 4. The car stayed ___ at the light. 5. We need to order more ___.
+
+Answer: 1. complement. 2. compliment. 3. principle. 4. stationary. 5. stationery.
+@@@ END
+
+@@@ USER
+How do I read an academic article actively and then summarize it without copying the author's sentences?
+@@@ ASSISTANT
+Active reading is a deliberate conversation with the text. Preview the title, abstract, headings, and conclusion first, then turn the headings into questions. As you read, annotate the author's central claim, the evidence for it, key definitions, and any limitations. After each section, close the article and say the main point in your own words. That retrieval step exposes whether you understood the argument or merely recognized the words.
+
+A good summary is shorter than the source, accurate, objective, and focused on the main claim and its essential support. It should not add your opinion unless the assignment asks for evaluation. It should also not be a patchwork of copied phrases. If you use an exact phrase, put it in quotation marks and cite it.
+
+Weak summary: The article is about remote work and says it is good. This is vague and evaluative; it does not identify the author's actual finding.
+
+Better: Chen (2024) finds that remote workers value flexible schedules more than office amenities, but nearly half report difficulty disconnecting after hours. The summary names the author, the year, and the two-part finding. It preserves the article's tension instead of flattening it into praise.
+
+To avoid accidental copying, take notes in bullet points without looking at the original sentences, then write the summary from those notes. Compare it with the source afterward. Check that names, numbers, and qualifications are correct. Finally, add a citation in the required style.
+
+Practice: summarize this passage in one sentence without quoting it. "A survey of 1,200 remote workers found that 62 percent valued flexible hours more than office amenities. However, 41 percent reported difficulty disconnecting after work."
+
+Answer: A survey of 1,200 remote workers found that most valued flexible hours over office amenities, though a substantial minority struggled to disconnect after work. The exact percentages can be included if they matter, but the summary should not invent a cause or a recommendation.
+@@@ END
+
+@@@ USER
+My thesis statements always feel either obvious or too broad. What makes a thesis arguable and manageable?
+@@@ ASSISTANT
+A strong thesis makes a debatable claim, narrow enough to support within the assignment, and specific enough to preview the reasoning. It is not a fact, a question, or an announcement of what the paper will do.
+
+Weak: This paper will discuss the effects of remote work. This is an announcement; it takes no position. Corrected: Remote work improves retention for experienced employees, but only when managers set clear boundaries around after-hours communication. The revision makes a claim, limits the population, and identifies a condition.
+
+Weak: Technology affects education. This is arguable in the loosest sense but too broad for a short paper. Corrected: Requiring students to submit handwritten drafts in one first-year writing course reduced editing errors and increased revision time. Now the claim is specific enough to test with evidence from that course.
+
+A useful thesis often has a main claim and a because-clause or a qualifying condition. That structure shows readers what the paper must prove. It should also be placed where readers expect it, usually at the end of the introduction, though the exact position can vary.
+
+Test your thesis with three questions. Can a reasonable person disagree? If no, it is probably a fact. Can you support it with the evidence available in the assigned length? If not, narrow it. Does it tell the reader what the body paragraphs will establish? If not, make the reasoning more explicit.
+
+Practice: write a thesis for an essay on whether cities should ban private cars downtown.
+
+Answer: Cities should restrict private cars in downtown areas because the policy reduces air pollution, supports public transit, and makes streets safer for pedestrians. A different position would need a different causal argument, not just a different opinion.
+@@@ END
+
+@@@ USER
+I need help with quotation and citation mechanics. When do I use quotation marks, and how do I integrate a quote without just dropping it into a paragraph?
+@@@ ASSISTANT
+Use quotation marks when you reproduce someone else's exact words. Quote sparingly, when the wording itself matters: a memorable phrase, a precise definition, or a claim you will analyze closely. Paraphrase when you only need the idea, but still cite the source. Summaries and paraphrases require citations too, even though they do not take quotation marks.
+
+A quotation should be integrated into your own sentence. Weak: "The policy failed." A bare quotation dropped into a paragraph has no author, context, or page, so readers cannot tell whose words it is or why it matters. Corrected: In her analysis of the program, Rivera concludes that the policy "failed to address the root causes of absenteeism" (14). The signal phrase names the author, the sentence frames the quoted claim, and the parenthetical citation gives the location in MLA style.
+
+Copy the quotation exactly. Use ellipses for omitted words, brackets for changes needed for grammar, and sic only for an error you must preserve. Do not silently alter punctuation or wording. For long quotations, follow your style guide's block-quote threshold: MLA uses more than four lines of prose, while APA uses forty or more words. A block quote is indented and usually has no quotation marks.
+
+Punctuation placement depends on the style. In MLA, the period normally follows the parenthetical citation. In APA, the period also follows the citation, while a question mark that belongs to the quotation may come before it. Follow the assigned guide consistently.
+
+Practice: repair this citation. Smith states that the results were "surprising" (Smith).
+
+Answer: Smith states that the results were "surprising" (27). Remove the repeated author from the parentheses and add the page number. If no page number exists, give the section or paragraph identifier your style requires.
+@@@ END
+

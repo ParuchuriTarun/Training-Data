@@ -1,0 +1,737 @@
+@@@ USER
+How do traits work in Rust? Show me a Shape trait with two types, a function that works with any Shape, and a list that holds different shapes together.
+@@@ ASSISTANT
+A **trait** is a list of methods that a type promises to have. It is like an interface in other languages. A trait can also give **default methods**, which every type gets for free unless it writes its own.
+
+```rust
+use std::f64::consts::PI;
+
+trait Shape {
+    fn area(&self) -> f64;
+    fn name(&self) -> String;
+
+    // default method: every Shape gets it, and a type may replace it
+    fn describe(&self) -> String {
+        format!("{} with area {:.2}", self.name(), self.area())
+    }
+}
+
+struct Circle {
+    radius: f64,
+}
+
+struct Rect {
+    width: f64,
+    height: f64,
+}
+
+impl Shape for Circle {
+    fn area(&self) -> f64 {
+        PI * self.radius * self.radius
+    }
+    fn name(&self) -> String {
+        "circle".to_string()
+    }
+}
+
+impl Shape for Rect {
+    fn area(&self) -> f64 {
+        self.width * self.height
+    }
+    fn name(&self) -> String {
+        "rectangle".to_string()
+    }
+    fn describe(&self) -> String {
+        format!("{}x{} rectangle", self.width, self.height)
+    }
+}
+
+// Generic function: the compiler builds one copy per type (static dispatch, fastest)
+fn print_area<T: Shape>(shape: &T) {
+    println!("area = {:.1}", shape.area());
+}
+
+// Trait object: one function for many types, decided while the program runs (dynamic dispatch)
+fn total_area(shapes: &[Box<dyn Shape>]) -> f64 {
+    shapes.iter().map(|s| s.area()).sum()
+}
+
+fn main() {
+    let c = Circle { radius: 1.0 };
+    let r = Rect { width: 3.0, height: 4.0 };
+
+    print_area(&c);
+    print_area(&r);
+    println!("{}", c.describe());
+    println!("{}", r.describe());
+
+    let shapes: Vec<Box<dyn Shape>> = vec![Box::new(c), Box::new(r)];
+    println!("total = {:.2}", total_area(&shapes));
+}
+```
+
+Output:
+
+```
+area = 3.1
+area = 12.0
+circle with area 3.14
+3x4 rectangle
+total = 15.14
+```
+
+When to use which:
+- `fn f<T: Shape>(x: &T)` (generic): all values have the same type, and you want the most speed.
+- `Box<dyn Shape>` (trait object): you need a list or field that holds **different** types at the same time. A plain `Vec<Shape>` is impossible because the compiler must know the size of every element, and a `Box` has a fixed size.
+- `Rect` replaced `describe`; `Circle` used the default one. That is why the two lines look different.
+@@@ END
+
+@@@ USER
+How do I fix this in Rust? The function returns a reference and the compiler asks for a lifetime.
+
+```rust
+fn longest(a: &str, b: &str) -> &str {
+    if a.len() >= b.len() { a } else { b }
+}
+
+fn main() {
+    println!("{}", longest("hello", "hi"));
+}
+```
+Error: error[E0106]: missing lifetime specifier
+@@@ ASSISTANT
+**What is wrong:** the function takes two references and returns one of them. The compiler cannot tell which input the result points to, so it cannot check how long the result stays valid. You must tell it.
+
+**Fix:** name the lifetime with `'a` and say that both inputs and the result live at least that long:
+
+```rust
+fn longest<'a>(a: &'a str, b: &'a str) -> &'a str {
+    if a.len() >= b.len() { a } else { b }
+}
+
+struct Excerpt<'a> {
+    part: &'a str,
+}
+
+fn main() {
+    println!("{}", longest("hello", "hi"));
+
+    let first = String::from("hello world");
+    let result;
+    {
+        let second = String::from("hi");
+        result = longest(first.as_str(), second.as_str());
+        println!("inside: {}", result);
+    } // `second` is dropped here, so `result` must not be used after this line
+
+    let e = Excerpt { part: first.split(' ').next().unwrap() };
+    println!("{}", e.part);
+}
+```
+
+Output:
+
+```
+hello
+inside: hello world
+hello
+```
+
+Changes made:
+- `longest` became `longest<'a>`, and the inputs and the result got `'a`. It reads: "the result is valid for as long as BOTH inputs are valid."
+- The block in `main` shows the rule at work. Using `result` after the closing `}` would be an error, because the shorter-lived `second` could be the one it points to:
+
+```rust,ignore
+println!("{}", result); // error[E0597]: `second` does not live long enough
+```
+
+- A struct that holds a reference needs the same kind of `<'a>` (see `Excerpt`).
+
+Tip: lifetimes do not change how long anything lives. They only let the compiler **check** what you already wrote. If it gets confusing, return an owned `String` instead of a reference.
+@@@ END
+
+@@@ USER
+How do I make my own error type in Rust so I can use `?` with different kinds of errors?
+@@@ ASSISTANT
+Make an `enum` with one case per kind of error, implement `Display` (the message for people) and `Error`, and implement `From` for each error you want `?` to convert automatically.
+
+```rust
+use std::fmt;
+use std::num::ParseIntError;
+
+#[derive(Debug)]
+enum ConfigError {
+    Missing(String),
+    BadNumber(ParseIntError),
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ConfigError::Missing(key) => write!(f, "missing key: {}", key),
+            ConfigError::BadNumber(e) => write!(f, "not a number: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
+// This is what lets `?` turn a ParseIntError into a ConfigError
+impl From<ParseIntError> for ConfigError {
+    fn from(e: ParseIntError) -> Self {
+        ConfigError::BadNumber(e)
+    }
+}
+
+fn get_port(text: &str) -> Result<u16, ConfigError> {
+    let line = text
+        .lines()
+        .find(|l| l.starts_with("port="))
+        .ok_or_else(|| ConfigError::Missing("port".to_string()))?;
+    let port = line["port=".len()..].trim().parse::<u16>()?;
+    Ok(port)
+}
+
+fn main() {
+    for text in ["host=a\nport=8080", "host=a", "port=abc", "port=70000"] {
+        match get_port(text) {
+            Ok(p) => println!("port {}", p),
+            Err(e) => println!("error: {}", e),
+        }
+    }
+}
+```
+
+Output:
+
+```
+port 8080
+error: missing key: port
+error: not a number: invalid digit found in string
+error: not a number: number too large to fit in target type
+```
+
+How it works:
+- `.ok_or_else(...)?` turns a missing `Option` into the `Missing` error and returns early.
+- `.parse::<u16>()?` returns a `ParseIntError` on failure. Because `From<ParseIntError>` exists, `?` converts it to `ConfigError::BadNumber` by itself.
+- `impl std::error::Error for ConfigError {}` is empty on purpose: the trait only needs `Debug` and `Display`, which we already have. It allows the type to be used as `Box<dyn Error>` elsewhere.
+
+For a quick script you can skip all this and return `Result<T, Box<dyn std::error::Error>>`. Write your own enum when callers need to react differently to each kind of error.
+@@@ END
+
+@@@ USER
+Show me how to count words with a HashMap in Rust, and when to use BTreeMap or HashSet instead.
+@@@ ASSISTANT
+Use the **entry API** to count. `entry(key).or_insert(0)` gives a mutable reference to the count, creating it with 0 if the key is new.
+
+```rust
+use std::collections::{BTreeMap, HashMap, HashSet};
+
+fn main() {
+    let text = "the cat saw the dog and the horse ran";
+
+    // 1. HashMap: fast lookup by key
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for word in text.split_whitespace() {
+        *counts.entry(word).or_insert(0) += 1;
+    }
+    // HashMap order is random, so sort before printing
+    let mut pairs: Vec<(&str, usize)> = counts.into_iter().collect();
+    pairs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    for (word, n) in &pairs {
+        println!("{word}: {n}");
+    }
+
+    // 2. BTreeMap: keys always come out sorted
+    let mut by_len: BTreeMap<usize, Vec<&str>> = BTreeMap::new();
+    for word in text.split_whitespace() {
+        let list = by_len.entry(word.len()).or_default();
+        if !list.contains(&word) {
+            list.push(word);
+        }
+    }
+    println!("{:?}", by_len);
+
+    // 3. HashSet: unique values and set math
+    let a: HashSet<i32> = [1, 2, 3, 4].into_iter().collect();
+    let b: HashSet<i32> = [3, 4, 5].into_iter().collect();
+    let mut both: Vec<i32> = a.intersection(&b).copied().collect();
+    both.sort();
+    println!("{:?}", both);
+}
+```
+
+Output:
+
+```
+the: 3
+and: 1
+cat: 1
+dog: 1
+horse: 1
+ran: 1
+saw: 1
+{3: ["the", "cat", "saw", "dog", "and", "ran"], 5: ["horse"]}
+[3, 4]
+```
+
+Which one to pick:
+- `HashMap`: the default for "find a value by key". Order is not guaranteed and changes between runs.
+- `BTreeMap`: when you need the keys in order (reports, ranges, stable output in tests).
+- `HashSet`: when you only care whether something is present, or you need unique values, union, intersection or difference.
+- `or_default()` creates an empty value of the right type (here an empty `Vec`), so `entry` works for both counting and grouping.
+@@@ END
+
+@@@ USER
+How do I run work in several threads in Rust, share a counter safely, and send results back?
+@@@ ASSISTANT
+Two tools cover most cases: `Arc<Mutex<T>>` for data that several threads change, and a **channel** (`mpsc`) for sending results from threads to one receiver.
+
+```rust
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+
+fn main() {
+    // 1. Shared counter: Arc = shared ownership across threads, Mutex = one writer at a time
+    let counter = Arc::new(Mutex::new(0));
+    let mut handles = Vec::new();
+    for _ in 0..4 {
+        let counter = Arc::clone(&counter);
+        handles.push(thread::spawn(move || {
+            for _ in 0..1000 {
+                *counter.lock().unwrap() += 1;
+            }
+        }));
+    }
+    for h in handles {
+        h.join().unwrap(); // wait for the thread to finish
+    }
+    println!("counter = {}", *counter.lock().unwrap());
+
+    // 2. Channel: threads send, the main thread receives
+    let (tx, rx) = mpsc::channel();
+    for id in 0..3 {
+        let tx = tx.clone();
+        thread::spawn(move || {
+            tx.send((id, id * id)).unwrap();
+        });
+    }
+    drop(tx); // close our own sender, otherwise the loop below never ends
+    let mut results: Vec<(i32, i32)> = rx.iter().collect();
+    results.sort(); // threads finish in any order, so sort for stable output
+    println!("{:?}", results);
+}
+```
+
+Output:
+
+```
+counter = 4000
+[(0, 0), (1, 1), (2, 4)]
+```
+
+Notes:
+- `move` gives the closure its own copy of the `Arc`. Every `Arc::clone` only adds one to a counter; the data is not copied.
+- Without the `Mutex`, Rust would refuse to compile the counter. This is the compiler stopping a data race, not a bug in your code.
+- `rx.iter()` ends when **all** senders are gone. Each thread's `tx` is dropped when the thread ends, and `drop(tx)` removes the original one.
+- Keep the locked section short. Holding a `lock()` while doing slow work makes the other threads wait.
+@@@ END
+
+@@@ USER
+How do I add two structs with `+` in Rust, and compare, copy and sort them? I have a Vec2 with x and y.
+@@@ ASSISTANT
+`+` works through the trait `std::ops::Add`. Comparison, copying and printing come from `#[derive(...)]`.
+
+```rust
+use std::ops::{Add, Mul};
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+struct Vec2 {
+    x: f64,
+    y: f64,
+}
+
+impl Add for Vec2 {
+    type Output = Vec2;
+    fn add(self, other: Vec2) -> Vec2 {
+        Vec2 { x: self.x + other.x, y: self.y + other.y }
+    }
+}
+
+impl Mul<f64> for Vec2 {
+    type Output = Vec2;
+    fn mul(self, k: f64) -> Vec2 {
+        Vec2 { x: self.x * k, y: self.y * k }
+    }
+}
+
+impl Vec2 {
+    fn length(&self) -> f64 {
+        (self.x * self.x + self.y * self.y).sqrt()
+    }
+}
+
+fn main() {
+    let a = Vec2 { x: 3.0, y: 4.0 };
+    let b = Vec2 { x: 1.0, y: -1.0 };
+
+    println!("{:?}", a + b);
+    println!("{:?}", a * 2.0);
+    println!("{}", a.length());
+    println!("{:?}", Vec2::default());
+    println!("{}", a == Vec2 { x: 3.0, y: 4.0 });
+
+    let mut points = vec![a, b, Vec2::default()];
+    points.sort_by(|p, q| p.length().partial_cmp(&q.length()).unwrap());
+    println!("{:?}", points.iter().map(|p| p.length()).collect::<Vec<_>>());
+}
+```
+
+Output:
+
+```
+Vec2 { x: 4.0, y: 3.0 }
+Vec2 { x: 6.0, y: 8.0 }
+5
+Vec2 { x: 0.0, y: 0.0 }
+true
+[0.0, 1.4142135623730951, 5.0]
+```
+
+What each derive gives you:
+- `Debug`: printing with `{:?}`.
+- `Clone, Copy`: the value is copied instead of moved, so `a + b` does not use `a` up. Only add `Copy` for small types.
+- `PartialEq`: the `==` operator.
+- `Default`: `Vec2::default()` gives all fields their default (0.0 here).
+
+Why `sort_by` with `partial_cmp`: `f64` can be `NaN`, which has no order, so floats do not implement `Ord` and `.sort()` does not compile for them. `partial_cmp(..).unwrap()` is fine when you know there is no NaN. Rust 1.62 and later also has `f64::total_cmp`, which never fails.
+@@@ END
+
+@@@ USER
+Rust says error[E0277]: `T` doesn't implement `std::fmt::Display`. What does that mean and how do I fix it?
+
+```rust
+fn show<T>(value: T) {
+    println!("value = {}", value);
+}
+
+fn main() {
+    show(5);
+}
+```
+@@@ ASSISTANT
+**What it means:** inside a generic function the compiler only knows what you told it about `T`, and you told it nothing. `{}` needs `Display`, and not every type has it. So the compiler refuses to guess. The fix is a **trait bound**: say that `T` must implement `Display`.
+
+```rust
+use std::fmt::{Debug, Display};
+
+fn show<T: Display>(value: T) {
+    println!("value = {}", value);
+}
+
+// several bounds, written in a where clause (easier to read when the list is long)
+fn show_both<T>(value: T)
+where
+    T: Display + Debug,
+{
+    println!("{} / {:?}", value, value);
+}
+
+// PartialOrd lets us use `>`, Copy lets us copy items out of the slice
+fn largest<T: PartialOrd + Copy>(items: &[T]) -> T {
+    let mut best = items[0];
+    for &item in items {
+        if item > best {
+            best = item;
+        }
+    }
+    best
+}
+
+// "returns something that implements Display" without naming the type
+fn make_greeting(name: &str) -> impl Display {
+    format!("Hello, {}!", name)
+}
+
+fn main() {
+    show(5);
+    show("text");
+    show_both("hi");
+    println!("{}", largest(&[3, 9, 2]));
+    println!("{}", largest(&[1.5, 0.2]));
+    println!("{}", make_greeting("Ana"));
+}
+```
+
+Output:
+
+```
+value = 5
+value = text
+hi / "hi"
+9
+1.5
+Hello, Ana!
+```
+
+Changes made:
+- `fn show<T>` became `fn show<T: Display>`. Now `{}` is allowed, and calling `show` with a type that has no `Display` is an error at the **call** site, with a clear message.
+- The same idea fixes the other common messages: `binary operation `>` cannot be applied to type `T`` needs `T: PartialOrd`, and "cannot move out of index" for a generic item needs `T: Copy` (or `Clone`).
+- `largest(&[3, 9, 2])` works for integers and floats because both are `PartialOrd + Copy`.
+@@@ END
+
+@@@ USER
+Explain closures in Rust: how they capture variables, how to pass one to a function, return one, and store several in a list.
+@@@ ASSISTANT
+A **closure** is a small function written as `|arguments| body` that can use variables from the place where it was created. There are three closure traits, depending on what the closure does with what it captured:
+- `Fn`: only reads it (can be called many times).
+- `FnMut`: changes it (needs `mut`).
+- `FnOnce`: moves it away (can be called once).
+
+```rust
+// pass a closure: any type F that implements Fn(i32) -> i32
+fn apply<F: Fn(i32) -> i32>(f: F, x: i32) -> i32 {
+    f(x)
+}
+
+// return a closure; `move` copies `n` into it so it can outlive this function
+fn make_adder(n: i32) -> impl Fn(i32) -> i32 {
+    move |x| x + n
+}
+
+// a closure that keeps its own state
+fn make_counter() -> impl FnMut() -> u32 {
+    let mut count = 0;
+    move || {
+        count += 1;
+        count
+    }
+}
+
+// different closures in one list need Box<dyn Fn>
+fn boxed_ops() -> Vec<(&'static str, Box<dyn Fn(i32) -> i32>)> {
+    let mut ops: Vec<(&'static str, Box<dyn Fn(i32) -> i32>)> = Vec::new();
+    ops.push(("double", Box::new(|x| x * 2)));
+    ops.push(("negate", Box::new(|x| -x)));
+    ops
+}
+
+fn main() {
+    let offset = 10;
+    println!("{}", apply(|x| x + offset, 5));
+
+    let add5 = make_adder(5);
+    println!("{}", add5(1));
+
+    let mut next = make_counter();
+    println!("{} {} {}", next(), next(), next());
+
+    for (name, op) in boxed_ops() {
+        println!("{}: {}", name, op(7));
+    }
+
+    let mut names = vec!["carol", "bob", "alice"];
+    names.sort_by_key(|n| n.len());
+    println!("{:?}", names);
+}
+```
+
+Output:
+
+```
+15
+6
+1 2 3
+double: 14
+negate: -7
+["bob", "carol", "alice"]
+```
+
+Notes:
+- `|x| x + offset` borrows `offset`. Add `move` when the closure must own its data, which is required when you return it or send it to another thread.
+- `impl Fn(i32) -> i32` as a return type means "some closure with this shape". Use `Box<dyn Fn(...)>` only when you need different closures in the same variable or list.
+- `sort_by_key(|n| n.len())` is the everyday use of closures: the iterator and sort methods all take one.
+@@@ END
+
+@@@ USER
+What are the useful Option and Result methods in Rust, and how does `?` work on an Option?
+@@@ ASSISTANT
+Most `match` blocks on `Option` and `Result` can be shortened with a few methods:
+
+```rust
+fn first_even_square(nums: &[i32]) -> Option<i32> {
+    // `?` on an Option: if it is None, return None from this function right away
+    let n = nums.iter().find(|n| *n % 2 == 0)?;
+    Some(n * n)
+}
+
+fn parse_age(text: &str) -> Result<u8, String> {
+    text.trim()
+        .parse::<u8>()
+        .map_err(|e| format!("bad age '{}': {}", text, e)) // change the error type
+}
+
+fn main() {
+    println!("{:?}", first_even_square(&[3, 5, 6, 8]));
+    println!("{:?}", first_even_square(&[1, 3]));
+
+    let name: Option<&str> = Some("ana");
+    println!("{}", name.map(|n| n.to_uppercase()).unwrap_or_else(|| "nobody".to_string()));
+
+    let none: Option<&str> = None;
+    println!("{}", none.map(|n| n.len()).unwrap_or(0));
+
+    println!("{:?}", parse_age(" 42 "));
+    println!("{:?}", parse_age("300"));
+    println!("{:?}", parse_age("x"));
+
+    // collect into Result: stops at the first error
+    let good: Result<Vec<u8>, String> = ["1", "2", "3"].iter().map(|s| parse_age(s)).collect();
+    println!("{:?}", good);
+    let bad: Result<Vec<u8>, String> = ["1", "oops", "3"].iter().map(|s| parse_age(s)).collect();
+    println!("{:?}", bad);
+}
+```
+
+Output:
+
+```
+Some(36)
+None
+ANA
+0
+Ok(42)
+Err("bad age '300': number too large to fit in target type")
+Err("bad age 'x': invalid digit found in string")
+Ok([1, 2, 3])
+Err("bad age 'oops': invalid digit found in string")
+```
+
+Cheat sheet:
+- `map(f)`: change the value inside `Some` / `Ok`, leave `None` / `Err` alone.
+- `and_then(f)`: like `map`, but `f` itself returns an `Option` / `Result` (avoids `Option<Option<T>>`).
+- `unwrap_or(v)` / `unwrap_or_else(f)`: a default value; the `_else` version only does the work when needed.
+- `ok_or(e)` / `ok_or_else(f)`: turn an `Option` into a `Result`.
+- `map_err(f)`: change the error type.
+- `?`: return early on `None` / `Err`. It works in functions that return the same kind of value (`Option` in `Option` functions, `Result` in `Result` functions).
+- Avoid `unwrap()` in real code. It panics on `None` / `Err`. Use `expect("why this cannot fail")` if you truly must.
+@@@ END
+
+@@@ USER
+How do I organize a Rust program into a module with private fields and write tests for it? Use a small bank account as the example.
+@@@ ASSISTANT
+Put the code in a `mod`. Everything inside is **private** unless you write `pub`. Private fields force other code to use your methods, so nobody can set an invalid balance directly. Tests go in a `#[cfg(test)]` module at the bottom of the file.
+
+```rust
+mod bank {
+    #[derive(Debug)]
+    pub struct Account {
+        owner: String, // private: only code inside `mod bank` can touch it
+        balance: i64,
+    }
+
+    #[derive(Debug, PartialEq)]
+    pub enum BankError {
+        Insufficient { needed: i64, available: i64 },
+        InvalidAmount,
+    }
+
+    impl Account {
+        pub fn new(owner: &str) -> Self {
+            Account { owner: owner.to_string(), balance: 0 }
+        }
+
+        pub fn balance(&self) -> i64 {
+            self.balance
+        }
+
+        pub fn owner(&self) -> &str {
+            &self.owner
+        }
+
+        pub fn deposit(&mut self, amount: i64) -> Result<(), BankError> {
+            if amount <= 0 {
+                return Err(BankError::InvalidAmount);
+            }
+            self.balance += amount;
+            Ok(())
+        }
+
+        pub fn withdraw(&mut self, amount: i64) -> Result<(), BankError> {
+            if amount <= 0 {
+                return Err(BankError::InvalidAmount);
+            }
+            if amount > self.balance {
+                return Err(BankError::Insufficient { needed: amount, available: self.balance });
+            }
+            self.balance -= amount;
+            Ok(())
+        }
+    }
+}
+
+use bank::Account;
+
+fn main() {
+    let mut acc = Account::new("ana");
+    acc.deposit(500).unwrap();
+    println!("{:?}", acc.withdraw(800));
+    println!("{:?}", acc.withdraw(200));
+    println!("{} has {}", acc.owner(), acc.balance());
+    // acc.balance = 1_000_000;  // error[E0616]: field `balance` of struct `Account` is private
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bank::{Account, BankError};
+
+    #[test]
+    fn deposit_then_withdraw() {
+        let mut a = Account::new("x");
+        a.deposit(100).unwrap();
+        a.withdraw(40).unwrap();
+        assert_eq!(a.balance(), 60);
+    }
+
+    #[test]
+    fn cannot_overdraw() {
+        let mut a = Account::new("x");
+        a.deposit(10).unwrap();
+        assert_eq!(a.withdraw(50), Err(BankError::Insufficient { needed: 50, available: 10 }));
+        assert_eq!(a.balance(), 10); // a failed withdrawal changes nothing
+    }
+
+    #[test]
+    fn rejects_bad_amounts() {
+        let mut a = Account::new("x");
+        assert_eq!(a.deposit(0), Err(BankError::InvalidAmount));
+        assert_eq!(a.withdraw(-5), Err(BankError::InvalidAmount));
+    }
+}
+```
+
+Output of `cargo run`:
+
+```
+Err(Insufficient { needed: 800, available: 500 })
+Ok(())
+ana has 300
+```
+
+Run the tests with `cargo test`. Expected ending (the order of the three test lines can differ, because tests run in parallel):
+
+```
+running 3 tests
+test tests::cannot_overdraw ... ok
+test tests::deposit_then_withdraw ... ok
+test tests::rejects_bad_amounts ... ok
+
+test result: ok. 3 passed; 0 failed
+```
+
+Why it is built this way:
+- The money is an `i64` count of the smallest unit (for example cents), never an `f64`, so there are no rounding errors.
+- Errors are an `enum` with data (`Insufficient { needed, available }`), so the caller can show a precise message and tests can compare whole values with `assert_eq!`.
+- The tests are in a separate module so they are not part of the program you ship. `use super::bank::...` brings the types in, because a child module does not see its parent's names automatically.
+- When the project grows, move `mod bank` into `src/bank.rs` and write `mod bank;` in `main.rs`. The code inside stays the same.
+@@@ END

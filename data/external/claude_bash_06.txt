@@ -1,0 +1,381 @@
+@@@ USER
+I have a web server log file in Linux. How do I count requests per IP address, count status codes, and find the failing URLs using only terminal commands?
+@@@ ASSISTANT
+Small commands connected with `|` (a pipe sends the output of one command into the next) answer most log questions. Here `access.log` has one request per line: `IP METHOD PATH STATUS BYTES`.
+
+```
+10.0.0.5 GET /index.html 200 512
+10.0.0.7 GET /api/users 200 1024
+10.0.0.5 GET /api/orders 500 64
+10.0.0.9 POST /api/orders 201 128
+10.0.0.5 GET /missing 404 32
+10.0.0.7 GET /api/users 200 1024
+10.0.0.5 GET /api/orders 500 64
+```
+
+**Requests per IP, busiest first:**
+
+```
+cut -d' ' -f1 access.log | sort | uniq -c | sort -rn
+```
+
+```
+      4 10.0.0.5
+      2 10.0.0.7
+      1 10.0.0.9
+```
+
+`cut -d' ' -f1` takes the first column (space is the separator). `sort | uniq -c` counts equal lines (`uniq` only sees neighbours, so you must sort first). `sort -rn` sorts by number, highest first.
+
+**Status codes:**
+
+```
+awk '{print $4}' access.log | sort | uniq -c
+```
+
+```
+      3 200
+      1 201
+      1 404
+      2 500
+```
+
+`awk '{print $4}'` prints the fourth column. `awk` splits every line by spaces into `$1`, `$2`, and so on.
+
+**Which URLs failed with a 500?**
+
+```
+grep -c " 500 " access.log
+grep " 500 " access.log | awk '{print $3}' | sort -u
+```
+
+```
+2
+/api/orders
+```
+
+`grep -c` counts matching lines. `sort -u` sorts and removes duplicates.
+
+**Total bytes, and a condition inside awk:**
+
+```
+awk '{sum += $5} END {print "total bytes:", sum}' access.log
+awk '$4 >= 500 {print $1, $3}' access.log
+```
+
+```
+total bytes: 2848
+10.0.0.5 /api/orders
+10.0.0.5 /api/orders
+```
+
+The `END { ... }` block runs once after the last line. A condition in front of the braces (`$4 >= 500`) means "only for lines where this is true".
+
+**Count with awk only, and replace text with sed:**
+
+```
+awk '{c[$1]++} END {for (ip in c) print ip, c[ip]}' access.log | sort
+sed 's/10\.0\.0\./ip-/' access.log | head -2
+```
+
+```
+10.0.0.5 4
+10.0.0.7 2
+10.0.0.9 1
+ip-5 GET /index.html 200 512
+ip-7 GET /api/users 200 1024
+```
+
+The tools to remember: `grep` (find lines), `cut` and `awk` (pick columns, do math), `sort`, `uniq -c` (count), `sed` (replace), `head` and `tail` (first or last lines), `wc -l` (count lines). In Windows, use Git Bash or WSL for these. PowerShell has different tools (`Select-String`, `Group-Object`).
+@@@ END
+
+@@@ USER
+Write me a safe Bash backup script that takes a source folder and a destination folder, checks its arguments, cleans up temporary files, and stops on errors.
+@@@ ASSISTANT
+Here is a script with the habits that prevent most Bash disasters. Save it as `backup.sh`.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: $0 SOURCE_DIR DEST_DIR" >&2
+  exit 2
+}
+
+[[ $# -eq 2 ]] || usage
+src=$1
+dest=$2
+[[ -d "$src" ]] || { echo "error: '$src' is not a folder" >&2; exit 1; }
+
+tmp=$(mktemp -d)
+cleanup() { rm -rf "$tmp"; }
+trap cleanup EXIT            # runs on success, error and Ctrl+C
+
+stamp="demo"
+archive="$tmp/backup-$stamp.tar.gz"
+tar -czf "$archive" -C "$src" .
+mkdir -p "$dest"
+mv "$archive" "$dest/"
+echo "saved $dest/backup-$stamp.tar.gz ($(tar -tzf "$dest/backup-$stamp.tar.gz" | wc -l) entries)"
+```
+
+Run it with different inputs:
+
+```
+chmod +x backup.sh
+./backup.sh
+echo "exit code: $?"
+./backup.sh nope out
+echo "exit code: $?"
+./backup.sh proj out
+echo "exit code: $?"
+```
+
+```
+Usage: ./backup.sh SOURCE_DIR DEST_DIR
+exit code: 2
+error: 'nope' is not a folder
+exit code: 1
+saved out/backup-demo.tar.gz (4 entries)
+exit code: 0
+```
+
+(`proj` is a folder with two small files in it. The `4 entries` are the folder itself, one subfolder and the two files.)
+
+What each habit does:
+- **`set -euo pipefail`**: `-e` stops the script when a command fails, `-u` makes an unset variable an error (instead of silently being empty), `-o pipefail` makes a pipeline fail when any part of it fails. Without them a script keeps going after an error and can do real damage.
+- **Check the arguments first** and print usage to **stderr** (`>&2`) with a clear exit code. `0` means success, anything else means failure. Other programs and scripts can use that code.
+- **Quote every variable**: `"$src"`, not `$src`. Without quotes, a folder called `my notes` becomes two separate words.
+- **`mktemp -d` and `trap ... EXIT`**: work in a temporary folder and delete it in all cases, even when the script fails halfway.
+- **Build the file first, move it at the end.** If the script is stopped while writing, the destination never holds a half-written backup.
+- Check a script without running it: `bash -n backup.sh` (syntax) and, if installed, `shellcheck backup.sh`, which finds most quoting mistakes.
+- For real backups, make the file name unique, for example `stamp=$(date +%Y-%m-%d_%H%M)`. The example uses a fixed word so the output is the same every time.
+@@@ END
+
+@@@ USER
+How do I loop over files in Bash, find files and search inside them, rename many files at once, and read a file line by line? Some of my file names have spaces.
+@@@ ASSISTANT
+Spaces in names are the main trap. The rule: **put variables in double quotes**, and use `find ... -print0` together with `xargs -0` when a list of names goes through a pipe. In the examples the folder holds `a.txt`, `b.txt`, `my notes/with space.txt`, `docs/c.md`, and `docs/d.md` (which contains the text `TODO fix`).
+
+**Loop over files:**
+
+```
+for f in *.txt; do echo "file: $f ($(wc -c < "$f") bytes)"; done
+for f in "my notes"/*.txt; do echo "found: $f"; done
+```
+
+```
+file: a.txt (4 bytes)
+file: b.txt (4 bytes)
+found: my notes/with space.txt
+```
+
+**Find files (including subfolders):**
+
+```
+find . -name "*.md" | sort
+find . -type f -name "*.txt" -print0 | sort -z | xargs -0 wc -l
+```
+
+```
+./docs/c.md
+./docs/d.md
+1 ./a.txt
+1 ./b.txt
+1 ./my notes/with space.txt
+3 total
+```
+
+`-print0` ends every name with an invisible zero byte instead of a newline, and `xargs -0` reads it that way. That is how `my notes/with space.txt` stays **one** argument.
+
+**Search inside files:**
+
+```
+grep -rn "TODO" .
+grep -rl "TODO" --include="*.md" .
+```
+
+```
+./docs/d.md:1:TODO fix
+./docs/d.md
+```
+
+`-r` goes through folders, `-n` shows line numbers, `-l` shows only the file names, and `--include` limits the file type.
+
+**Rename many files** (here `.txt` to `.bak`):
+
+```
+for f in *.txt; do mv -- "$f" "${f%.txt}.bak"; done
+ls
+```
+
+```
+a.bak
+b.bak
+docs
+my notes
+```
+
+`${f%.txt}` removes `.txt` from the end of the value. `--` tells `mv` that what follows is a name, even if it starts with a dash.
+
+**Read lines and split them into fields:**
+
+```
+printf 'ana,10\nbob,25\n' | while IFS=, read -r name score; do echo "$name scored $score"; done
+```
+
+```
+ana scored 10
+bob scored 25
+```
+
+`IFS=,` sets the separator to a comma, and `read -r` stores each field in a variable (`-r` stops backslashes from being treated specially).
+
+Habits that avoid accidents: test destructive commands with `echo` in front first (`echo mv ...`), and before `rm` run the same `find` or glob without `rm` to see what it matches.
+@@@ END
+
+@@@ USER
+How do file permissions work on Linux? I get "Permission denied" when I try to run my script, and I do not understand what -rwxr-xr-x means.
+@@@ ASSISTANT
+Every file has three sets of permissions: for the **owner**, for the **group**, and for **everyone else**. Each set has three switches: `r` read, `w` write, `x` execute. Look at the first column of `ls -l`:
+
+```
+ls -l run.sh
+```
+
+```
+-rw-r--r-- run.sh
+```
+
+Read it in blocks: `-` (a normal file; `d` would be a folder), then `rw-` (owner can read and write), `r--` (group can read), `r--` (everyone else can read). Nobody has `x`, so the file cannot be run, and that is exactly your error:
+
+```
+./run.sh
+```
+
+```
+bash: ./run.sh: Permission denied
+```
+
+**Fix: add the execute permission.**
+
+```
+chmod +x run.sh
+ls -l run.sh
+./run.sh
+```
+
+```
+-rwxr-xr-x run.sh
+running
+```
+
+**Number form:** each set is a number: read = 4, write = 2, execute = 1, added together.
+- `7` = 4+2+1 = `rwx`, `6` = `rw-`, `5` = `r-x`, `4` = `r--`, `0` = `---`.
+- `755` = owner `rwx`, everyone else `r-x`. The normal value for scripts and folders.
+- `644` = owner `rw-`, everyone else `r--`. The normal value for ordinary files.
+- `600` = only the owner can read and write. Use it for private files such as SSH keys and `.env`.
+
+```
+chmod 600 a.bak
+ls -l a.bak
+chmod u=rw,go=r a.bak
+ls -l a.bak
+chmod 755 docs
+ls -ld docs
+```
+
+```
+-rw------- a.bak
+-rw-r--r-- a.bak
+drwxr-xr-x docs
+```
+
+The letter form `u=rw,go=r` means "user (owner): read and write; group and others: read only". `u`, `g`, `o` and `a` (all) choose who, and `+`, `-`, `=` add, remove or set.
+
+Other things to know:
+- For a **folder**, `x` means "may enter it". A folder without `x` is closed even if you can read its name.
+- To run the script as `./run.sh`, the first line must say what runs it: `#!/bin/bash` or `#!/usr/bin/env bash`. Without that line, run it as `bash run.sh`.
+- Do not use `chmod 777` to "make the error go away". It gives every user on the machine full write access. Find who needs what instead.
+- On Windows (the normal file system), these permission bits do not exist. They apply inside WSL and on Linux or macOS servers.
+@@@ END
+
+@@@ USER
+How do variables, environment variables, exit codes, && and || work in Bash? I keep getting confused by quotes and $?.
+@@@ ASSISTANT
+Every command ends with an **exit code**: `0` means success, anything else means failure. Bash stores the last one in `$?`, and `&&` / `||` use it.
+
+```
+NAME=Ana
+echo "hello $NAME"
+echo 'hello $NAME'
+```
+
+```
+hello Ana
+hello $NAME
+```
+
+- **Double quotes** `"..."` replace variables (and `$(...)`).
+- **Single quotes** `'...'` keep every character as it is.
+- No spaces around `=` when you set a variable: `NAME=Ana` works, `NAME = Ana` tries to run a command called `NAME`.
+
+**Shell variables vs environment variables.** A normal variable exists only in this shell. `export` also gives it to programs you start:
+
+```
+export GREETING="Hi"
+bash -c 'echo "child sees: $GREETING"'
+unset GREETING
+bash -c 'echo "child sees: [${GREETING:-nothing}]"'
+```
+
+```
+child sees: Hi
+child sees: [nothing]
+```
+
+`${VAR:-default}` means "the value of VAR, or `default` if it is empty or not set".
+
+**Exit codes, `&&` and `||`:**
+
+```
+ls /nonexistent 2>/dev/null
+echo "last exit code: $?"
+mkdir -p build && echo "build ok" || echo "build failed"
+false && echo "not printed"
+true && echo "printed"
+```
+
+```
+last exit code: 2
+build ok
+printed
+```
+
+- `a && b`: run `b` only if `a` succeeded.
+- `a || b`: run `b` only if `a` failed.
+- `2>/dev/null` throws away the error messages (stream 2). Output has stream 1.
+
+**Calculations and command substitution:**
+
+```
+x=5
+echo $((x * 3 + 1))
+echo "default: ${UNSET_VAR:-default value}"
+echo "year starts with: $(date +%Y | cut -c1-2)"
+```
+
+```
+16
+default: default value
+year starts with: 20
+```
+
+`$(command)` puts the output of a command into the line. `$(( ... ))` does whole-number math (no decimals; use `awk` or `bc` for those).
+
+**Where the environment matters:**
+- `PATH` is the list of folders Bash searches when you type a command name. See it with `echo "$PATH" | tr ':' '\n'`. To add a folder for this session: `export PATH="$HOME/bin:$PATH"`. To keep it, put the line in `~/.bashrc`.
+- Settings made with `export` in one terminal do not appear in another terminal, and they disappear when you close the window. Put permanent ones in `~/.bashrc`.
+- Secrets such as API keys belong in environment variables or a `.env` file that is not committed, never inside a script that goes into Git.
+@@@ END

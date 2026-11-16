@@ -1,0 +1,818 @@
+@@@ USER
+Rust gives me error[E0106]: missing lifetime specifier. How do I fix it?
+
+```rust
+struct Holder {
+    text: &str,
+}
+
+fn main() {
+    let s = String::from("hello");
+    let h = Holder { text: &s };
+    println!("{}", h.text);
+}
+```
+@@@ ASSISTANT
+**What is wrong:** `text` is a reference. A struct that holds a reference must say how long that reference is valid, otherwise the compiler cannot make sure the struct is not used after the text it points to has been freed.
+
+**Fix 1: add a lifetime parameter** (the struct borrows the text):
+
+```rust
+struct Holder<'a> {
+    text: &'a str,
+}
+
+fn main() {
+    let s = String::from("hello");
+    let h = Holder { text: &s };
+    println!("{}", h.text);
+}
+```
+
+**Fix 2: own the text** (simplest when you do not care about avoiding a copy):
+
+```rust
+struct Holder {
+    text: String,
+}
+
+fn main() {
+    let h = Holder { text: String::from("hello") };
+    println!("{}", h.text);
+}
+```
+
+Changes made:
+- Fix 1: `Holder` became `Holder<'a>` and `&str` became `&'a str`. A `Holder` can no longer outlive the string it borrows from.
+- Fix 2: `&str` became `String`, so the struct owns its data and needs no lifetime.
+
+Rule of thumb: struct fields should usually own their data (`String`, `Vec<T>`). Use borrowed fields only for short-lived helper structs such as parsers or views.
+@@@ END
+
+@@@ USER
+My Rust code says error[E0425]: cannot find value `totl` in this scope. What does that mean?
+
+```rust
+fn main() {
+    let total = 10;
+    println!("{}", totl);
+}
+```
+@@@ ASSISTANT
+**What it means:** you used a name that does not exist at that place. Here it is a typo: the variable is called `total`, but the code says `totl`.
+
+Fixed code:
+
+```rust
+fn main() {
+    let total = 10;
+    println!("{}", total);
+}
+```
+
+Changes made:
+- `totl` became `total`.
+
+If the spelling is right, the usual other causes are:
+- **The variable is in a different scope.** A variable declared inside `{ ... }`, a loop or an `if` block does not exist after the closing brace. Declare it before the block.
+- **A missing `use` or `mod`.** For functions from another module, write the path or import it.
+- **The variable is declared after the line that uses it.** Rust reads top to bottom inside a function.
+
+The compiler often adds `help: a local variable with a similar name exists: total`. Read the `help` lines first, because they usually contain the fix.
+@@@ END
+
+@@@ USER
+Rust error[E0277]: `Point` doesn't implement `std::fmt::Display`. How do I print my struct?
+
+```rust
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn main() {
+    let p = Point { x: 1, y: 2 };
+    println!("{}", p);
+}
+```
+@@@ ASSISTANT
+**What is wrong:** `{}` asks for the "user-friendly" text form, which is defined by the `Display` trait. Rust cannot guess how your struct should look, so you must implement it. `{:?}` uses a different trait, `Debug`, which can be generated automatically.
+
+**Fix 1: derive Debug and print with `{:?}`** (good for debugging):
+
+```rust
+#[derive(Debug)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn main() {
+    let p = Point { x: 1, y: 2 };
+    println!("{:?}", p);
+    println!("{:#?}", p); // multi-line "pretty" version
+}
+```
+
+**Fix 2: implement Display** (for output users see):
+
+```rust
+use std::fmt;
+
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl fmt::Display for Point {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
+    }
+}
+
+fn main() {
+    let p = Point { x: 1, y: 2 };
+    println!("{}", p);
+}
+```
+
+Output of fix 1: `Point { x: 1, y: 2 }`, and then the same fields over several lines for `{:#?}`. Output of fix 2: `(1, 2)`.
+
+Changes made:
+- Fix 1: added `#[derive(Debug)]` above the struct and changed `{}` to `{:?}`.
+- Fix 2: added `impl fmt::Display for Point` that writes the text you want.
+@@@ END
+
+@@@ USER
+Rust says error[E0599]: no method named `sorted` found for struct `Vec`. How do I sort a vector?
+
+```rust
+fn main() {
+    let v = vec![3, 1, 2];
+    let sorted = v.sorted();
+    println!("{:?}", sorted);
+}
+```
+@@@ ASSISTANT
+**What is wrong:** `Vec` has no method called `sorted`. Rust's method is `sort()`, and it sorts the vector **in place** and returns nothing. Other languages' `sorted(...)` that returns a new list does not exist as a method here.
+
+**Fix 1: sort the vector itself** (it must be `mut`):
+
+```rust
+fn main() {
+    let mut v = vec![3, 1, 2];
+    v.sort();
+    println!("{:?}", v);
+}
+```
+
+**Fix 2: keep the original and sort a copy:**
+
+```rust
+fn main() {
+    let v = vec![3, 1, 2];
+    let mut sorted = v.clone();
+    sorted.sort();
+    println!("{:?} {:?}", v, sorted);
+}
+```
+
+Output: fix 1 prints `[1, 2, 3]`; fix 2 prints `[3, 1, 2] [1, 2, 3]`.
+
+Changes made:
+- `let v` became `let mut v`, because sorting changes the vector.
+- `v.sorted()` became `v.sort()`.
+
+More sorting tools:
+- Descending: `v.sort_by(|a, b| b.cmp(a))`, or `v.sort(); v.reverse();`.
+- By a key: `people.sort_by_key(|p| p.age)`.
+- Floats do not implement `Ord`, so use `v.sort_by(|a, b| a.partial_cmp(b).unwrap())` or `f64::total_cmp`.
+@@@ END
+
+@@@ USER
+Why do I get error[E0384]: cannot assign twice to immutable variable `count` in Rust?
+
+```rust
+fn main() {
+    let count = 0;
+    count = 1;
+    println!("{}", count);
+}
+```
+@@@ ASSISTANT
+**What is wrong:** variables in Rust are immutable by default. Once `count` is set to 0, you cannot assign to it again unless you declare it as mutable. This makes it clear when a value can change.
+
+**Fix 1: make it mutable** when the value really changes:
+
+```rust
+fn main() {
+    let mut count = 0;
+    count = 1;
+    count += 1;
+    println!("{}", count);
+}
+```
+
+**Fix 2: shadow it** with a new `let` when you want a new value but no mutation (the type may even change):
+
+```rust
+fn main() {
+    let count = 0;
+    let count = count + 1;
+    let count = format!("count is {}", count);
+    println!("{}", count);
+}
+```
+
+Changes made:
+- Fix 1: `let count` became `let mut count`.
+- Fix 2: the second assignment became a new `let count = ...` that hides the old variable.
+
+Use `mut` for things that change over time (counters, buffers). Use shadowing for step-by-step transformations of a value. The first version prints `2`, the second prints `count is 1`.
+@@@ END
+
+@@@ USER
+Rust error[E0596]: cannot borrow `*list` as mutable, as it is behind a `&` reference. What should I change?
+
+```rust
+fn add_item(list: &Vec<i32>) {
+    list.push(1);
+}
+
+fn main() {
+    let mut numbers = Vec::new();
+    add_item(&numbers);
+    println!("{:?}", numbers);
+}
+```
+@@@ ASSISTANT
+**What is wrong:** `&Vec<i32>` is a *shared* (read-only) reference. `push` changes the vector, so the function needs a *mutable* reference, written `&mut Vec<i32>`, and the caller must hand one over with `&mut numbers`.
+
+Fixed code:
+
+```rust
+fn add_item(list: &mut Vec<i32>) {
+    list.push(1);
+}
+
+fn main() {
+    let mut numbers = Vec::new();
+    add_item(&mut numbers);
+    add_item(&mut numbers);
+    println!("{:?}", numbers);
+}
+```
+
+Output: `[1, 1]`
+
+Changes made:
+- The parameter type changed from `&Vec<i32>` to `&mut Vec<i32>`.
+- The call changed from `&numbers` to `&mut numbers`. The variable was already declared with `mut`, which is required.
+
+Rule: `&T` means "I only read it", `&mut T` means "I may change it". Choose the weakest one that does the job. When a function only reads a vector, even better is to take a slice, `&[i32]`, which accepts both vectors and arrays.
+@@@ END
+
+@@@ USER
+Rust says error[E0433]: failed to resolve: use of undeclared type `HashMap`. I did not write any new type. Why?
+
+```rust
+fn main() {
+    let mut ages = HashMap::new();
+    ages.insert("Asha", 30);
+    println!("{:?}", ages.get("Asha"));
+}
+```
+@@@ ASSISTANT
+**What is wrong:** `Vec`, `String`, `Option` and a few others are available everywhere (the "prelude"), but `HashMap` is not. You must import it from the standard library.
+
+Fixed code:
+
+```rust
+use std::collections::HashMap;
+
+fn main() {
+    let mut ages = HashMap::new();
+    ages.insert("Asha", 30);
+    println!("{:?}", ages.get("Asha"));
+}
+```
+
+Output: `Some(30)`
+
+Changes made:
+- Added `use std::collections::HashMap;` at the top of the file.
+
+Other imports you will often need: `use std::collections::{HashMap, HashSet, BTreeMap, VecDeque};`, `use std::fmt;`, `use std::io::{self, Read, Write};`, `use std::fs;`, `use std::rc::Rc;`, `use std::sync::{Arc, Mutex};`. If you are not sure where something lives, the compiler's `help: consider importing this struct` line shows the exact `use` statement to paste.
+@@@ END
+
+@@@ USER
+My Rust function returns nothing even though I wrote the math. Rust shows error[E0308]: mismatched types. Why?
+
+```rust
+fn double(x: i32) -> i32 {
+    x * 2;
+}
+
+fn main() {
+    println!("{}", double(4));
+}
+```
+@@@ ASSISTANT
+**What is wrong:** the semicolon. In Rust, the last expression of a function **without** a semicolon is its return value. `x * 2;` with a semicolon becomes a statement that throws the value away, so the function body produces `()` (nothing) while the signature promises an `i32`. That is the mismatch.
+
+Fixed code:
+
+```rust
+fn double(x: i32) -> i32 {
+    x * 2
+}
+
+fn main() {
+    println!("{}", double(4));
+}
+```
+
+Output: `8`
+
+Changes made:
+- Removed the semicolon after `x * 2`.
+
+You can also write `return x * 2;` (with a semicolon), which is mainly used for early exits in the middle of a function. The rule applies to `if`/`else` and `match` too: each branch's last expression is the value, so no semicolon there either when you want the value.
+@@@ END
+
+@@@ USER
+Rust error[E0505]: cannot move out of `s` because it is borrowed. What is happening?
+
+```rust
+fn main() {
+    let s = String::from("hi");
+    let r = &s;
+    drop(s);
+    println!("{}", r);
+}
+```
+@@@ ASSISTANT
+**What is wrong:** `r` is a reference to `s`. `drop(s)` frees the string, so `r` would point at freed memory when it is printed on the next line. Rust prevents this "dangling reference" at compile time.
+
+The reference must not be used after the value is gone. Either use `r` first, or do not drop the value while it is still in use.
+
+```rust
+fn main() {
+    let s = String::from("hi");
+    let r = &s;
+    println!("{}", r); // use the reference while `s` is still alive
+    drop(s);           // fine: nothing borrows `s` anymore
+}
+```
+
+Changes made:
+- Moved the `println!` above `drop(s)`. The borrow ends at its last use, so dropping afterwards is allowed.
+
+If you really need the text after the original is gone, keep an independent copy: `let r = s.clone();` and then `drop(s)` is allowed.
+
+Pattern: borrowing means "someone else still owns it". You cannot move, drop or mutate the owner while a borrow is still going to be used.
+@@@ END
+
+@@@ USER
+How do I read a Rust compiler error message? There is so much text.
+@@@ ASSISTANT
+Read it in this order. A typical error looks like this:
+
+```text
+error[E0382]: borrow of moved value: `name`
+ --> src/main.rs:4:20
+  |
+2 |     let name = String::from("Asha");
+  |         ---- move occurs because `name` has type `String`, which does not implement the `Copy` trait
+3 |     let greeting = name;
+  |                    ---- value moved here
+4 |     println!("{}", name);
+  |                    ^^^^ value borrowed here after move
+  |
+help: consider cloning the value if the performance cost is acceptable
+  |
+3 |     let greeting = name.clone();
+  |                        ++++++++
+```
+
+1. **The first line** is the summary: `error[E0382]` is the error code, followed by the problem in words. Search the code in `rustc --explain E0382` for a full explanation with examples.
+2. **The `-->` line** gives the file, line and column. Open that place first.
+3. **The labels under the code** tell the story step by step: where the value was created, where it was moved, and where it was used wrongly. The `^^^^` marks the exact place that caused the error.
+4. **The `help:` section** often shows the fix, even with the exact characters to add (`++++++++` means "insert this text").
+
+Habits that save time:
+- Fix the **first** error in the list, then recompile. Later errors are often caused by the first one and disappear on their own.
+- Run `cargo check` while writing code; it shows the same errors much faster than a full build.
+- Warnings are not errors, but fix them too (`cargo clippy` gives extra advice).
+- Do not fight the borrow checker with `unsafe` or too many `clone()` calls. If the compiler keeps rejecting a design, the design often needs one owner and borrowed views, or a different structure.
+@@@ END
+
+@@@ USER
+Show me how to model a vending machine in Rust with an enum state machine, so impossible states cannot happen.
+@@@ ASSISTANT
+Put the data that only makes sense in one state inside that state's enum variant. A machine in `Idle` has no credit, so there is no credit field to forget to reset. Handle each `(state, event)` pair in one `match`; the compiler then checks that you covered every combination.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Item {
+    Water,
+    Chips,
+}
+
+impl Item {
+    fn price(self) -> u32 {
+        match self {
+            Item::Water => 100,
+            Item::Chips => 150,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum State {
+    Idle,
+    HasMoney(u32),
+}
+
+enum Event {
+    Coin(u32),
+    Select(Item),
+    Cancel,
+}
+
+struct Machine {
+    state: State,
+}
+
+impl Machine {
+    fn new() -> Machine {
+        Machine { state: State::Idle }
+    }
+
+    fn handle(&mut self, event: Event) -> String {
+        let (next, message) = match (&self.state, event) {
+            (State::Idle, Event::Coin(c)) => (State::HasMoney(c), format!("credit {}", c)),
+            (State::HasMoney(m), Event::Coin(c)) => {
+                let total = m + c;
+                (State::HasMoney(total), format!("credit {}", total))
+            }
+            (State::HasMoney(m), Event::Select(item)) if *m >= item.price() => {
+                let change = m - item.price();
+                (State::Idle, format!("dispensed {:?}, change {}", item, change))
+            }
+            (State::HasMoney(m), Event::Select(item)) => {
+                let missing = item.price() - m;
+                (State::HasMoney(*m), format!("need {} more", missing))
+            }
+            (State::HasMoney(m), Event::Cancel) => (State::Idle, format!("refunded {}", m)),
+            (State::Idle, Event::Select(_)) => (State::Idle, "insert a coin first".to_string()),
+            (State::Idle, Event::Cancel) => (State::Idle, "nothing to cancel".to_string()),
+        };
+        self.state = next;
+        message
+    }
+}
+
+fn main() {
+    let mut machine = Machine::new();
+    let events = vec![
+        Event::Select(Item::Water),
+        Event::Coin(50),
+        Event::Select(Item::Chips),
+        Event::Coin(100),
+        Event::Select(Item::Chips),
+        Event::Coin(200),
+        Event::Cancel,
+    ];
+    for event in events {
+        println!("{}", machine.handle(event));
+    }
+    println!("final state: {:?}", machine.state);
+}
+```
+
+Output:
+
+```
+insert a coin first
+credit 50
+need 100 more
+credit 150
+dispensed Chips, change 0
+credit 200
+refunded 200
+final state: Idle
+```
+
+Why this design is good:
+- A new state or event makes the `match` fail to compile until you handle it, so nothing is forgotten.
+- `handle` computes the next state and message first, and assigns `self.state` after the `match` ends. That avoids borrowing `self.state` and changing it at the same time.
+- The same pattern works for traffic lights, connection status (`Disconnected`, `Connecting`, `Connected(session)`), file uploads and game screens.
+@@@ END
+
+@@@ USER
+Write the core of an inventory manager in Rust: add stock, remove stock with proper errors, and a sorted report. Include tests.
+@@@ ASSISTANT
+Keep the logic in a struct with methods that return `Result`, so a terminal app, a web server or the tests can all use it. Make the errors an enum so callers can react to each one.
+
+```rust
+use std::collections::HashMap;
+use std::fmt;
+
+#[derive(Debug, PartialEq)]
+enum InvError {
+    UnknownItem(String),
+    NotEnough { item: String, have: u32, want: u32 },
+}
+
+impl fmt::Display for InvError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InvError::UnknownItem(name) => write!(f, "no such item: {}", name),
+            InvError::NotEnough { item, have, want } => {
+                write!(f, "not enough {}: have {}, want {}", item, have, want)
+            }
+        }
+    }
+}
+
+impl std::error::Error for InvError {}
+
+#[derive(Default)]
+struct Inventory {
+    stock: HashMap<String, u32>,
+}
+
+impl Inventory {
+    fn add(&mut self, name: &str, qty: u32) {
+        *self.stock.entry(name.to_string()).or_insert(0) += qty;
+    }
+
+    fn remove(&mut self, name: &str, qty: u32) -> Result<u32, InvError> {
+        let have = self
+            .stock
+            .get_mut(name)
+            .ok_or_else(|| InvError::UnknownItem(name.to_string()))?;
+        if *have < qty {
+            return Err(InvError::NotEnough { item: name.to_string(), have: *have, want: qty });
+        }
+        *have -= qty;
+        Ok(*have)
+    }
+
+    fn report(&self) -> Vec<String> {
+        let mut rows: Vec<(&String, &u32)> = self.stock.iter().collect();
+        rows.sort_by(|a, b| a.0.cmp(b.0));
+        rows.into_iter().map(|(name, qty)| format!("{:<8} {:>4}", name, qty)).collect()
+    }
+}
+
+fn main() {
+    let mut inv = Inventory::default();
+    inv.add("pen", 10);
+    inv.add("book", 3);
+    inv.add("pen", 5);
+
+    println!("{:?}", inv.remove("pen", 4));
+    println!("{:?}", inv.remove("book", 5));
+    match inv.remove("lamp", 1) {
+        Ok(_) => {}
+        Err(e) => println!("error: {}", e),
+    }
+    for line in inv.report() {
+        println!("{}", line);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_accumulates() {
+        let mut inv = Inventory::default();
+        inv.add("pen", 2);
+        inv.add("pen", 3);
+        assert_eq!(inv.remove("pen", 5), Ok(0));
+    }
+
+    #[test]
+    fn cannot_remove_more_than_stock() {
+        let mut inv = Inventory::default();
+        inv.add("pen", 1);
+        assert_eq!(
+            inv.remove("pen", 2),
+            Err(InvError::NotEnough { item: "pen".to_string(), have: 1, want: 2 })
+        );
+    }
+
+    #[test]
+    fn unknown_item_is_an_error() {
+        let mut inv = Inventory::default();
+        assert_eq!(inv.remove("x", 1), Err(InvError::UnknownItem("x".to_string())));
+    }
+}
+```
+
+Output of `main`:
+
+```
+Ok(11)
+Err(NotEnough { item: "book", have: 3, want: 5 })
+error: no such item: lamp
+book        3
+pen        11
+```
+
+Notes:
+- `get_mut(...).ok_or_else(...)?` turns "missing" into an error and gives a mutable reference to the count in one step.
+- A failed `remove` changes nothing, because the check happens before the subtraction.
+- Separating this logic from input/output makes it easy to test: run `cargo test`.
+@@@ END
+
+@@@ USER
+How do I design a plugin system in Rust with a trait that has default methods and a supertrait?
+@@@ ASSISTANT
+Define a trait for the common behavior. Required methods have no body; default methods have one and can be overridden. A supertrait (`trait Plugin: Debug`) means every plugin must also implement `Debug`, so you can print any plugin. Store plugins as `Box<dyn Plugin>`.
+
+```rust
+use std::fmt::Debug;
+
+trait Plugin: Debug {
+    fn name(&self) -> String;
+    fn run(&mut self, input: &str) -> String;
+
+    // Default method: plugins get this for free and may override it.
+    fn describe(&self) -> String {
+        format!("plugin '{}'", self.name())
+    }
+}
+
+#[derive(Debug)]
+struct Upper;
+
+#[derive(Debug)]
+struct Counter {
+    calls: u32,
+}
+
+#[derive(Debug)]
+struct Reverse;
+
+impl Plugin for Upper {
+    fn name(&self) -> String {
+        "upper".to_string()
+    }
+    fn run(&mut self, input: &str) -> String {
+        input.to_uppercase()
+    }
+}
+
+impl Plugin for Counter {
+    fn name(&self) -> String {
+        "counter".to_string()
+    }
+    fn run(&mut self, input: &str) -> String {
+        self.calls += 1;
+        format!("{} (call #{})", input, self.calls)
+    }
+    fn describe(&self) -> String {
+        format!("counter plugin, used {} times so far", self.calls)
+    }
+}
+
+impl Plugin for Reverse {
+    fn name(&self) -> String {
+        "reverse".to_string()
+    }
+    fn run(&mut self, input: &str) -> String {
+        input.chars().rev().collect()
+    }
+}
+
+fn run_all(plugins: &mut [Box<dyn Plugin>], input: &str) {
+    for p in plugins.iter_mut() {
+        println!("{} -> {}", p.describe(), p.run(input));
+    }
+}
+
+fn main() {
+    let mut plugins: Vec<Box<dyn Plugin>> =
+        vec![Box::new(Upper), Box::new(Counter { calls: 0 }), Box::new(Reverse)];
+
+    run_all(&mut plugins, "hello");
+    run_all(&mut plugins, "again");
+    println!("{:?}", plugins);
+}
+```
+
+Output:
+
+```
+plugin 'upper' -> HELLO
+counter plugin, used 0 times so far -> hello (call #1)
+plugin 'reverse' -> olleh
+plugin 'upper' -> AGAIN
+counter plugin, used 1 times so far -> again (call #2)
+plugin 'reverse' -> niaga
+[Upper, Counter { calls: 2 }, Reverse]
+```
+
+Design notes:
+- Adding a plugin means writing one struct and one `impl Plugin`; the code that runs plugins does not change.
+- `&mut self` on `run` lets a plugin keep state (like `calls`).
+- To load plugins from a file or a configuration at run time, create them with a function that returns `Box<dyn Plugin>` based on a name.
+- Traits with generic methods or methods returning `Self` cannot be used as `dyn Trait`; keep plugin traits simple.
+@@@ END
+
+@@@ USER
+Write Conway's Game of Life in Rust that prints each generation. Keep it simple and use only the standard library.
+@@@ ASSISTANT
+Store the board as `Vec<Vec<bool>>`. For each generation, build a **new** board from the old one (never change cells in place, or the rules would see half-updated data). The rules: a live cell survives with 2 or 3 live neighbors; a dead cell becomes alive with exactly 3.
+
+```rust
+fn neighbors(grid: &[Vec<bool>], row: usize, col: usize) -> usize {
+    let mut count = 0;
+    for dr in [-1i32, 0, 1] {
+        for dc in [-1i32, 0, 1] {
+            if dr == 0 && dc == 0 {
+                continue;
+            }
+            let r = row as i32 + dr;
+            let c = col as i32 + dc;
+            if r >= 0
+                && c >= 0
+                && (r as usize) < grid.len()
+                && (c as usize) < grid[0].len()
+                && grid[r as usize][c as usize]
+            {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn step(grid: &[Vec<bool>]) -> Vec<Vec<bool>> {
+    let mut next = vec![vec![false; grid[0].len()]; grid.len()];
+    for r in 0..grid.len() {
+        for c in 0..grid[0].len() {
+            let n = neighbors(grid, r, c);
+            next[r][c] = matches!((grid[r][c], n), (true, 2) | (true, 3) | (false, 3));
+        }
+    }
+    next
+}
+
+fn show(grid: &[Vec<bool>]) -> String {
+    grid.iter()
+        .map(|row| row.iter().map(|&alive| if alive { '#' } else { '.' }).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn main() {
+    // A "blinker": three cells in a row flip between horizontal and vertical.
+    let mut grid = vec![vec![false; 5]; 5];
+    grid[2][1] = true;
+    grid[2][2] = true;
+    grid[2][3] = true;
+
+    for generation in 0..3 {
+        println!("generation {}:\n{}\n", generation, show(&grid));
+        grid = step(&grid);
+    }
+}
+```
+
+Output:
+
+```
+generation 0:
+.....
+.....
+.###.
+.....
+.....
+
+generation 1:
+.....
+..#..
+..#..
+..#..
+.....
+
+generation 2:
+.....
+.....
+.###.
+.....
+.....
+```
+
+Notes:
+- Converting `usize` to `i32` before adding `-1` avoids the underflow panic of `0usize - 1`.
+- `matches!` with a tuple of `(is_alive, neighbor_count)` expresses the three rules in one line.
+- To animate in a terminal, loop with `std::thread::sleep(std::time::Duration::from_millis(200))` and print the escape code `"\x1B[2J\x1B[H"` to clear the screen before each frame.
+- To make the edges wrap around, use `rem_euclid` on the coordinates instead of checking bounds.
+@@@ END

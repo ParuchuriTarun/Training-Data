@@ -1,0 +1,318 @@
+@@@ USER
+How do I create and use a Python virtual environment on Windows, and what do I do when PowerShell says "running scripts is disabled on this system"?
+@@@ ASSISTANT
+A virtual environment (venv) gives one project its own copy of Python packages, so projects do not break each other.
+
+```powershell
+# 1. Create it inside the project folder (once)
+python -m venv .venv
+
+# 2. Activate it (the prompt now starts with (.venv))
+.\.venv\Scripts\Activate.ps1
+
+# 3. Install packages into this environment only
+python -m pip install --upgrade pip
+pip install numpy requests
+
+# 4. Save the exact versions so you can rebuild the environment later
+pip freeze > requirements.txt
+
+# 5. Leave the environment
+deactivate
+
+# Later, on another machine or after deleting .venv:
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+**If activation fails with "running scripts is disabled":** Windows blocks PowerShell scripts by default. Allow locally created scripts for your own user only:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+Then run the activate command again. In the old Command Prompt, use `.venv\Scripts\activate.bat`, which has no such restriction.
+
+Tips:
+- Add `.venv/` to `.gitignore`. Commit `requirements.txt`, not the environment itself.
+- To check you are using the right Python: `Get-Command python` should point inside `.venv`.
+- PyTorch with GPU support is installed with the command from pytorch.org (it uses a special download address for the CUDA version), not with a plain `pip install torch`.
+- Delete a broken environment by removing the `.venv` folder and creating it again.
+@@@ END
+
+@@@ USER
+Give me the Cargo commands I will use every day when building a Rust app.
+@@@ ASSISTANT
+```bash
+cargo new myapp            # create a binary project (use --lib for a library)
+cd myapp
+
+cargo check                # type-check only: fastest way to see compile errors
+cargo build                # debug build (fast to compile, slow to run)
+cargo run                  # build and run
+cargo run -- --name Asha   # pass arguments to your program (after the --)
+cargo build --release      # optimized build in target/release (slow to compile, fast to run)
+
+cargo test                 # run all tests
+cargo test parse           # only tests whose name contains "parse"
+cargo test -- --nocapture  # show println! output while testing
+
+cargo fmt                  # format the code in the standard style
+cargo clippy               # lints: catches common mistakes and non-idiomatic code
+
+cargo add serde            # add a dependency (writes it to Cargo.toml)
+cargo add tokio --features full
+cargo remove serde         # remove it again
+cargo update               # update dependencies within the allowed versions
+cargo tree                 # show the dependency tree
+
+cargo doc --open           # build and open documentation for your code and dependencies
+cargo clean                # delete the target folder (frees disk space, forces a full rebuild)
+```
+
+Good habits:
+- While coding, run `cargo check` often. It is much faster than `cargo build` because it skips producing the program.
+- Before sharing code: `cargo fmt`, `cargo clippy`, `cargo test`.
+- Always measure speed with `--release`. A debug build can be 10 to 100 times slower.
+- The `target` folder can grow to many gigabytes; keep it out of git (`/target` in `.gitignore`) and out of backups.
+@@@ END
+
+@@@ USER
+How do I call a web API from the terminal, with a JSON body and a header, on Windows and on Linux/macOS?
+@@@ ASSISTANT
+In PowerShell use `Invoke-RestMethod`, which also turns JSON replies into objects. Everywhere else use `curl`.
+
+PowerShell:
+
+```powershell
+# GET request, reply parsed from JSON
+Invoke-RestMethod -Uri "https://httpbin.org/get"
+
+# POST with a JSON body and a header
+$body = @{ name = "Asha"; age = 30 } | ConvertTo-Json
+Invoke-RestMethod -Uri "https://httpbin.org/post" -Method Post `
+    -Body $body -ContentType "application/json" `
+    -Headers @{ Authorization = "Bearer my-token" }
+
+# Only the status code (-SkipHttpErrorCheck needs PowerShell 7 or newer)
+(Invoke-WebRequest -Uri "https://httpbin.org/status/404" -SkipHttpErrorCheck).StatusCode
+```
+
+Linux, macOS and Git Bash (`curl`):
+
+```bash
+curl -s https://httpbin.org/get
+
+curl -s -X POST https://httpbin.org/post \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer my-token" \
+  -d '{"name": "Asha", "age": 30}'
+
+curl -i https://httpbin.org/status/404        # -i shows the response headers
+curl -L -o page.html https://example.com      # -L follows redirects, -o saves to a file
+curl -s -o /dev/null -w "%{http_code}\n" https://example.com   # print only the status code
+```
+
+Notes:
+- In Windows PowerShell 5, `curl` is an alias for `Invoke-WebRequest` and does not accept curl options. Type `curl.exe` to run the real curl that ships with Windows 10 and 11.
+- Single quotes around the JSON in bash stop the shell from touching the double quotes inside.
+- Never paste real tokens into commands you keep in shell history or scripts you share; read them from an environment variable (`$env:TOKEN` in PowerShell, `$TOKEN` in bash).
+@@@ END
+
+@@@ USER
+How do I zip a folder and back up a project to another drive on Windows from the terminal?
+@@@ ASSISTANT
+Use `Compress-Archive` for a zip file, and `robocopy` for copying a whole folder tree efficiently.
+
+```powershell
+# Zip the contents of a folder
+Compress-Archive -Path .\myproject\* -DestinationPath .\myproject-backup.zip -Force
+
+# Unzip it somewhere else
+Expand-Archive -Path .\myproject-backup.zip -DestinationPath .\restored
+
+# Copy a folder to another drive, skipping heavy folders.
+# /L only LISTS what would happen: run this first!
+robocopy C:\Projects\myproject D:\Backup\myproject /E /XD node_modules target .git /L
+
+# Real copy: remove /L. Copy only new and changed files each time.
+robocopy C:\Projects\myproject D:\Backup\myproject /E /XD node_modules target .git
+```
+
+What the robocopy options mean:
+- `/E` copies subfolders, including empty ones.
+- `/XD name1 name2` excludes folders with those names.
+- `/L` preview only, nothing is copied.
+- `/MIR` makes the destination an exact mirror, **including deleting files there that are not in the source**. Use it only when you really want that, and always preview with `/L` first.
+
+Good to know:
+- `robocopy` exit codes 0 to 7 mean success (for example 1 = files were copied); 8 or higher means a failure.
+- `Compress-Archive` can be slow and has size limits for very large folders. For big backups use `robocopy`, or `tar -a -c -f backup.zip folder`, which comes with modern Windows.
+- Exclude `node_modules` and `target` folders: they can be rebuilt and make backups huge.
+@@@ END
+
+@@@ USER
+Explain redirection and pipes in the terminal: >, >>, 2>&1, and |. How do I save a program's output to a file and also watch it live?
+@@@ ASSISTANT
+Programs have two output streams: **stdout** (normal output) and **stderr** (errors and warnings). Redirection sends them to files; a pipe sends stdout into another program.
+
+```powershell
+python script.py > out.txt            # stdout to a file (overwrite)
+python script.py >> out.txt           # stdout appended to the end of the file
+python script.py 2> errors.txt        # only the error stream to a file
+python script.py > all.txt 2>&1       # both streams into one file
+python script.py *> all.txt           # PowerShell shortcut: every stream
+
+# A pipe: output of the left command is the input of the right one
+Get-Process | Sort-Object CPU -Descending | Select-Object -First 5
+
+# Show output on screen AND save it
+python script.py 2>&1 | Tee-Object -FilePath run.log
+
+# Watch a log file grow in real time (like tail -f)
+Get-Content run.log -Tail 20 -Wait
+```
+
+The same ideas in bash:
+
+```bash
+python script.py > out.txt 2>&1       # both streams to one file
+python script.py 2>&1 | tee run.log   # screen and file together
+tail -f run.log                       # follow a growing file
+grep -i error run.log | wc -l         # count the lines containing "error"
+```
+
+Remember:
+- `>` replaces the file; use `>>` if you do not want to lose earlier content.
+- The order matters in `> all.txt 2>&1`: first point stdout at the file, then point stderr to the same place.
+- Press Ctrl+C to leave `-Wait` / `tail -f`; it does not stop the program that is writing the file.
+@@@ END
+
+@@@ USER
+Show me a normal git workflow for a feature branch: create it, commit, update from main, merge, and fix a merge conflict.
+@@@ ASSISTANT
+```bash
+# Start from an up-to-date main
+git switch main
+git pull
+
+# Create the feature branch and work on it
+git switch -c feature/dark-mode
+git add -A
+git commit -m "Add dark mode toggle"
+
+# Keep your branch current with main while you work
+git fetch origin
+git merge origin/main
+
+# Send it to the remote and open a pull request
+git push -u origin feature/dark-mode
+
+# After it is approved: merge into main and clean up
+git switch main
+git pull
+git merge --no-ff feature/dark-mode
+git push
+git branch -d feature/dark-mode
+```
+
+**Fixing a merge conflict.** If two branches changed the same lines, `git merge` stops and marks the file:
+
+```text
+<<<<<<< HEAD
+timeout = 30
+=======
+timeout = 60
+>>>>>>> origin/main
+```
+
+1. Open the file and decide what the correct result is. Everything between `<<<<<<<` and `>>>>>>>` is yours to rewrite. Delete all three marker lines, leaving only the final code (for example `timeout = 60`).
+2. Mark it as resolved and finish:
+
+```bash
+git add config.txt
+git commit          # the merge message is already filled in
+```
+
+3. Changed your mind? `git merge --abort` returns to the state before the merge.
+
+Useful extras:
+- `git status` always tells you what to do next.
+- `git log --oneline --graph --all` draws the branches in the terminal.
+- Merge keeps the full history. `git rebase main` makes a straight line instead, but rewrites your commits, so never rebase commits that others have already pulled.
+@@@ END
+
+@@@ USER
+How do I run a long program (like model training) in the background on Windows, keep its output in a log file, and check on it or stop it?
+@@@ ASSISTANT
+Use `Start-Process` with output redirection, then follow the log file.
+
+```powershell
+# Make sure the log folder exists
+New-Item -ItemType Directory -Force logs | Out-Null
+
+# Start in the background with no window; output goes to files
+Start-Process -FilePath python -ArgumentList "train.py" `
+    -RedirectStandardOutput logs\run.log -RedirectStandardError logs\err.log `
+    -WindowStyle Hidden
+
+# Watch the log live (Ctrl+C stops watching, not the program)
+Get-Content logs\run.log -Tail 20 -Wait
+
+# Is it still running? How much memory does it use?
+Get-Process python | Select-Object Id, CPU, @{n = 'RAM_GB'; e = { [math]::Round($_.WorkingSet64 / 1GB, 2) }}
+
+# GPU load, refreshed every 5 seconds
+nvidia-smi -l 5
+
+# Stop it
+Stop-Process -Name python
+```
+
+Important for training programs:
+- If your trainer saves checkpoints, stop it the way it expects (for example Ctrl+C in its own window, or a stop script) so that it can save first. `Stop-Process` ends it instantly and you may lose everything since the last save.
+- A hidden window means you cannot press Ctrl+C in it. If you want a safe stop, run the program in a normal terminal window instead.
+- `-RedirectStandardOutput` and `-RedirectStandardError` must point to different files.
+- Laptops: plug in the charger and set the power plan to "High performance", or the GPU will slow down; also disable sleep while training.
+@@@ END
+
+@@@ USER
+How do I find files by name or by modification date from the terminal?
+@@@ ASSISTANT
+PowerShell uses `Get-ChildItem` with filters; Linux, macOS and Git Bash use `find`.
+
+PowerShell:
+
+```powershell
+# All .log files anywhere below the current folder
+Get-ChildItem -Recurse -Filter *.log
+
+# Changed in the last 2 days
+Get-ChildItem -Recurse -File | Where-Object { $_.LastWriteTime -gt (Get-Date).AddDays(-2) }
+
+# Bigger than 100 MB
+Get-ChildItem -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 100MB }
+
+# Name contains "report" (any extension), show full path
+Get-ChildItem -Recurse -File -Filter "*report*" | Select-Object FullName
+
+# Delete .tmp files: preview first with -WhatIf
+Get-ChildItem -Recurse -Filter *.tmp | Remove-Item -WhatIf
+```
+
+bash:
+
+```bash
+find . -name "*.log"                    # by name
+find . -type f -mtime -2                # changed in the last 2 days
+find . -type f -size +100M              # bigger than 100 MB
+find . -iname "*report*"                # case-insensitive name
+find . -name "*.tmp" -type f -delete    # delete (check without -delete first!)
+```
+
+Tips:
+- `-Filter` in PowerShell is much faster than `-Include`, because the file system does the filtering.
+- Before any delete command, run the same command without the delete part (or with `-WhatIf`) and read the list.
+- `-ErrorAction SilentlyContinue` hides "access denied" messages for protected folders.
+@@@ END

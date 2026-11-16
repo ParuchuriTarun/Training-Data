@@ -1,0 +1,326 @@
+@@@ USER
+How do I find the biggest files in a folder (and all its subfolders) on Windows using PowerShell? I want name and size in KB.
+@@@ ASSISTANT
+List all files recursively, sort by `Length` (the size in bytes), take the first few, and calculate the size column.
+
+```powershell
+Get-ChildItem -Recurse -File |
+  Sort-Object Length -Descending |
+  Select-Object -First 10 Name, @{Name='SizeKB'; Expression={[math]::Round($_.Length / 1KB, 1)}} |
+  Format-Table -AutoSize
+```
+
+Example output for a folder with three files:
+
+```
+Name  SizeKB
+----  ------
+b.bin      5
+c.log      3
+a.txt      1
+```
+
+How it works:
+- `-Recurse` goes into all subfolders; `-File` skips folders.
+- `Sort-Object Length -Descending` puts the biggest first.
+- `@{Name=...; Expression={...}}` is a **calculated property**: a new column made from a script block, where `$_` is the current file. `1KB` is built into PowerShell (1024).
+- Use `-First 10` to keep the list short. For huge folders add `-ErrorAction SilentlyContinue` after `-File` to hide "access denied" messages.
+- To see where each file lives, add `Directory` to the `Select-Object` list.
+- The cmd.exe way is much weaker: `dir /s /o-s` sorts only inside each folder.
+@@@ END
+
+@@@ USER
+In PowerShell, how do I search for the text TODO inside all .py files of a project and see file name, line number and the line?
+@@@ ASSISTANT
+Pipe the files into `Select-String`. It is the PowerShell version of `grep`, and it returns objects, so you can pick the columns you want.
+
+```powershell
+Get-ChildItem -Recurse -Filter *.py |
+  Select-String -Pattern 'TODO' |
+  Select-Object Filename, LineNumber, Line |
+  Format-Table -AutoSize
+```
+
+Example output (two Python files, plus a `notes.txt` that is ignored because of the filter):
+
+```
+Filename LineNumber Line
+-------- ---------- ----
+app.py            2 # TODO: handle errors
+util.py           2     return 1  # todo later
+util.py           3 # TODO: tests
+```
+
+Notes:
+- `Select-String` ignores upper/lower case by default, so `# todo later` is found too. Add `-CaseSensitive` if you want an exact match.
+- `-Pattern` is a **regular expression**. For a plain text with special characters use `-SimpleMatch`.
+- `-Filter *.py` is faster than `-Include`, because the file system does the filtering.
+- Skip big folders such as `node_modules` and `.git`: add `| Where-Object { $_.FullName -notmatch 'node_modules|\\.git\\' }` after `Get-ChildItem`.
+- On Linux and macOS the same job is `grep -rn "TODO" --include="*.py" .`
+@@@ END
+
+@@@ USER
+How do I rename many files at once in PowerShell, for example change all .jpeg files to .jpg? I want to preview first.
+@@@ ASSISTANT
+`Rename-Item` accepts a **script block** for `-NewName`, so the new name can be calculated for each file. The `-WhatIf` switch shows what would happen without changing anything. Always run it first.
+
+```powershell
+# 1. preview only: nothing is renamed
+Get-ChildItem -Filter *.jpeg | Rename-Item -NewName { $_.BaseName + '.jpg' } -WhatIf
+
+# 2. do it
+Get-ChildItem -Filter *.jpeg | Rename-Item -NewName { $_.BaseName + '.jpg' }
+
+# 3. check
+(Get-ChildItem).Name
+```
+
+Output (the folder here is `C:\work`):
+
+```
+What if: Performing the operation "Rename File" on target "Item: C:\work\a.jpeg Destination: C:\work\a.jpg".
+What if: Performing the operation "Rename File" on target "Item: C:\work\b.jpeg Destination: C:\work\b.jpg".
+a.jpg
+b.jpg
+keep.png
+```
+
+Notes:
+- `$_.BaseName` is the name without the extension, so `photo.jpeg` becomes `photo.jpg`.
+- The same idea works for other changes: add a prefix with `'2026_' + $_.Name`, make lowercase with `$_.Name.ToLower()`, replace text with `$_.Name -replace ' ', '_'`.
+- Add `-Recurse` to `Get-ChildItem` to include subfolders.
+- If two files would get the same new name, PowerShell stops with an error for that file instead of overwriting.
+- `-WhatIf` and `-Confirm` work with most commands that change something (`Remove-Item`, `Move-Item`, `Stop-Process`). Use them whenever you are not sure.
+@@@ END
+
+@@@ USER
+I have a sales.csv with the columns date, region, amount. How do I get the number of orders and the total amount per region in PowerShell, biggest total first?
+
+```
+date,region,amount
+2026-11-01,North,120.50
+2026-11-01,South,80
+2026-11-02,North,60
+2026-11-02,East,200
+2026-11-03,South,45.25
+```
+@@@ ASSISTANT
+`Import-Csv` turns every row into an object with properties named like the columns. Group by region, build one summary object per group, then sort.
+
+```powershell
+Import-Csv sales.csv |
+  Group-Object region |
+  ForEach-Object {
+    [pscustomobject]@{
+      Region = $_.Name
+      Orders = $_.Count
+      Total  = ($_.Group | ForEach-Object { [decimal]$_.amount } | Measure-Object -Sum).Sum
+    }
+  } |
+  Sort-Object Total -Descending |
+  Format-Table -AutoSize
+```
+
+Output:
+
+```
+Region Orders  Total
+------ ------  -----
+East        1    200
+North       2  180.5
+South       2 125.25
+```
+
+Why each step is needed:
+- All values from `Import-Csv` are **text**. `[decimal]$_.amount` converts them to numbers. Without the conversion, sorting would be alphabetical ("80" after "200") and sums can fail.
+- `Group-Object` gives each group a `Name` (the region), a `Count` and the `Group` (the rows).
+- `[pscustomobject]@{...}` creates a new row object. This works in every PowerShell version; do not use `Measure-Object { script }` because only PowerShell 7 supports that.
+- To save the result use `Export-Csv summary.csv -NoTypeInformation` instead of `Format-Table` (which is only for display).
+@@@ END
+
+@@@ USER
+My app.log has lines like "2026-11-12 09:40:12 ERROR db timeout". In PowerShell, how do I count the ERROR lines per hour?
+
+```
+2026-11-12 09:15:01 INFO  started
+2026-11-12 09:40:12 ERROR db timeout
+2026-11-12 10:02:55 ERROR db timeout
+2026-11-12 10:03:10 WARN  slow query
+2026-11-12 10:59:59 ERROR disk full
+2026-11-12 12:00:00 INFO  heartbeat
+```
+@@@ ASSISTANT
+Keep only the lines with ` ERROR `, cut the hour out of the time column, then count the groups.
+
+```powershell
+Get-Content app.log |
+  Where-Object { $_ -match ' ERROR ' } |
+  ForEach-Object { ($_ -split ' ')[1].Substring(0, 2) } |
+  Group-Object |
+  Sort-Object Name |
+  ForEach-Object { '{0}:00  {1} error(s)' -f $_.Name, $_.Count }
+```
+
+Output:
+
+```
+09:00  1 error(s)
+10:00  2 error(s)
+```
+
+Explanation:
+- `$_ -split ' '` cuts a line at spaces; element `[1]` is the time `09:40:12`; `Substring(0, 2)` is the hour.
+- `Group-Object` without a property groups equal strings, and gives each group a `Count`.
+- `-f` is the format operator: `{0}` and `{1}` are replaced by the arguments.
+- Hours without errors do not appear (12:00 is missing). Add them yourself if you need a complete table.
+- A log with a different format needs a different cut. A regular expression is more robust: `if ($_ -match '^\S+ (\d\d):') { $Matches[1] }`.
+- For very large logs, `Get-Content -ReadCount 1000` or `Select-String` is faster than reading line by line.
+@@@ END
+
+@@@ USER
+Write a PowerShell function that backs up a folder into .\backups with today's date in the name. It must check that the folder exists and print a clear message when copying fails.
+@@@ ASSISTANT
+Use an **advanced function** (`[CmdletBinding()]`) with a typed, validated parameter, and a `try/catch` around the operations. `-ErrorAction Stop` is important: many cmdlets only print a **non-terminating** error, which `catch` cannot see, unless you turn it into a terminating one.
+
+```powershell
+function Backup-Folder {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateScript({ Test-Path $_ -PathType Container })]
+        [string]$Source,
+
+        [string]$Destination = '.\backups'
+    )
+
+    $stamp  = Get-Date -Format 'yyyyMMdd'
+    $target = Join-Path $Destination ((Split-Path $Source -Leaf) + "-$stamp")
+
+    try {
+        New-Item -ItemType Directory -Path $Destination -Force -ErrorAction Stop | Out-Null
+        Copy-Item -Path $Source -Destination $target -Recurse -ErrorAction Stop
+        Write-Host "Backed up to $target"
+    }
+    catch {
+        Write-Error "Backup failed: $($_.Exception.Message)"
+    }
+}
+
+Backup-Folder -Source .\project
+Backup-Folder -Source .\missing
+```
+
+Output (run on 13 November 2026):
+
+```
+Backed up to .\backups\project-20261113
+Backup-Folder : Cannot validate argument on parameter 'Source'. The " Test-Path $_ -PathType Container " validation script for the argument with value ".\missing" did not return a result of True. Determine why the validation script failed, and then try the command again.
+```
+
+The folder `.\backups\project-20261113` now contains a copy of everything in `project`.
+
+Details:
+- `[Parameter(Mandatory)]` asks for the value if you forget it. `[ValidateScript]` rejects a folder that does not exist **before** the function body runs, with a clear message.
+- `Join-Path` and `Split-Path -Leaf` build the target name safely, with the right slashes and without string cutting.
+- Running the backup twice on the same day gives an error, because the target already exists. Add the time to the stamp (`yyyyMMdd-HHmmss`) if you want several backups per day.
+- To run it every night use Task Scheduler with `powershell.exe -NoProfile -File C:\scripts\backup.ps1`.
+@@@ END
+
+@@@ USER
+How do I see how much space each top-level folder uses in PowerShell, biggest first, in MB?
+@@@ ASSISTANT
+PowerShell has no single command like `du`. Loop over the folders, add up the sizes of all files inside each one, and create one row per folder.
+
+```powershell
+Get-ChildItem -Directory | ForEach-Object {
+    $bytes = (Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue |
+              Measure-Object Length -Sum).Sum
+    [pscustomobject]@{ Folder = $_.Name; SizeMB = [math]::Round($bytes / 1MB, 2) }
+} | Sort-Object SizeMB -Descending | Format-Table -AutoSize
+```
+
+Output for a folder `docs` with one 1 MB file and a folder `media` with 3 MB and 1 MB files:
+
+```
+Folder SizeMB
+------ ------
+media       4
+docs        1
+```
+
+Notes:
+- `Measure-Object Length -Sum` adds the `Length` of every file; the `.Sum` property is the total in bytes.
+- `-ErrorAction SilentlyContinue` hides "access denied" messages for folders you cannot read (the totals then miss those files).
+- An empty folder has no files, so `.Sum` is empty and the size shows as 0.
+- This reads every file entry, so it takes a while on a big drive (for example `C:\Users`). For a quick look at where the space went, a tool such as WinDirStat or TreeSize is faster.
+@@@ END
+
+@@@ USER
+How can I find duplicate files in a folder with PowerShell? Files with the same content, even when the names differ.
+@@@ ASSISTANT
+Calculate a **hash** of the content of every file. Files with the same hash have the same content, whatever their names are.
+
+```powershell
+Get-ChildItem -File |
+  Get-FileHash -Algorithm SHA256 |
+  Group-Object Hash |
+  Where-Object Count -gt 1 |
+  ForEach-Object { ($_.Group.Path | Split-Path -Leaf) -join '  =  ' }
+```
+
+Output for a folder with `a.txt` and `copy_of_a.txt` (same text) and `b.txt` (different text):
+
+```
+a.txt  =  copy_of_a.txt
+```
+
+Explanation:
+- `Get-FileHash` returns an object with `Hash` and `Path` for each file.
+- `Group-Object Hash` puts files with the same hash together; `Where-Object Count -gt 1` keeps only the groups with more than one file.
+- Add `-Recurse` to `Get-ChildItem` to look in subfolders too.
+- Hashing reads the whole file, so on big folders first group by `Length` (files with different sizes cannot be equal) and hash only the groups that have more than one file.
+- **Check before you delete.** List the duplicates, look at them, then remove the ones you do not need with `Remove-Item -WhatIf` first.
+@@@ END
+
+@@@ USER
+Port 3000 is already in use on my Windows PC and my dev server will not start. How do I find which program uses it and stop it?
+@@@ ASSISTANT
+Ask Windows which process **owns** the connection that listens on that port, then look up the process by its ID.
+
+```powershell
+# 1. which process listens on port 3000?
+$conn = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
+$conn | Select-Object LocalAddress, LocalPort, OwningProcess
+
+# 2. what is it?
+Get-Process -Id $conn.OwningProcess | Select-Object Id, ProcessName, Path
+
+# 3. stop it (only if it is really not needed)
+Stop-Process -Id $conn.OwningProcess
+```
+
+The output depends on your computer. It looks like this when a Node server is running:
+
+```
+LocalAddress LocalPort OwningProcess
+------------ --------- -------------
+::                3000         14212
+
+   Id ProcessName Path
+   -- ----------- ----
+14212 node        C:\Program Files\nodejs\node.exe
+```
+
+The old way with cmd.exe works on every Windows version:
+
+```
+netstat -ano | findstr :3000
+taskkill /PID 14212 /F
+```
+
+Notes:
+- If step 1 prints nothing, nothing listens on the port. The error then comes from something else, such as a firewall rule or a port that Windows reserved (check with `netsh interface ipv4 show excludedportrange protocol=tcp`).
+- Look at the process name before you stop it. An old `node` that you started yourself is fine to stop; a system process or your database is not.
+- `Stop-Process` without `-Force` asks the program to end in the normal way when it can. Use `-Force` only when it does not react.
+- The easier long-term fix is to start the dev server on another port, for example `npm run dev -- --port 3001`.
+@@@ END

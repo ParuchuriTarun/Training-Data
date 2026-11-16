@@ -4,9 +4,9 @@ Collected 2026-11-12. Only sources under MIT, Apache-2.0 or CC0 were used. The f
 text of every source is copied into `data/licenses/<repo>/`, because MIT and Apache-2.0 require
 the copyright notice to travel with the material.
 
-The converted text is in `data/external/oss_*.txt`. Converters: `data/tools/oss_convert.py` (mdBook
-sources) and `data/tools/oss_convert2.py` (everything else). Post-processing: `data/tools/oss_verify_rust.py`
-and `data/tools/oss_clean_webdev.py`.
+The converted text is in `data/external/oss_*.txt`. Converters: `data/oss_convert.py` (mdBook
+sources) and `data/oss_convert2.py` (everything else). Post-processing: `data/oss_verify_rust.py`
+and `data/oss_clean_webdev.py`.
 
 ## Sources used
 
@@ -26,6 +26,15 @@ and `data/tools/oss_clean_webdev.py`.
 | oss_webdev_beginners.txt | https://github.com/microsoft/Web-Dev-For-Beginners | 93b9967af14e | MIT | Microsoft Corporation |
 | oss_tauri_docs.txt | https://github.com/tauri-apps/tauri-docs | ed0786ec8669 | MIT | Tauri Programme within the Commons Conservancy |
 | oss_airbnb_js.txt | https://github.com/airbnb/javascript | 8ed19247bef1 | MIT | Airbnb |
+| oss_rust_nomicon.txt | https://github.com/rust-lang/nomicon | b0bb569883a3 | MIT OR Apache-2.0 | The Rust Project Developers (see LICENSE-MIT) |
+| oss_rust_reference.txt | https://github.com/rust-lang/reference | bcd62f35e8bf | MIT OR Apache-2.0 | The Rust Project Developers (see LICENSE-MIT) |
+| oss_rust_edition_guide.txt | https://github.com/rust-lang/edition-guide | ab8544aeed7b | MIT OR Apache-2.0 | The Rust Project Developers (see LICENSE-MIT) |
+| oss_rust_cargo_book.txt, oss_rust_cargo_contrib.txt | https://github.com/rust-lang/cargo (doc/book, doc/contrib) | f93c676e3e7a | MIT OR Apache-2.0 | The Rust Project Developers (see LICENSE-MIT) |
+| oss_rustc_dev_guide.txt | https://github.com/rust-lang/rustc-dev-guide | bc3f08932e05 | MIT OR Apache-2.0 | The Rust Project Developers (see LICENSE-MIT) |
+| oss_rust_cli_book.txt | https://github.com/rust-cli/book | bfb30887e301 | MIT | rust-lang-nursery |
+| oss_tokio_docs.txt | https://github.com/tokio-rs/website (content/tokio) | 71cdb3858fbb | MIT | Carl Lerche and Tokio website contributors |
+| oss_node_docs.txt | https://github.com/nodejs/node (doc/api only) | 90493f098a53 | MIT | Node.js contributors |
+| oss_js_algorithms.txt | https://github.com/trekhleb/javascript-algorithms (English README files only) | 85293e3e2b88 | MIT | Oleksii Trekhleb |
 
 The Rust Book, Rust By Example and the API Guidelines are dual-licensed; this project takes
 them under the MIT option.
@@ -36,9 +45,8 @@ them under the MIT option.
 |---|---|---|
 | vuejs/docs | CC BY 4.0 (everything except images) | Attribution licence, outside the MIT / Apache / CC0 rule |
 | leonardomso/33-js-concepts | MIT | The content is mostly links to other people's articles |
-| trekhleb/javascript-algorithms | MIT | Not converted yet |
 | emilk/egui | MIT OR Apache-2.0 | Not converted yet |
-| rust-lang/reference | MIT OR Apache-2.0 | Not converted yet |
+| google/comprehensive-rust | Apache-2.0 (code) and CC BY 4.0 (all .md text) | The course text is CC BY 4.0, outside the MIT / Apache / CC0 rule |
 
 Anything under CC BY-SA, CC BY-NC, GPL or an unknown licence was left out on purpose.
 

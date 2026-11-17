@@ -1,0 +1,4123 @@
+@@@ USER
+Give me a cheat sheet for Golang.
+@@@ ASSISTANT
+## Summary
+
+-   Introduction
+    -   Hello World
+    -   Go CLI Commands
+    -   Go Modules
+-   Basic
+    -   Basic Types
+    -   Variables
+    -   Operators
+    -   Conditional Statements
+    -   Loops
+    -   Arrays
+    -   Functions
+-   Advanced
+    -   Structs
+    -   Maps
+    -   Pointers
+    -   Methods and Interfaces
+    -   Errors
+    -   Testing
+    -   Concurrency
+-   Standard Libs
+    -   Package fmt
+
+## Hello World
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("Hello Gophers!")
+}
+```
+
+Return to Summary
+
+<hr/>
+
+## Go CLI Commands
+
+```bash
+# Compile & Run code
+$ go run [file.go]
+
+# Compile
+$ go build [file.go]
+# Running compiled file
+$ ./hello
+
+# Test packages
+$ go test [folder]
+
+# Install packages/modules
+$ go install [package]
+
+# List installed packages/modules
+$ go list
+
+# Update packages/modules
+$ go fix
+
+# Format package sources
+$ go fmt
+
+# See package documentation
+$ go doc [package]
+
+# Add dependencies and install
+$ go get [module]
+
+# See Go environment variables
+$ go env
+
+# See version
+$ go version
+```
+
+Return to Summary
+
+<hr/>
+
+## Go Modules
+
+-   Go projects are called **modules**
+-   Each module has multiple **packages**
+-   Each package should has a scoped functionality. Packages talk to each other to compose the code
+-   A module needs at least one package, the **main**
+-   The package main needs a entry function called **main**
+
+```bash
+# Create Module
+$ go mod init [name]
+```
+
+Tip: By convention, modules names has the follow structure:
+
+domain.com/user/module/package
+
+Example: github.com/spf13/cobra
+
+<hr/>
+
+Return to Summary
+
+## Basic Types
+
+|    Type    |               Set of Values                |                    Values                     |
+| :--------: | :----------------------------------------: | :-------------------------------------------: |
+|    bool    |                  boolean                   |                  true/false                   |
+|   string   |            array of characters             |             needs to be inside ""             |
+|    int     |                  integers                  |             32 or 64 bit integer              |
+|    int8    |               8-bit integers               |                 [ -128, 128 ]                 |
+|   int16    |              16-bit integers               |               [ -32768, 32767]                |
+|   int32    |              32-bit integers               |          [ -2147483648, 2147483647]           |
+|   int64    |              64-bit integers               | [ -9223372036854775808, 9223372036854775807 ] |
+|   uint8    |          8-bit unsigned integers           |                  [ 0, 255 ]                   |
+|   uint16   |          16-bit unsigned integers          |                 [ 0, 65535 ]                  |
+|   uint32   |          32-bit unsigned integers          |               [ 0, 4294967295 ]               |
+|   uint64   |          64-bit unsigned integers          |          [ 0, 18446744073709551615 ]          |
+|  float32   |                32-bit float                |                                               |
+|  float64   |                64-bit float                |                                               |
+| complex64  | 32-bit float with real and imaginary parts |                                               |
+| complex128 | 64-bit float with real and imaginary parts |                                               |
+|    byte    |                sets of bits                |                alias for uint8                |
+|    rune    |             Unicode characters             |                alias for int32                |
+
+Return to Summary
+
+<hr/>
+
+## Variables
+
+```go
+// Declaration
+var value int
+
+// Initialization
+value = 10
+
+// Declaration + Initialization + Type inference
+var isActive = true
+
+// Short declaration (only inside functions)
+text := "Hello"
+
+// Multi declaration
+var i, j, k = 1, 2, 3
+
+// Variable not initialized = Zero values
+// Numeric: 0
+// Boolean: false
+// String: ""
+// Special value: nil (same as null)
+
+var number int // 0
+var text string // ""
+var boolean bool // false
+
+// Type conversions
+// T(v) converts v to type T
+
+i := 1.234 // float
+int(i) // 1
+
+// Constants
+const pi = 3.1415
+```
+
+<hr/>
+
+## Operators
+
+Return to Summary
+
+Arithmetic Operators
+| Symbol | Operation | Valid Types |
+|:---------:|:-------------:|:-------------:|
+| `+` | Sum | integers, floats, complex values, strings |
+| `-` | Difference | integers, floats, complex values |
+| `*` | Product | integers, floats, complex values |
+| `/` | Quotient | integers, floats, complex values |
+| `%` | Remainder | integers |
+| `&` | Bitwise AND | integers |
+| `|` | Bitwise OR | integers |
+| `^` | Bitwise XOR | integers |
+| `&^` | Bit clear (AND NOT) | integers |
+| `<<` | Left shift | integer << unsigned integer |
+| `>>` | Right shift | integer >> unsigned integer |
+
+Comparison Operators
+| Symbol | Operation |
+|:---------:|:-------------:|
+| `==` | Equal |
+| `!=` | Not equal |
+| `<` | Less |
+| `<=` | Less or equal |
+| `>` | Greater |
+| `>=` | Greater or equal |
+
+Logical Operators
+| Symbol | Operation |
+|:---------:|:-------------:|
+| `&&` | Conditional AND |
+| `||` | Conditional OR |
+| `!` | NOT |
+
+Return to Summary
+
+<hr/>
+
+## Conditional Statements
+
+```go
+// If / Else
+i := 1
+
+if i > 0 {
+    // Condition is True! i is greater than zero
+} else {
+    // Condition is False! i is lower or equal to zero
+}
+
+// Else if
+i := 1
+
+if i > 0 {
+    // Condition is True! i is greater than zero
+} else if i > 0 && i < 2 {
+    // Condition is True! i greater than zero and lower than two
+} else if i > 1 && i < 4 {
+    // Condition is True! i greater than one and lower than four
+} else {
+    // None of the above conditions is True, so it falls here
+}
+
+// If with short statements
+i := 2.567
+
+if j := int(i); j == 2 {
+    // Condition is True! j, the integer value of i, is equal to two
+} else {
+    // Condition is False! j, the integer value of i, is not equal to two
+}
+
+// Switch
+text := 'hey'
+
+switch text {
+    case 'hey':
+        // 'Hello!'
+    case 'bye':
+        // 'Byee'
+    default:
+        // 'Ok'
+}
+
+// Switch without condition
+value := 5
+
+switch {
+    case value < 2:
+        // 'Hello!'
+    case value >= 2 && value < 6:
+        // 'Byee'
+    default:
+        // 'Ok'
+}
+```
+
+Return to Summary
+
+<hr/>
+
+## Loops
+
+```go
+// Golang only has the for loop
+for i := 0; i < 10; i++ {
+    // i
+}
+
+// The first and third parameters are ommitable
+// For as a while
+i := 0;
+
+for i < 10 {
+    i++
+}
+
+// Forever loop
+for {
+
+}
+```
+
+Return to Summary
+
+<hr/>
+@@@ END
+
+@@@ USER
+Give me a cheat sheet for Golang: Arrays.
+@@@ ASSISTANT
+```go
+// Declaration with specified size
+var array [3]string
+array[0] = "Hello"
+array[1] = "Golang"
+array[2] = "World"
+
+// Declaration and Initialization
+values := [5]int{1, 2, 3, 4, 5}
+
+// Slices: A subarray that acts as a reference of an array
+// Determining min and max
+values[1:3] // {2, 3, 4}
+
+// Determining only max will use min = 0
+values[:2] // {1, 2, 3}
+
+// Determining only min will use max = last element
+values[3:] // {3, 4}
+
+// Length: number of elements that a slice contains
+len(values) // 5
+
+// Capacity: number of elements that a slice can contain
+values = values[:1]
+len(values) // 2
+cap(values) // 5
+
+// Slice literal
+slice := []bool{true, true, false}
+
+// make function: create a slice with length and capacity
+slice := make([]int, 5, 6) // make(type, len, cap)
+
+// Append new element to slice
+slice := []int{ 1, 2 }
+slice = append(slice, 3)
+slice // { 1, 2, 3 }
+slice = append(slice, 3, 2, 1)
+slice // { 1, 2, 3, 3, 2, 1 }
+
+// For range: iterate over a slice
+slice := string["W", "o", "w"]
+
+for i, value := range slice {
+    i // 0, then 1, then 2
+    value // "W", then "o", then "w"
+}
+
+// Skip index or value
+
+for i := range slice {
+    i // 0, then 1, then 2
+}
+
+for _, value := range slice {
+   value // "W", then "o", then "w"
+}
+```
+
+Return to Summary
+
+<hr/>
+
+## Functions
+
+```go
+// Functions acts as a scoped block of code
+func sayHello() {
+    // Hello World!
+}
+sayHello() // Hello World!
+
+// Functions can take zero or more parameters, as so return zero or more parameters
+func sum(x int, y int) int {
+    return x + y
+}
+sum(3, 7) // 10
+
+// Returned values can be named and be used inside the function
+func doubleAndTriple(x int) (double, triple int) {
+    double = x * 2
+    triple = x * 3
+    return
+}
+d, t := doubleAndTriple(5)
+// d = 10
+// t = 15
+
+// Skipping one of the returned values
+_, t := doubleAndTriple(3)
+// t = 9
+
+// Functions can defer commands. Deferred commands are
+// ran in a stack order after the execution and
+// returning of a function
+var aux = 0
+
+func switchValuesAndDouble(x, y int) {
+    aux = x
+    defer aux = 0 // cleaning variable to post use
+    x = y * 2
+    y = aux * 2
+}
+
+a, b = 2, 5
+switchValuesAndDouble(2, 5)
+
+// a = 10
+// b = 4
+// aux = 0
+
+// Functions can be handled as values and be anonymous functions
+func calc(fn func(int, int) int) int {
+    return fn(2, 6)
+}
+
+func sum(x, y int) int {
+    return x + y
+}
+
+func mult(x, y int) int {
+    return x * y
+}
+
+calc(sum) // 8
+calc(mult) // 12
+calc(
+    func(x, y int) int {
+		return x / y
+    }
+) // 3
+
+// Function closures: a function that returns a function
+// that remembers the original context
+func calc() func(int) int {
+    value := 0
+    return func(x int) int {
+        value += x
+        return value
+    }
+}
+
+calculator := calc()
+calculator(3) // 3
+calculator(45) // 48
+calculator(12) // 60
+```
+
+Return to Summary
+
+<hr/>
+
+## Structs
+
+Structs are a way to arrange data in specific formats.
+
+```go
+// Declaring a struct
+type Person struct {
+    Name string
+    Age int
+}
+
+// Initializing
+person := Person{"John", 34}
+person.Name // "John"
+person.Age // 34
+
+person2 := Person{Age: 20}
+person2.Name // ""
+person2.Age // 20
+
+person3 := Person{}
+person3.Name // ""
+person3.Age // 0
+```
+
+Return to Summary
+
+<hr/>
+
+## Maps
+
+Maps are data structures that holds values assigned to a key.
+
+```go
+// Declaring a map
+var cities map[string]string
+
+// Initializing
+cities = make(map[string]string)
+cities // nil
+
+// Insert
+cities["NY"] = "EUA"
+
+// Retrieve
+newYork = cities["NY"]
+newYork // "EUA"
+
+// Delete
+delete(cities, "NY")
+
+// Check if a key is set
+value, ok := cities["NY"]
+ok // false
+value // ""
+```
+
+Return to Summary
+
+<hr/>
+
+## Pointers
+
+Pointers are a direct reference to a memory address that some variable or value is being stored.
+
+```go
+// Pointers has *T type
+var value int
+var pointer *int
+
+// Point to a variable memory address with &
+value = 3
+pointer = &value
+
+pointer // 3
+pointer = 20
+pointer // 20
+pointer += 5
+pointer // 25
+
+// Pointers to structs can access the attributes
+type Struct struct {
+    X int
+}
+
+s := Struct{3}
+pointer := &s
+
+s.X // 3
+```
+
+Obs: Unlike C, Go doesn't have pointer arithmetics.
+
+Return to Summary
+
+<hr/>
+
+## Methods and Interfaces
+
+Go doesn't have classes. But you can implement methods, interfaces and almost everything contained in OOP, but in what gophers call "Go Way"
+
+```go
+type Dog struct {
+    Name string
+}
+
+func (dog *Dog) bark() string {
+    return dog.Name + " is barking!"
+}
+
+dog := Dog{"Rex"}
+dog.bark() // Rex is barking!
+```
+
+Interfaces are implicitly implemented. You don't need to inform that your struct are correctly implementing a interface if it already has all methods with the same name of the interface.
+All structs implement the `interface{}` interface. This empty interface means the same as `any`.
+
+```go
+// Car implements Vehicle interface
+type Vehicle interface {
+    Accelerate()
+}
+
+type Car struct {
+
+}
+
+func (car *Car) Accelerate() {
+    return "Car is moving on ground"
+}
+```
+
+Return to Summary
+
+<hr/>
+
+## Errors
+
+Go doesn't support `throw`, `try`, `catch` and other common error handling structures. Here, we use `error` package to build possible errors as a returning parameter in functions
+
+```go
+import "errors"
+
+// Function that contain a logic that can cause a possible exception flow
+func firstLetter(text string) (string, error) {
+    if len(text) < 1 {
+        return nil, errors.New("Parameter text is empty")
+    }
+    return string(text[0]), nil
+}
+
+a, errorA := firstLetter("Wow")
+a // "W"
+errorA // nil
+
+b, errorB := firstLetter("")
+b // nil
+errorB // Error("Parameter text is empty")
+```
+
+Return to Summary
+
+<hr/>
+
+## Testing
+
+Go has a built-in library to unit testing. In a separate file you insert tests for functionalities of a file and run `go test package` to run all tests of the actual package or `go test path` to run a specific test file.
+
+```go
+// main.go
+func Sum(x, y int) int {
+    return x + y
+}
+
+// main_test.go
+import (
+    "testing"
+    "reflect"
+)
+
+func TestSum(t *testing.T) {
+    x, y := 2, 4
+    expected := 2 + 4
+
+    if !reflect.DeepEqual(Sum(x, y), expected) {
+        t.Fatalf("Function Sum not working as expected")
+    }
+}
+```
+
+Return to Summary
+
+<hr/>
+@@@ END
+
+@@@ USER
+What are the most useful things to know about Golang: Concurrency? Short reference please.
+@@@ ASSISTANT
+One of the main parts that make Go attractive is its form to handle with concurrency. Different than parallelism, where tasks can be separated in many cores that the machine processor have, in concurrency we have routines that are more lightweight than threads and can run asynchronously, with memory sharing and in a single core.
+
+```go
+// Consider a common function, but that function can delay itself because some processing
+func show(from string) {
+	for i := 0; i < 3; i++ {
+		fmt.Printf("%s : %d\n", from, i)
+	}
+}
+
+// In a blocking way...
+func main() {
+	show("blocking1")
+	show("blocking2")
+
+	fmt.Println("done")
+}
+/*  blocking1: 0
+    blocking1: 1
+    blocking1: 2
+    blocking2: 0
+    blocking2: 1
+    blocking2: 2
+    done
+*/
+
+// Go routines are a function (either declared previously or anonymous) called with the keyword go
+func main() {
+	go show("routine1")
+	go show("routine2")
+
+	go func() {
+		fmt.Println("going")
+	}()
+
+	time.Sleep(time.Second)
+
+	fmt.Println("done")
+}
+
+/*  Obs: The result will depends of what processes first
+    routine2: 0
+    routine2: 1
+    routine2: 2
+    going
+    routine1: 0
+    routine1: 1
+    routine1: 2
+    done
+*/
+
+// Routines can share data with channels
+// Channels are queues that store data between multiple routines
+msgs := make(chan string)
+
+go func(channel chan string) {
+    channel <- "ping"
+}(msgs)
+
+go func(channel chan string) {
+    channel <- "pong"
+}(msgs)
+
+fmt.Println(<-msgs) // pong
+fmt.Println(<-msgs) // ping
+
+// Channels can be bufferized. Buffered channels will accept a limited number of values and when someone try to put belong their limit, it will throw and error
+numbers := make(chan int, 2)
+
+msgs<-0
+msgs<-1
+msgs<-2
+
+// fatal error: all goroutines are asleep - deadlock!
+
+// Channels can be passed as parameter where the routine can only send or receive
+numbers := make(chan int)
+
+go func(sender chan<- int) {
+    sender <- 10
+}(numbers)
+
+go func(receiver <-chan int) {
+    fmt.Println(<-receiver) // 10
+}(numbers)
+
+time.Sleep(time.Second)
+
+// When working with multiple channels, the select can provide a control to execute code accordingly of what channel has bring a message
+c1 := make(chan string)
+c2 := make(chan string)
+
+select {
+case msg1 := <-c1:
+    fmt.Println("received", msg1)
+case msg2 := <-c2:
+    fmt.Println("received", msg2)
+default:
+    fmt.Println("no messages")
+}
+
+go func() {
+    time.Sleep(1 * time.Second)
+    c1 <- "channel1 : one"
+}()
+go func() {
+    time.Sleep(2 * time.Second)
+    c2 <- "channel2 : one"
+}()
+
+for i := 0; i < 2; i++ {
+    select {
+    case msg1 := <-c1:
+        fmt.Println("received", msg1)
+    case msg2 := <-c2:
+        fmt.Println("received", msg2)
+    }
+}
+
+/*
+    no messages
+    received channel1: one
+    received channel2: one
+*/
+
+// Channels can be closed and iterated
+channel := make(chan int, 5)
+
+for i := 0; i < 5; i++ {
+    channel <- i
+}
+
+close(channel)
+
+for value := range channel {
+    fmt.Println(value)
+}
+
+/*
+    0
+    1
+    2
+    3
+    4
+*/
+```
+
+Return to Summary
+
+<hr/>
+
+## Package `fmt`
+
+```go
+import "fmt"
+
+fmt.Print("Hello World") // Print in console
+fmt.Println("Hello World") // Print and add a new line in end
+fmt.Printf("%s is %d years old", "John", 32) // Print with formatting
+fmt.Errorf("User %d not found", 123) // Print a formatted error
+```
+
+Return to Summary
+
+<hr/>
+@@@ END
+
+@@@ USER
+What are the most useful things to know about HELLO WORLD :ghost:? Short reference please.
+@@@ ASSISTANT
+```java
+//Text file name HelloWorld.java
+public class HelloWorld {
+  // main() is the method
+  public static void main (String[] args)
+    //Prints "Hello World" in the terminal window.
+    System.out.println("Hello World");
+}
+```
+
+### COMPILATION & EXECUTING JAVA CODE
+
+* Go to your program directory in terminal (Assumed JAVA Path is set)
+* After for compile your code
+
+> **javac HelloWorld.java (your program file name)**
+
+* For run program
+
+> **java HelloWorld (main class name)**
+
+### DATA TYPES
+
+|   Type  |      Set of values      |            Values            | Operators |
+|:-------:|:-----------------------:|:----------------------------:|:---------:|
+|  short  |         integers        | between -2^15 and + (2^15)-1 | + - * / % |
+|   int   |         integers        | between -2^31 and + (2^31)-1 | + - * / % |
+|  long   |         integers        | between -2^63 and + (2^63)-1 | + - * / % |
+|  float  |         integers        |     real numbers 32 bit      |  + - * /  |
+|  double |  floating-point numbers |     real numbers 64 bit      |  + - * /  |
+| boolean |      boolean values     |         true or false        | && \|\| ! |
+|   char  |        characters       |         16 bit               |           |
+|  String | sequences of characters |it's not a primitive data type|           |
+
+### DECLARATION AND ASSIGNMENT STATEMENTS
+
+```java
+//Declaration statement
+int a,b;
+
+//Assignment statement
+a = 13212; //a is the variable name; 13212 is the literal which is assign to the variable a
+
+//Initialization statement
+int c = a + b;
+
+//Compound assignment expressions
+a += b; //a is the variable name; b is the variable name; this expression is an equivalent shorthand notation of a = a + b
+a -= b; //a is the variable name; b is the variable name; this expression is an equivalent shorthand notation of a = a - b
+a *= b; //a is the variable name; b is the variable name; this expression is an equivalent shorthand notation of a = a * b
+a /= b; //a is the variable name; b is the variable name; this expression is an equivalent shorthand notation of a = a / b
+a %= b; //a is the variable name; b is the variable name; this expression is an equivalent shorthand notation of a = a % b
+a ^= b; //a is the variable name; b is the variable name; this expression is an equivalent shorthand notation of a = a ^ b
+a &= b; //a is the variable name; b is the variable name; this expression is an equivalent shorthand notation of a = a & b
+a \|= b; //a is the variable name; b is the variable name; this expression is an equivalent shorthand notation of a = a \| b
+```
+
+### COMPARISON OPERATORS
+
+| Operation |        Meaning        |
+|:---------:|:---------------------:|
+|     ==    |         equal         |
+|     !=    |       not equal       |
+|     <     |       less than       |
+|     >     |      greater than     |
+|     <=    |   less than or equal  |
+|     >=    | greater than or equal |
+
+### PRINTING
+```java
+  String s = "Happy Coding Folks!!"
+  System.out.print(String s) //print s
+  System.out.println(String s) //print s, followed by a newline
+  System.out.println() //print a newline
+```
+
+### PARSING COMMAND-LINE ARGUMENTS
+```java
+  String s = "Java is the best!!"
+  int Integer.parseInt(String s) //convert s to an int value
+  double Double.parseDouble(String) //convert s to a double value
+  long Long.parseLong(String s) // convert s to a long value
+````
+
+### MATH LIBRARY
+```java
+  Public Class Math{
+    double abs(double a)    // absolute value of a
+    double max(double a, double b)  //maximum of a and b
+    double min(double a, dobule a)  //minimum of a and b
+    double sin(double theta) //sine of theta
+    double cos(double theta) //cosine of theta
+    double tan(double theta) //tangent of theta
+    double toRadians(double degrees) // convert angle from degrees to radians
+    double toDegrees(double radians)  // convert angle from radians to degrees
+    double exp(double a)  // exponential (e^a)
+    double pow(double a, double p) //raise a to the bth power (a^b)
+    double random() //random in [0,1)
+    double sqrt(double a)  //square root of a
+    }
+```
+
+### EXAMPLES OF TYPE CONVERSION
+
+  |       Expression      | Expression type | Expression value |
+|:---------------------:|:---------------:|:----------------:|
+| (1 + 2 + 3 + 4) / 4.0 |      double     |        2.5       |
+|      Math.sqrt(4)     |      double     |        2.0       |
+|     "123343" + 99     |      String     |    "12334399"    |
+|       11 * 0.25       |      double     |       2.75       |
+|    (int) 11 * 0.25    |      double     |       2.75       |
+|    11 * (int) 0.25    |       int       |         0        |
+|   (int) (11 * 0.25)   |       int       |         2        |
+
+### CONDITIONAL & LOOP STATEMENT
+#### ANATOMY OF CONDITIONAL STATEMENT
+> IF Statement
+```java
+  if (x>y) { // x > y is the boolean expression
+   //Sequence of statements
+   x = y;
+  }
+```
+
+> IF-ELSE STATEMENT
+```java
+   if (BOOLEAN EXPRESSION) {
+   //Sequence of statements
+   } else {
+   //Sequence of statements
+   }
+```
+
+> NESTED IF STATEMENT
+```java
+   if (BOOLEAN EXPRESSION) {
+   //Sequence of statements
+   } else if {
+   //Sequence of statements
+   }
+   .
+   .
+   .
+   else {
+   //Sequence of statements
+   }
+```
+
+>SWITCH STATEMENT
+```java
+  switch (VARIABLE TO EVALUATE ITS VALUE) {
+    case value: Statement; break;
+    ...
+    ...
+    ...
+    default: Statement; break;
+  }
+```
+**Example:**
+```java
+  int month = 8;
+        String monthString;
+        switch (month) {
+            case 1:  monthString = "January";
+                     break;
+            case 2:  monthString = "February";
+                     break;
+            case 3:  monthString = "March";
+                     break;
+            case 4:  monthString = "April";
+                     break;
+            case 5:  monthString = "May";
+                     break;
+            case 6:  monthString = "June";
+                     break;
+            case 7:  monthString = "July";
+                     break;
+            case 8:  monthString = "August";
+                     break;
+            case 9:  monthString = "September";
+                     break;
+            case 10: monthString = "October";
+                     break;
+            case 11: monthString = "November";
+                     break;
+            case 12: monthString = "December";
+                     break;
+            default: monthString = "Invalid month";
+                     break;
+        }
+```
+@@@ END
+
+@@@ USER
+What are the most useful things to know about HELLO WORLD :ghost:: ANATOMY OF A LOOP  STATEMENT? Short reference please.
+@@@ ASSISTANT
+>FOR LOOP STATEMENT
+```java
+  for (declare and initialize a loop control variable; loop-continuation condition/s; increment or decrement of the variable of control)
+  {
+    //Statement
+  }
+```
+**Example:**
+```java
+  for (int i = 0; i <= n; i++) {
+     System.out.println(i);
+  }
+```
+
+>Enhanced for loop/for-each
+```java
+for(dataType item : array) {
+    ...
+}
+
+```
+**Example:**
+```java
+    // array of numbers
+    int[] numbers = {100, 200, 300, 400};
+
+    // for each loop
+    for (int number: numbers) {
+      System.out.println(number);
+```
+
+> WHILE LOOP STATEMENT
+```java
+    while(condition){  //till condition will be true.
+    //code to be executed
+    }
+```
+**Example:**
+```java
+  //Initialization is a separate statement
+  int power = 1;
+
+  while ( power <= 10/2 ) // power <= n/2 is an example of the loop-continuation condition
+  {
+    System.out.println(power);
+  }
+```
+
+> DO-WHILE LOOP STATEMENT
+
+```java
+  do{ //always run one time even if condition would be false
+    //Statement
+  } while(loop-continuation condition);
+```
+
+**Example:**
+```java
+    int i=1;
+    do{
+      System.out.println(i);
+      i++;
+    }while(i<=10);
+```
+
+### ARRAY
+> ARRAY DECLARATION
+
+```java
+    int[]           ai;        // array of int
+    short[][]       as;        // array of array of short
+    short           s,         // scalar short
+                    aas[][];   // array of array of short
+    Object[]        ao;        // array of Object
+    Collection<?>[] ca;  // array of Collection of unknown type
+```
+
+> DECLARATION OF ARRAY VARIABLE
+
+```java
+  Exception ae[]  = new Exception[3];
+  Object aao[][]  = new Exception[2][3];
+  int[] factorial = { 1, 1, 2, 6, 24, 120, 720, 5040 };
+  char ac[]       = { 'n', 'o', 't', ' ', 'a', ' ',
+                      'S', 't', 'r', 'i', 'n', 'g' };
+  String[] aas    = { "array", "of", "String", };
+```
+
+### ACCESS MODIFIERS
+
+1. default(No keyword required)
+2. private
+3. public
+4. protected
+
+### NON ACCESS MODIFIERS
+
+1. static
+2. final
+3. transient
+4. abstract
+5. synchronized
+6. volatile
+
+## Object Oriented Programming (OOPs) Concept :clipboard:
+
+### OBJECT
+
+```java
+  //Declare a variable, object name
+  String s;
+
+  //Invoke a constructor to create an object
+  s = new String ("Hello World");
+
+  //Invoke an instance method that operates on the object's value
+  char c = s.chartAt(4);
+```
+> INSTANCE VARIABLES
+
+```java
+  public class Charge {
+    //Instance variable declarations
+    private final double rx, ry;
+    private final double q;
+  }
+```
+
+### METHODS
+
+```java
+  public static double sum (int a, int b) { //double is the return type, sum is the method's name, a and b are two arguments of type int;
+    int result; //local variable
+    result = a + b;
+    return result;//return statement;
+  }
+```
+
+### CLASS DECLARATION
+```java
+class MyClass {
+    // field, constructor, and
+    // method declarations
+}
+```
+**Example:**
+
+```java
+    public class Bicycle {
+        // the Bicycle class has
+        // three fields
+        public int cadence;
+        public int gear;
+        public int speed;
+        // the Bicycle class has
+        // one constructor
+        public Bicycle(int startCadence, int startSpeed, int startGear) {
+            gear = startGear;
+            cadence = startCadence;
+            speed = startSpeed;
+        }
+        // the Bicycle class has
+        // four methods
+        public void setCadence(int newValue) {
+            cadence = newValue;
+        }
+        public void setGear(int newValue) {
+            gear = newValue;
+        }
+        public void applyBrake(int decrement) {
+            speed -= decrement;
+        }
+        public void speedUp(int increment) {
+            speed += increment;
+        }
+}
+```
+>DECLARING CLASSESS IMPLEMENTATING AN INTERFACE AND EXTENDING PARENT CLASS
+```java
+class MyClass extends MySuperClass implements YourInterface {
+    // field, constructor, and
+    // method declarations
+}
+```
+* MyClass is a subclass of MySuperClass and that it implements the YourInterface interface.
+
+> CONSTRUCTORS
+* A class contains constructors that are invoked to create objects from the class blueprint.
+* Constructor declarations look like method declarations—except that they use the name of the class and have no return type
+* Each and every class has defualt No-args constructor.
+
+```java
+  public class Bicycle{
+
+      private int gear;
+      private int cadence;
+      private int speed;
+
+      public Bicycle(int startCadence, int startSpeed, int startGear) { //args-constructor
+        gear = startGear;
+        cadence = startCadence;
+        speed = startSpeed;
+      }
+
+      public Bicycle(){//No-args constructor
+        super();
+      }
+  }
+```
+
+### POLYMORPHISM
+* Polymorphism is the concept where an object behaves differently in different situations.
+*  There are two types of polymorphism
+    1. compile time polymorphism
+    2. runtime polymorphism.
+
+#### 1. Compile Time Polymorphism
+* Compile-time polymorphism is achieved by method overloading.
+* method overloading is creating multiple method with methods name is same and arguments are different.
+```java
+  public class Circle {
+
+    public void draw(){
+      System.out.println("Drwaing circle with default color Black and diameter 1 cm.");
+    }
+
+    public void draw(int diameter){ //method draw() overloaded.
+      System.out.println("Drwaing circle with default color Black and diameter"+diameter+" cm.");
+    }
+
+    public void draw(int diameter, String color){ //method draw() overloaded.
+      System.out.println("Drwaing circle with color"+color+" and diameter"+diameter+" cm.");
+    }
+  }
+```
+#### 2. Run Time Polymorphism
+* Run-time polymorphism is achieved by method overriding.
+* Runtime polymorphism is implemented when we have an **“IS-A”** relationship between objects.
+* method overriding is the subclass has to override the superclass method.
+```java
+    public interface Shape {
+
+	    public void draw();
+    }
+```
+```java
+    public class Circle implements Shape{
+
+      @Override
+      public void draw(){
+        System.out.println("Drwaing circle");
+      }
+
+    }
+```
+```java
+    public class Square implements Shape {
+
+      @Override
+      public void draw() {
+        System.out.println("Drawing Square");
+      }
+
+    }
+```
+* `Shape` is the superclass and there are two subclasses `Circle` and `Square`
+* Below is an example of runtime polymorphism.
+```java
+    Shape sh = new Circle();
+    sh.draw();
+
+    Shape sh1 = getShape(); //some third party logic to determine shape
+    sh1.draw();
+```
+@@@ END
+
+@@@ USER
+Give me a cheat sheet for HELLO WORLD :ghost:: INHERITANCE.
+@@@ ASSISTANT
+* Inheritance is the mechanism of code reuse.
+* The object that is getting inherited is called the superclass and the object that inherits the superclass is called a subclass.
+* We use `extends` keyword in java to implement inheritance from class.
+* We use `implements` keyword in java to implement inheritance from interface.
+
+```java
+    public class Superclass{
+      // methods and fields
+    }
+```
+```java
+    public interface Superinterface{
+      // methods and fields
+    }
+```
+```java
+    public class Subclass extends Superclass implements Superinterface{
+      // methods and fields
+    }
+```
+
+### Abstraction
+
+* Abstraction is the concept of hiding the internal details and describing things in simple terms.
+* Abstraction can be achieved by two ways.
+  1. Abstract Class
+  2. Interface
+
+#### 1. Abstract Class
+* An abstract class must be declared with an `abstract` keyword.
+* It can have abstract and non-abstract methods.
+* It cannot be instantiated.
+* It can have constructors and static methods also.
+* It can have final methods which will force the subclass not to change the body of the method.
+
+```java
+    abstract class Flower{
+        abstract String Smell(); //abstract method.
+        String Oil(){  // non-abstract method.
+           System.out.println("Flower Oil is good.");
+         }
+    }
+
+    public class Lily extends Flower{
+        private String Smell(){ // implementation of abstarct method.
+          System.out.println("Lily smell's lovender.");
+        }
+    }
+```
+
+#### 2. Interface
+* Interface is a blueprint of a **class**.
+* It can have only abstract methods. [Except Java 8 and next versions.]
+* Since Java 8, we can have **default and static** methods in an interface.
+
+```java
+    interface print{
+        void printPaper();
+    }
+    public class A4 implements print{
+        public void printPaper(){
+          System.out.println("A4 Page Printed. ");
+        }
+    }
+```
+
+### Encapsulation
+
+* Encapsulation is used for access restriction to class members and methods.
+* Encapsulation is the technique used to implement abstraction in OOP.
+* As in encapsulation, the data in a class is hidden from other classes, so it is also known as **data-hiding**.
+* Encapsulation can be achieved by Declaring all the variables in the class as private and writing public methods in the class to set and get the values of variables.
+* Best example of Encapsulation is POJO (Plain-Java-Object-Class).
+
+ ```java
+    public class User {
+        private String username;
+        private String password;
+
+        public String getUsername() {
+          return username;
+        }
+
+        public void setUsername(String username) {
+          this.username = username;
+        }
+
+        public String getPassword() {
+          return password;
+        }
+
+        public void setPassword(String password) {
+          this.password = password;
+        }
+    }
+ ```
+
+## ADVANCE DATA TYPE
+* **STACK DATA TYPE**
+
+```java
+  public class Stack<Item> implements Iterable <Item>
+
+  Stack()   //create an empty stack
+  boolean isEmpty() //return if the stack empty
+  void push(Item item) // push an item onto the stack
+  Item pop() //return and remove the item that was inserted most recently
+  int size() //number of item on stack
+```
+
+* **QUEUE DATA TYPE**
+
+```java
+  public class Queue<Item> implements Iterable<Item>
+
+  Queue()  //create an empty queue
+  boolean isEmpty()  //return if the queue empty
+  void enqueue(Item item) // insert an item onto queue
+  Item dequeue()  //return and remove the item that was inserted least recently
+  int size() //number of item on queue
+```
+
+* **ITERABLE**
+
+```java
+//import Iterator
+import java.util.Iterator;
+
+public class Queue<Item> implements Iterable<Item> {
+
+//FIFO queue
+  private Node first;
+  private Node last;
+  private class Node {
+    Item item;
+    Node next;
+  }
+
+  public void enqueue (Item item)
+  ...
+
+  public Item dequeue()
+  ...
+
+}
+```
+
+* **SYMBOL TABLE DATA TYPE**
+
+```java
+  public class ST<Key extends Comparable<Key>, Value>
+
+  ST()  //create and empty symbol table
+  void put(Key key, Value val)  //associate val with key
+  Value get(Key key)  //value associated with key
+  void remove(Key key) //remove key (and its associated value)
+  boolean contains (Key key)  //return if there is a value associated with key
+  int size()  //number of key-value pairs
+  Iterable<Key> keys()  // all keys in the symbol table
+```
+
+* **SET DATA TYPE**
+
+```java
+  public class Set<Key extends Comparable<Key>> implements Iterable<Key>
+  Set() //create an empty set
+  boolean isEmpty()  //return if the set is empty
+  void add (Key key)  //add key to the set
+  void remove(Key key)  //remove key from set
+  boolean contains(Key key) //return if the key is in the set
+  int size() //number of elements in set
+```
+@@@ END
+
+@@@ USER
+Give me a cheat sheet for Python.
+@@@ ASSISTANT
+* Python is an interpreted, high-level and general-purpose, dynamically typed programming language
+
+* It is also Object oriented, modular oriented and a scripting language.
+
+* In Python, everything is considered as an Object.
+
+* A python file has an extension of .py
+
+* Python follows Indentation to separate code blocks instead of flower brackets({}).
+
+* We can run a python file by the following command in cmd(Windows) or shell(mac/linux).
+
+    `$ python <filename.py>` or `$ python3 <filename.py>`
+
+#### By default, python doesn't require any imports to run a python file.
+
+## Create and execute a program
+
+1. Open up a terminal/cmd
+1. Create the program: nano/cat > nameProgram.py
+1. Write the program and save it
+1. python nameProgram.py
+
+### Basic Datatypes
+
+| Data Type | Description |
+| --------- | ----------- |
+| int | Integer values [0, 1, -2, 3] |
+| float | Floating point values [0.1, 4.532, -5.092] |
+| char | Characters [a, b, @, !, `] |
+| str | Strings [abc, AbC, A@B, sd!, `asa] |
+| bool | Boolean Values [True, False] |
+| complex | Complex numbers [2+3j, 4-1j] |
+
+## Keywords
+
+- As of python3.8 there are 35 keywords
+
+| Keyword | Description  | Category |
+|---------- | ---------- | --------- |
+| True      | Boolean value for not False or 1 | Value Keyword|
+| False     | Boolean Value for not True or 0 | Value Keyword |
+| None      | No Value | Value keyword |
+| and       | returns true if both (oprand) are true (other language && ) | Operator keyword |
+| or        | returns true of either operands is true (other language || ) | Operator keyword |
+| in        | returns true if word is in iterator | Operator keyword |
+| is        | returns true if id of variables are same | Operator keyword |
+| not       | returns opposite Boolean value | Operator Keyword |
+| if | get into block if expression is true | conditional |
+| elif | for more than 1 if checks | conditional |
+| else | this block will be executed if condition is false | conditional |
+| for | used for looping | iteration |
+| while | used for looping | iteration |
+| break | get out of loop | iteration |
+| continue | skip for specific condition | iteration |
+| def | make user defined function | structure |
+| class | make user defined classes | structure |
+| lambda | make anonymous function | structure |
+| with | execute code within context manager's scope | structure |
+| as | alias for something | structure |
+| pass | used for making empty structures(declaration) | structure |
+| return | get value(s) from function, get out of function | returning keyword |
+| yield | yields values instead of returning (are called generators) | returning keyword |
+| import | import libraries/modules/packages | import |
+| from | import specific function/classes from modules/packages | import |
+| try | this block will be tried to get executed | exception handling |
+| except | is any exception/error has occurred it'll be executed | exception handling |
+| finally | It'll be executed no matter exception occurs or not | exception handling |
+| raise | throws any specific error/exception | exception handling |
+| assert | throws an AssertionError if condition is false | exception handling |
+| async | used to define asynchronous functions/co-routines | asynchronous programming |
+| await | used to specify a point when control is taken back | asynchronous programming |
+| del | deletes/unsets any user defined data |  variable handling |
+| global | used to access variables defined outside of function | variable handling |
+| nonlocal | modify variables from different scopes | variable handling |
+
+## Operators
+
+| Operator | Description |
+|-|-|
+|  ( )	|  grouping parenthesis, function call, tuple declaration |
+|  [ ]	|  array indexing, also declaring lists etc.|
+|  !	|    relational not, complement, ! a  yields true or false |
+|  ~   | 	bitwise not, ones complement, ~a |
+| \-   |	unary minus, - a |
+|  \+   | 	unary plus,  + a |
+|  \*   |	multiply, a * b |
+|  /   	| divide, a / b |
+|  %    |	modulo, a % b |
+|  \+   | 	add, a + b |
+| \-   | 	subtract, a - b |
+| <<   | shift left,  left operand is shifted left by right operand bits (multiply by 2) |
+| \>>   |	shift right, left operand is shifted right by right operand bits (divide by 2) |
+ | <    |	less than, result is true or false,  a %lt; b
+| <=   |	less than or equal, result is true or false,  a <= b
+| \>    |	greater than, result is true or false,  a > b
+| \>=   |	greater than or equal, result is true or false, a >= b
+|  ==   |	equal, result is true or false,  a == b
+| !=  | 	not equal, result is true or false,  a != b
+|  & | bitwise and,  a & b
+| ^ | bitwise exclusive or XOR,  a ^ b
+| \| | bitwise or,  a | b
+|  &&, and | relational and, result is true or false,  a < b && c >= d
+| \|\|, or | relational or, result is true or false,  a < b \|\| c >= d |
+| =  | store or assignment |
+|  += | add and store |
+|  -=  | subtract and store |
+|  *= | multiply and store |
+|  /= | divide and store|
+|  %= | modulo and store|
+| <<= | shift left and store|
+|  \>>= | shift right and store|
+|  &= | bitwise and and store|
+|  ^= | bitwise exclusive or and store|
+|  \|= | bitwise or and store|
+|  , | separator as in   ( y=x,z=++x )|
+
+### Basic Data Structures
+
+### List
+
+- List is a collection which is ordered and changeable. Allows duplicate members.
+
+- Lists are created using square brackets:
+
+```python
+thislist = ["apple", "banana", "cherry"]
+```
+
+- List items are ordered, changeable, and allow duplicate values.
+
+- List items are indexed, the first item has index `[0]`, the second item has index `[1]` etc.
+
+- The list is changeable, meaning that we can change, add, and remove items in a list after it has been created.
+
+- To determine how many items a list has, use the `len()` function.
+
+- A list can contain different data types:
+```python
+list1 = ["abc", 34, True, 40, "male"]
+```
+- It is also possible to use the list() constructor when creating a new list
+```python
+thislist = list(("apple", "banana", "cherry"))  # note the double round-brackets
+```
+- pop() function removes the last value in the given list by default.
+
+  ```python
+  thislist = ["apple", "banana", "cherry"]
+
+  print(thislist.pop())  # cherry
+  print(thislist.pop(0))  #apple
+
+  ```
+@@@ END
+
+@@@ USER
+What are the most useful things to know about Python: Tuple? Short reference please.
+@@@ ASSISTANT
+- Tuple is a collection which is ordered and unchangeable. Allows duplicate members.
+- A tuple is a collection which is ordered and unchangeable.
+- Tuples are written with round brackets.
+```python
+thistuple = ("apple", "banana", "cherry")
+```
+- Tuple items are ordered, unchangeable, and allow duplicate values.
+- Tuple items are indexed, the first item has index `[0]`, the second item has index `[1]` etc.
+- When we say that tuples are ordered, it means that the items have a defined order, and that order will not change.
+
+- Tuples are unchangeable, meaning that we cannot change, add or remove items after the tuple has been created.
+- Since tuple are indexed, tuples can have items with the same value:
+- Tuples allow duplicate values:
+```python
+thistuple = ("apple", "banana", "cherry", "apple", "cherry")
+```
+- To determine how many items a tuple has, use the  `len()`function:
+```python
+thistuple = ("apple", "banana", "cherry")
+print(len(thistuple))
+```
+- To create a tuple with only one item, you have to add a comma after the item, otherwise Python will not recognize it as a tuple.
+```python
+thistuple = ("apple",)
+print(type(thistuple))
+
+# NOT a tuple
+thistuple = ("apple")
+print(type(thistuple))
+```
+- It is also possible to use the tuple() constructor to make a tuple.
+```python
+
+thistuple = tuple(("apple", "banana", "cherry")) # note the double round-brackets
+print(thistuple)
+```
+
+### Set
+- Set is a collection which is unordered and unindexed. No duplicate members.
+- A set is a collection which is both unordered and unindexed.
+```python
+thisset = {"apple", "banana", "cherry"}
+```
+- Set items are unordered, unchangeable, and do not allow duplicate values.
+- Unordered means that the items in a set do not have a defined order.
+
+- Set items can appear in a different order every time you use them, and cannot be referred to by index or key.
+
+- Sets are unchangeable, meaning that we cannot change the items after the set has been created.
+- Duplicate values will be ignored.
+- To determine how many items a set has, use the `len()` method.
+```python
+thisset = {"apple", "banana", "cherry"}
+
+print(len(thisset))
+```
+- Set items can be of any data type:
+```python
+set1 = {"apple", "banana", "cherry"}
+set2 = {1, 5, 7, 9, 3}
+set3 = {True, False, False}
+set4 = {"abc", 34, True, 40, "male"}
+```
+- It is also possible to use the `set()` constructor to make a set.
+```python
+thisset = set(("apple", "banana", "cherry")) # note the double round-brackets
+```
+- frozenset()  is just an immutable version of Set. While elements of a set can be modified at any time, elements of the frozen set remain the same after creation.
+
+```python
+set1 = {"apple", "banana", "cherry"}
+frzset=frozenset(set1)
+print(frzset)
+```
+
+### Dictionary
+
+- Dictionary is a collection which is unordered and changeable. No duplicate members.
+- Dictionaries are used to store data values in key:value pairs.
+- Dictionaries are written with curly brackets, and have keys and values:
+```python
+thisdict = {
+  "brand": "Ford",
+  "model": "Mustang",
+  "year": 1964
+}
+```
+- Dictionary items are presented in key:value pairs, and can be referred to by using the key name.
+```python
+thisdict = {
+  "brand": "Ford",
+  "model": "Mustang",
+  "year": 1964
+}
+print(thisdict["brand"])
+```
+- Dictionaries are changeable, meaning that we can change, add or remove items after the dictionary has been created.
+- Dictionaries cannot have two items with the same key.
+- Duplicate values will overwrite existing values.
+- To determine how many items a dictionary has, use the `len()` function.
+```python
+print(len(thisdict))
+```
+- The values in dictionary items can be of any data type
+```python
+thisdict = {
+  "brand": "Ford",
+  "electric": False,
+  "year": 1964,
+  "colors": ["red", "white", "blue"]
+}
+```
+
+- pop() Function is used to remove a specific value from a dictionary. You can only use key bot the value. Unlike Lists you have to give a value to this function
+
+  ```python
+   car = {
+    "brand": "Ford",
+    "model": "Mustang",
+    "year": 1964
+  }
+
+  x = car.pop("model")
+
+  print(x)# Mustang
+  print(car)#{'brand': 'Ford', 'year': 1964}
+  ```
+
+### Conditional branching
+
+```python
+    if condition:
+        pass
+    elif condition2:
+        pass
+    else:
+        pass
+```
+### Loops
+
+ Python has two primitive loop commands:
+1. while loops
+2. for loops
+
+#### While loop
+- With the `while` loop we can execute a set of statements as long as a condition is true.
+- Example: Print i as long as i is less than 6
+```python
+i = 1
+while i < 6:
+  print(i)
+  i += 1
+```
+- The while loop requires relevant variables to be ready, in this example we need to define an indexing variable, i, which we set to 1.
+- With the `break` statement we can stop the loop even if the while condition is true
+- With the continue statement we can stop the current iteration, and continue with the next.
+
+- With the else statement we can run a block of code once when the condition no longer is true.
+
+#### For loop
+- A for loop is used for iterating over a sequence (that is either a list, a tuple, a dictionary, a set, or a string).
+
+- This is less like the for keyword in other programming languages, and works more like an iterator method as found in other object-orientated programming languages.
+
+- With the for loop we can execute a set of statements, once for each item in a list, tuple, set etc.
+```python
+fruits = ["apple", "banana", "cherry"]
+for x in fruits:
+  print(x)
+```
+- The for loop does not require an indexing variable to set beforehand.
+- To loop through a set of code a specified number of times, we can use the range() function.
+- The range() function returns a sequence of numbers, starting from 0 by default, and increments by 1 (by default), and ends at a specified number.
+- The range() function defaults to increment the sequence by 1, however it is possible to specify the increment value by adding a third parameter: range(2, 30, 3).
+- The else keyword in a for loop specifies a block of code to be executed when the loop is finished.
+A nested loop is a loop inside a loop.
+
+- The "inner loop" will be executed one time for each iteration of the "outer loop":
+
+```python
+adj = ["red", "big", "tasty"]
+fruits = ["apple", "banana", "cherry"]
+
+for x in adj:
+  for y in fruits:
+    print(x, y)
+```
+- for loops cannot be empty, but if you for some reason have a for loop with no content, put in the pass statement to avoid getting an error.
+
+```python
+for x in [0, 1, 2]:
+  pass
+```
+
+### Function definition
+```python
+def function_name():
+    return
+```
+### Function call
+
+```python
+function_name()
+```
+
+* We need not to specify the return type of the function.
+* Functions by default return `None`
+* We can return any datatype.
+@@@ END
+
+@@@ USER
+Give me a cheat sheet for TypeScript.
+@@@ ASSISTANT
+* TypeScript is a statically typed superset of JavaScript that compiles to plain JavaScript
+
+* It adds optional static type definitions to JavaScript, enabling better tooling and error detection
+
+* In TypeScript, types are checked at compile-time, not runtime
+
+* A TypeScript file has an extension of .ts (or .tsx for React components)
+
+* TypeScript follows JavaScript syntax but adds type annotations and advanced features
+
+* We can compile and run a TypeScript file by the following commands:
+
+    `$ tsc filename.ts` (compile to JavaScript)
+    `$ node filename.js` (run the compiled JavaScript)
+    
+    Or directly: `$ ts-node filename.ts`
+
+#### TypeScript requires compilation to JavaScript before execution.
+
+## Create and execute a program
+
+1. Install TypeScript globally: `npm install -g typescript`
+1. Create the program: `touch program.ts`
+1. Write the TypeScript code and save it
+1. Compile: `tsc program.ts`
+1. Run: `node program.js`
+
+### Basic Data Types
+
+| Data Type | Description | Example |
+| --------- | ----------- | ------- |
+| number | Integer and floating point values | `42`, `3.14`, `-7` |
+| string | Text values | `"hello"`, `'world'`, `` `template` `` |
+| boolean | True/false values | `true`, `false` |
+| undefined | Undefined value | `undefined` |
+| null | Null value | `null` |
+| any | Any type (disables type checking) | Can be anything |
+| unknown | Type-safe counterpart of any | Requires type checking |
+| void | Absence of any type | Function return type |
+| never | Type that never occurs | Functions that throw errors |
+| object | Non-primitive types | `{}`, `[]`, functions |
+
+## Keywords and Reserved Words
+
+- TypeScript includes all JavaScript keywords plus additional TypeScript-specific ones
+
+| Keyword | Description  | Category |
+|---------- | ---------- | --------- |
+| let | Declares a block-scoped variable | Variable Declaration |
+| const | Declares a block-scoped constant | Variable Declaration |
+| var | Declares a function-scoped variable | Variable Declaration |
+| function | Declares a function | Function |
+| class | Declares a class | Class |
+| interface | Declares an interface | Type Definition |
+| type | Declares a type alias | Type Definition |
+| enum | Declares an enumeration | Type Definition |
+| namespace | Declares a namespace | Module System |
+| module | Declares a module | Module System |
+| import | Imports from another module | Module System |
+| export | Exports from current module | Module System |
+| extends | Class/interface inheritance | Inheritance |
+| implements | Class implements interface | Inheritance |
+| public | Public access modifier | Access Modifier |
+| private | Private access modifier | Access Modifier |
+| protected | Protected access modifier | Access Modifier |
+| readonly | Read-only property | Access Modifier |
+| static | Static class member | Class Member |
+| abstract | Abstract class/method | Class |
+| async | Asynchronous function | Async Programming |
+| await | Awaits a promise | Async Programming |
+| new | Creates new instance | Object Creation |
+| this | Current object reference | Object Reference |
+| super | Parent class reference | Inheritance |
+| typeof | Gets type of variable | Type Operation |
+| keyof | Gets keys of type | Type Operation |
+| in | Property existence check | Type Guard |
+| instanceof | Instance type check | Type Guard |
+| as | Type assertion | Type Assertion |
+| is | Type predicate | Type Guard |
+| infer | Infers type in conditional types | Advanced Types |
+| declare | Ambient declarations | Declaration |
+| get | Property getter | Accessor |
+| set | Property setter | Accessor |
+| yield | Generator yield | Generator |
+
+## Operators
+
+| Operator | Description |
+|-|-|
+|  ( )	|  Grouping, function call, type assertion |
+|  [ ]	|  Array indexing, array/tuple types |
+|  .	|  Property access |
+|  ?.   | 	Optional chaining |
+| !   |	Non-null assertion, logical not |
+|  ~   | 	Bitwise not |
+| \-   |	Unary minus, arithmetic subtraction |
+|  \+   | 	Unary plus, arithmetic addition |
+|  \*   |	Multiplication |
+|  /   	| Division |
+|  %    |	Modulo |
+|  \*\* | Exponentiation |
+| <<   | Left shift |
+| \>>   |	Right shift |
+| \>>>   |	Unsigned right shift |
+ | <    |	Less than |
+| <=   |	Less than or equal |
+| \>    |	Greater than |
+| \>=   |	Greater than or equal |
+|  ==   |	Equality (with coercion) |
+|  ===   |	Strict equality |
+| !=  | 	Inequality (with coercion) |
+| !==  | 	Strict inequality |
+|  & | Bitwise AND |
+| ^ | Bitwise XOR |
+| \| | Bitwise OR, Union types |
+|  && | Logical AND |
+| \|\| | Logical OR |
+| ??   | Nullish coalescing |
+| ? :  | Ternary conditional |
+| =  | Assignment |
+|  += | Add and assign |
+|  -=  | Subtract and assign |
+|  *= | Multiply and assign |
+|  /= | Divide and assign |
+|  %= | Modulo and assign |
+| **= | Exponentiate and assign |
+| <<= | Left shift and assign |
+|  \>>= | Right shift and assign |
+|  &= | Bitwise AND and assign |
+|  ^= | Bitwise XOR and assign |
+|  \|= | Bitwise OR and assign |
+|  , | Comma operator |
+| => | Arrow function |
+| ... | Spread/rest operator |
+
+### Basic Data Structures
+
+### Array
+
+- Array is an ordered collection of elements of the same or different types.
+
+- Arrays are created using square brackets or Array constructor:
+
+```typescript
+let numbers: number[] = [1, 2, 3, 4];
+let fruits: Array<string> = ["apple", "banana", "cherry"];
+let mixed: (string | number)[] = [1, "two", 3];
+```
+
+- Array elements are indexed starting from 0.
+
+- Arrays are mutable - you can change, add, and remove elements.
+
+- Common array methods:
+```typescript
+let arr = [1, 2, 3];
+arr.push(4);        // Add to end: [1, 2, 3, 4]
+arr.pop();          // Remove from end: [1, 2, 3]
+arr.unshift(0);     // Add to start: [0, 1, 2, 3]
+arr.shift();        // Remove from start: [1, 2, 3]
+arr.length;         // Get length: 3
+```
+
+### Tuple
+
+- Tuple is an array with a fixed number of elements of specific types.
+
+- Tuples are created using square brackets with type annotations:
+```typescript
+let person: [string, number] = ["John", 30];
+let coordinate: [number, number] = [10, 20];
+```
+
+- Tuple elements are ordered and have specific types at each position.
+
+- You can access elements by index, but type checking ensures correctness:
+```typescript
+let point: [number, number] = [10, 20];
+console.log(point[0]); // 10 (number)
+console.log(point[1]); // 20 (number)
+```
+
+- Named tuples provide better readability:
+```typescript
+let user: [name: string, age: number] = ["Alice", 25];
+```
+
+- Optional and rest elements in tuples:
+```typescript
+let optional: [string, number?] = ["hello"];
+let rest: [string, ...number[]] = ["coords", 1, 2, 3];
+```
+@@@ END
+
+@@@ USER
+What are the most useful things to know about TypeScript: Set? Short reference please.
+@@@ ASSISTANT
+- Set is a collection of unique values of any type.
+
+- Sets are created using the Set constructor:
+```typescript
+let uniqueNumbers = new Set<number>([1, 2, 3, 2]); // {1, 2, 3}
+let stringSet = new Set<string>();
+```
+
+- Set operations:
+```typescript
+let mySet = new Set<string>();
+mySet.add("apple");     // Add element
+mySet.has("apple");     // Check existence: true
+mySet.delete("apple");  // Remove element
+mySet.clear();          // Remove all elements
+mySet.size;             // Get size
+```
+
+- Iterating over Set:
+```typescript
+let fruits = new Set(["apple", "banana", "cherry"]);
+for (let fruit of fruits) {
+    console.log(fruit);
+}
+```
+
+### Map
+
+- Map is a collection of key-value pairs where keys can be any type.
+
+- Maps are created using the Map constructor:
+```typescript
+let userMap = new Map<string, number>();
+let mixedMap = new Map<string | number, any>();
+```
+
+- Map operations:
+```typescript
+let map = new Map<string, number>();
+map.set("age", 30);         // Add key-value pair
+map.get("age");             // Get value: 30
+map.has("age");             // Check key exists: true
+map.delete("age");          // Remove key-value pair
+map.clear();                // Remove all entries
+map.size;                   // Get size
+```
+
+- Object vs Map:
+```typescript
+// Object - string/symbol keys only
+let obj: { [key: string]: number } = { "age": 30 };
+
+// Map - any type keys
+let map = new Map<any, number>();
+map.set("age", 30);
+map.set(42, 100);
+map.set(true, 1);
+```
+
+### Object Types and Interfaces
+
+- Objects store key-value pairs and are fundamental to TypeScript.
+
+- Object type annotation:
+```typescript
+let person: { name: string; age: number } = {
+    name: "John",
+    age: 30
+};
+```
+
+- Interface definition for better reusability:
+```typescript
+interface User {
+    readonly id: number;    // Read-only property
+    name: string;
+    age?: number;          // Optional property
+    [key: string]: any;    // Index signature
+}
+
+let user: User = {
+    id: 1,
+    name: "Alice"
+};
+```
+
+- Nested objects and complex types:
+```typescript
+interface Address {
+    street: string;
+    city: string;
+    country: string;
+}
+
+interface Person {
+    name: string;
+    address: Address;
+    hobbies: string[];
+}
+```
+
+### Conditional branching
+
+```typescript
+// If-else statements
+if (condition) {
+    // code block
+} else if (anotherCondition) {
+    // code block
+} else {
+    // code block
+}
+
+// Ternary operator
+let result = condition ? valueIfTrue : valueIfFalse;
+
+// Switch statement
+switch (variable) {
+    case value1:
+        // code
+        break;
+    case value2:
+        // code
+        break;
+    default:
+        // code
+        break;
+}
+```
+
+### Loops
+
+TypeScript supports all JavaScript loop constructs:
+
+#### For loop
+```typescript
+// Traditional for loop
+for (let i = 0; i < 5; i++) {
+    console.log(i);
+}
+
+// For-of loop (iterates over values)
+let fruits = ["apple", "banana", "cherry"];
+for (let fruit of fruits) {
+    console.log(fruit);
+}
+
+// For-in loop (iterates over keys/indices)
+for (let index in fruits) {
+    console.log(index, fruits[index]);
+}
+```
+
+#### While loop
+```typescript
+let i = 0;
+while (i < 5) {
+    console.log(i);
+    i++;
+}
+
+// Do-while loop
+let j = 0;
+do {
+    console.log(j);
+    j++;
+} while (j < 5);
+```
+
+#### Loop control
+```typescript
+for (let i = 0; i < 10; i++) {
+    if (i === 3) continue;  // Skip iteration
+    if (i === 7) break;     // Exit loop
+    console.log(i);
+}
+```
+
+### Function definition
+
+```typescript
+// Function declaration
+function functionName(param1: type, param2: type): returnType {
+    return value;
+}
+
+// Function expression
+const functionName = function(param: type): returnType {
+    return value;
+};
+
+// Arrow function
+const functionName = (param: type): returnType => {
+    return value;
+};
+
+// Arrow function (concise)
+const functionName = (param: type): returnType => value;
+```
+
+### Function variations
+
+```typescript
+// Optional parameters
+function greet(name: string, age?: number): string {
+    return age ? `Hello ${name}, you are ${age}` : `Hello ${name}`;
+}
+
+// Default parameters
+function multiply(a: number, b: number = 1): number {
+    return a * b;
+}
+
+// Rest parameters
+function sum(...numbers: number[]): number {
+    return numbers.reduce((total, num) => total + num, 0);
+}
+
+// Function overloads
+function process(input: string): string;
+function process(input: number): number;
+function process(input: string | number): string | number {
+    if (typeof input === 'string') {
+        return input.toUpperCase();
+    }
+    return input * 2;
+}
+
+// Generic functions
+function identity<T>(arg: T): T {
+    return arg;
+}
+
+let result = identity<string>("hello"); // Type is string
+let result2 = identity(42);             // Type inferred as number
+```
+
+### Function call
+
+```typescript
+functionName(argument1, argument2);
+
+// With optional parameters
+greet("John");          // "Hello John"
+greet("John", 25);      // "Hello John, you are 25"
+
+// With rest parameters
+sum(1, 2, 3, 4);        // 10
+
+// Generic function call
+identity<string>("hello");
+identity(42);           // Type inferred
+```
+
+### Classes
+
+```typescript
+class ClassName {
+    // Properties
+    public publicProperty: type;
+    private privateProperty: type;
+    protected protectedProperty: type;
+    readonly readonlyProperty: type;
+    static staticProperty: type;
+
+    // Constructor
+    constructor(param: type) {
+        this.publicProperty = param;
+    }
+
+    // Methods
+    public method(): returnType {
+        return value;
+    }
+
+    // Getters and setters
+    get property(): type {
+        return this.privateProperty;
+    }
+
+    set property(value: type) {
+        this.privateProperty = value;
+    }
+
+    // Static method
+    static staticMethod(): returnType {
+        return value;
+    }
+}
+
+// Inheritance
+class ChildClass extends ParentClass {
+    constructor(param: type) {
+        super(param); // Call parent constructor
+    }
+
+    // Override method
+    method(): returnType {
+        return super.method(); // Call parent method
+    }
+}
+
+// Abstract class
+abstract class AbstractClass {
+    abstract abstractMethod(): void;
+    
+    concreteMethod(): void {
+        console.log("This is implemented");
+    }
+}
+```
+
+### Key TypeScript Features
+
+* **Static Typing**: Types are checked at compile-time
+* **Type Inference**: TypeScript can often infer types automatically
+* **Optional Typing**: You can gradually add types to existing JavaScript
+* **Generics**: Create reusable components that work with multiple types
+* **Interfaces**: Define contracts for objects and classes
+* **Enums**: Create named constants
+* **Union Types**: Variables can be one of several types
+* **Intersection Types**: Combine multiple types
+* **Type Guards**: Runtime type checking
+* **Decorators**: Add metadata to classes and methods
+@@@ END
+
+@@@ USER
+Give me a cheat sheet for TypeScript: Compilation.
+@@@ ASSISTANT
+* TypeScript code must be compiled to JavaScript before execution
+* The TypeScript compiler (`tsc`) performs type checking and transpilation
+* Configuration is managed through `tsconfig.json`
+* TypeScript can target different JavaScript versions (ES5, ES6, etc.)
+* Source maps can be generated for debugging compiled code
+
+#### Sample TypeScript Code
+
+**hello.ts**
+```typescript
+// TypeScript source code
+interface User {
+    name: string;
+    age: number;
+    isActive?: boolean;
+}
+
+class UserManager {
+    private users: User[] = [];
+
+    addUser(user: User): void {
+        this.users.push(user);
+        console.log(`Added user: ${user.name}`);
+    }
+
+    getActiveUsers(): User[] {
+        return this.users.filter(user => user.isActive ?? true);
+    }
+
+    getUserCount(): number {
+        return this.users.length;
+    }
+}
+
+// Generic function
+function processData<T>(data: T[], processor: (item: T) => T): T[] {
+    return data.map(processor);
+}
+
+// Usage
+const userManager = new UserManager();
+
+const newUser: User = {
+    name: "John Doe",
+    age: 30,
+    isActive: true
+};
+
+userManager.addUser(newUser);
+
+// Arrow functions with types
+const formatUser = (user: User): string => 
+    `${user.name} (${user.age} years old)`;
+
+// Union types and type guards
+function displayInfo(value: string | number | boolean): string {
+    if (typeof value === "string") {
+        return `Text: ${value.toUpperCase()}`;
+    } else if (typeof value === "number") {
+        return `Number: ${value.toFixed(2)}`;
+    } else {
+        return `Boolean: ${value ? "Yes" : "No"}`;
+    }
+}
+
+console.log(displayInfo("hello"));
+console.log(displayInfo(42.567));
+console.log(displayInfo(true));
+```
+
+#### Compilation Commands
+
+```bash
+# Compile single file
+tsc hello.ts
+
+# Compile with specific target
+tsc hello.ts --target ES2020
+
+# Compile with source maps
+tsc hello.ts --sourceMap
+
+# Watch mode (recompile on changes)
+tsc hello.ts --watch
+
+# Compile all files in project
+tsc
+
+# Check for errors without generating files
+tsc --noEmit
+
+# Compile with strict mode
+tsc hello.ts --strict
+```
+
+#### Compiled JavaScript Output
+
+**hello.js** (compiled from above TypeScript)
+```javascript
+"use strict";
+// JavaScript output (target ES2017)
+class UserManager {
+    constructor() {
+        this.users = [];
+    }
+    addUser(user) {
+        this.users.push(user);
+        console.log(`Added user: ${user.name}`);
+    }
+    getActiveUsers() {
+        return this.users.filter(user => user.isActive ?? true);
+    }
+    getUserCount() {
+        return this.users.length;
+    }
+}
+// Generic function (types removed)
+function processData(data, processor) {
+    return data.map(processor);
+}
+// Usage
+const userManager = new UserManager();
+const newUser = {
+    name: "John Doe",
+    age: 30,
+    isActive: true
+};
+userManager.addUser(newUser);
+// Arrow functions
+const formatUser = (user) => `${user.name} (${user.age} years old)`;
+// Type guards remain as runtime checks
+function displayInfo(value) {
+    if (typeof value === "string") {
+        return `Text: ${value.toUpperCase()}`;
+    }
+    else if (typeof value === "number") {
+        return `Number: ${value.toFixed(2)}`;
+    }
+    else {
+        return `Boolean: ${value ? "Yes" : "No"}`;
+    }
+}
+console.log(displayInfo("hello"));
+console.log(displayInfo(42.567));
+console.log(displayInfo(true));
+```
+
+#### tsconfig.json Configuration
+
+```json
+{
+  "compilerOptions": {
+    // Basic Options
+    "target": "ES2020",                     // Target JavaScript version
+    "module": "commonjs",                   // Module system
+    "lib": ["ES2020", "DOM"],              // Include library files
+    "outDir": "./dist",                     // Output directory
+    "rootDir": "./src",                     // Input directory
+    "strict": true,                         // Enable strict type checking
+    
+    // Additional Checks
+    "noUnusedLocals": true,                // Error on unused variables
+    "noUnusedParameters": true,            // Error on unused parameters
+    "noImplicitReturns": true,             // Error on missing return statements
+    "noFallthroughCasesInSwitch": true,    // Error on fallthrough cases
+    
+    // Module Resolution
+    "moduleResolution": "node",             // Module resolution strategy
+    "baseUrl": "./",                        // Base directory
+    "paths": {                              // Path mapping
+      "@/*": ["src/*"],
+      "@utils/*": ["src/utils/*"]
+    },
+    
+    // Source Maps & Debugging
+    "sourceMap": true,                      // Generate source maps
+    "inlineSourceMap": false,               // Don't inline source maps
+    "declaration": true,                    // Generate .d.ts files
+    "declarationMap": true,                 // Generate .d.ts.map files
+    
+    // Experimental
+    "experimentalDecorators": true,         // Enable decorators
+    "emitDecoratorMetadata": true,          // Emit decorator metadata
+    
+    // JavaScript Support
+    "allowJs": true,                        // Allow JavaScript files
+    "checkJs": false,                       // Type check JavaScript files
+    
+    // Other Options
+    "esModuleInterop": true,               // CommonJS/ES6 interop
+    "skipLibCheck": true,                  // Skip lib.d.ts type checking
+    "forceConsistentCasingInFileNames": true, // Consistent file names
+    "removeComments": true,                // Remove comments from output
+    "noEmitOnError": true                  // Don't emit if there are errors
+  },
+  "include": [
+    "src/**/*",                           // Include all files in src
+    "tests/**/*"                          // Include test files
+  ],
+  "exclude": [
+    "node_modules",                       // Exclude node_modules
+    "dist",                               // Exclude output directory
+    "**/*.test.ts",                       // Exclude test files from compilation
+    "**/*.spec.ts"
+  ],
+  "files": [
+    // Explicitly include specific files (optional)
+    "src/main.ts"
+  ]
+}
+```
+
+#### Package.json Scripts
+
+```json
+{
+  "name": "typescript-project",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "ts-node src/main.ts",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^4.9.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^18.0.0"
+  }
+}
+```
+@@@ END
+
+@@@ USER
+What are the most useful things to know about TypeScript: Compilation Examples with Different Targets? Short reference please.
+@@@ ASSISTANT
+**Original TypeScript:**
+```typescript
+const greet = (name: string = "World"): string => `Hello, ${name}!`;
+const user = { name: "Alice", age: 30 };
+const { name, age } = user;
+```
+
+**Compiled to ES5:**
+```javascript
+var greet = function (name) {
+    if (name === void 0) { name = "World"; }
+    return "Hello, " + name + "!";
+};
+var user = { name: "Alice", age: 30 };
+var name = user.name, age = user.age;
+```
+
+**Compiled to ES2020:**
+```javascript
+const greet = (name = "World") => `Hello, ${name}!`;
+const user = { name: "Alice", age: 30 };
+const { name, age } = user;
+```
+
+#### Error Examples
+
+**TypeScript with errors:**
+```typescript
+// Type errors that prevent compilation
+let message: string = 42;              // Error: Type 'number' is not assignable to type 'string'
+let numbers: number[] = ["a", "b"];    // Error: Type 'string' is not assignable to type 'number'
+
+function add(a: number, b: number): number {
+    return a + b;
+}
+
+add("hello", "world");                 // Error: Argument of type 'string' is not assignable to parameter of type 'number'
+```
+
+**Compiler output:**
+```bash
+$ tsc error-example.ts
+error-example.ts(2,5): error TS2322: Type 'number' is not assignable to type 'string'.
+error-example.ts(3,5): error TS2322: Type 'string[]' is not assignable to type 'number[]'.
+error-example.ts(8,5): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.
+```
+@@@ END
+
+@@@ USER
+What are the most useful things to know about What is XML? Short reference please.
+@@@ ASSISTANT
+> announcement: this doc is a quiz-, interview-oriented cheatsheet, which desigend for those who want to have an overview of XML, when preparing for interviews.
+
+# What is XML
+XML stands for eXtensible Markup Language, XML was designed to store and transport data. XML is often used for distributing data over the Internet(especial in web development).
+
+# Then how can XML store data
+XML uses a DTD to describe the data.
+
+# The relation with HTML
+* XML: is used to store or transport data.
+   So the XML is a **Complement** to HTML.
+* HTML: is used to format and display the same data.
+
+XML does not carry any information about how to be displayed. The same XML data can be used in many different presentation scenarios.
+Because of this, with XML, there is a full separation between data and presentation.
+
+# What is XML Schema/DTD
+The purpose of a DTD is to define the structure of an XML document. It defines the structure with a list of legal elements:
+
+# When Not to Use a XML DTD/Sschema
+XML does not require a DTD/Schema.
+
+When you are experimenting with XML, or when you are working with small XML files, creating DTDs may be a waste of time.
+
+If you develop applications, wait until the specification is stable before you add a document definition. Otherwise, your software might stop working because of validation errors.
+
+# XML Syntax
+The XML language has no predefined tags, but the syntax is rather logic and easy to learn. XML documents must contain one root element that is the parent of all other elements.
+
+```
+<bookstore>
+  <book category="children">
+    <title>Harry Potter</title>
+    <author>J K. Rowling</author>
+    <year>2005</year>
+    <price>29.99</price>
+  </book>
+  <book category="web">
+    <title>Learning XML</title>
+    <author>Erik T. Ray</author>
+    <year>2003</year>
+    <price>39.95</price>
+  </book>
+</bookstore>
+```
+
+1. XML Tags are Case Sensitive
+2. All XML Elements Must Have a Closeing Tag
+
+```
+This is a paragraph.
+  <!-- This is a self closing -->
+```
+3. XML Attribute Values Must Always be Quoted
+4. Pay attention to the name rules.
+
+# Reference
+1. (W3School) [https://www.w3schools.com/xml/]
+2. cheat sheet in German
+@@@ END
+
+@@@ USER
+Give me a cheat sheet for 🤔 Why Awesome-Cheatsheets?.
+@@@ ASSISTANT
+[](https://lecoupa.github.io/awesome-cheatsheets/)
+
+[](https://awesome.re) [](https://github.com/LeCoupa/awesome-cheatsheets/blob/master/LICENSE)
+
+**WEBSITE DIRECTORY**: Available here
+
+> 📚 Awesome cheatsheets for popular programming languages, frameworks and development tools. They include everything you should know in one single file.
+
+---
+
+## 🤔 Why Awesome-Cheatsheets?
+
+I usually make a cheat sheet when I want to improve my skills in a programming language, a framework or a development tool. I started doing these kinds of things a long time ago on Gist. To better keep track of the history and to let people contribute, I re-organized all of them into this single repository. Most of the content is coming from official documentation and some books I have read.
+
+Feel free to take a look. You might learn new things. They have been designed to provide a quick way to assess your knowledge and to save you time.
+
+---
+
+## 📚 Table of Contents
+
+### 📃 Languages
+
+View cheatsheets
+
+#### Command line interface
+- Bash
+
+#### Imperative
+- C
+- C#
+- Go
+- Java
+- PHP
+- Python
+- XML
+
+#### Functional
+- JavaScript
+- Typescript
+
+---
+
+### 📦 Backend
+
+View cheatsheets
+
+#### PHP
+- Laravel
+
+#### Python
+- Django
+
+#### JavaScript
+- Adonis.js
+- Express.js
+- Feathers.js
+- Moleculer
+- Node.js
+- Sails.js
+
+---
+
+### 🌐 Frontend
+
+View cheatsheets
+
+#### Basics
+- HTML5
+- CSS3
+- Typescript
+
+#### Frameworks
+- React.js
+- Vue.js
+- Tailwind.css
+- Ember.js
+- Angular (2+)
+- AngularJS
+
+---
+
+### 🗃️ Databases
+
+View cheatsheets
+
+#### SQL
+- MySQL
+
+#### NoSQL
+- MongoDB
+- Redis
+
+---
+
+### 🔧 Tools
+
+View cheatsheets
+
+#### Development
+- cURL
+- Code Review
+- Drush
+- Elasticsearch
+- Emmet
+- FFmpeg
+- Git
+- jq
+- Puppeteer
+- Sublime Text
+- VIM
+- Visual Studio Code
+- Xcode
+
+#### Infrastructure
+- AWS CLI
+- Docker
+- GCP CLI
+- Heroku CLI
+- Kubernetes
+- macOS
+- Nanobox Boxfile
+- Nanobox CLI
+- Nginx
+- PM2
+- Ubuntu
+- Firebase CLI
+
+---
+
+## 🙌🏼 How to Contribute?
+
+You are more than welcome to contribute and build your own cheat sheet for your favorite programming language, framework or development tool. Just submit changes via pull request and I will review them before merging.
+
+---
+
+## 👩‍💻👨‍💻 Our valuable Contributors
+@@@ END
+
+@@@ USER
+What are the most useful things to know about Code Review? Short reference please.
+@@@ ASSISTANT
+> Will this code become someone else's problem within three months?
+
+## Core Rules
+
+- Walk the five axes in priority order: **Correctness → Security → Readability → Performance → Tests**.
+- Each axis is graded **pass / fail / N-A**.
+- **Concrete-fix rule**: Every failure must include an exact line reference and a concrete fix.
+- **Max 10 comments**: >10 issues means reject and ask for resubmission, not a 50-item grade sheet.
+- **No style policing**: Formatting, quotes, and spacing belong to linters.
+
+## Scope
+
+| Diff size | Action |
+| --- | --- |
+| ≤ ~400 lines | Review normally |
+| > ~400 lines | Request a split first; review quality collapses on large diffs |
+
+## The Five Axes
+
+### 1. Correctness (Blocks merge)
+- Edge cases handled: null, empty, zero, negative, boundary/oversized input.
+- Concurrency and timing assumptions hold; no race conditions.
+- Errors and exceptions handled explicitly, never swallowed.
+
+### 2. Security (Blocks merge)
+- No user input concatenated into SQL, shell commands, or HTML.
+- No hard-coded secrets, tokens, or credentials.
+- Logs and error messages do not leak sensitive data or PII.
+
+### 3. Readability
+- Descriptive names; functions have a single responsibility.
+- Magic numbers are extracted into named constants.
+- Flag only incomprehensible logic, not personal style preferences.
+
+### 4. Performance
+- No repeated queries, allocations, or recomputations inside loops.
+- No N+1 query patterns across boundaries.
+- No data-free speculation ("this might be slow" is invalid feedback).
+
+### 5. Test Coverage
+- New logic and modified paths have automated tests.
+- Edge cases and failure modes have dedicated test cases.
+- All-green suites that miss critical paths get sent back.
+
+## Writing Comments
+
+### Fixed Format
+
+```text
+[severity][axis] file:line problem → suggested fix
+```
+
+**Examples:**
+```text
+[Must fix][Correctness] order.py:87 empty order list raises IndexError → guard before taking [0]
+[Should fix][Readability] order.py:92 magic number 86400 → name it SECONDS_PER_DAY
+```
+
+### Triage
+
+| Label | Axes | Blocks merge? |
+| --- | --- | --- |
+| Must fix | Correctness, Security | Yes |
+| Should fix | Readability, Performance, Tests | No (say so explicitly) |
+
+## Anti-patterns
+
+| Anti-pattern | Failure mode |
+| --- | --- |
+| Drive-by LGTM | Approving before reading the whole diff |
+| Style policing | Nits on quotes while logic defects slip through |
+| Vague feedback | "This looks off" without line number or fix |
+| Speculative perf | Blocking code on unmeasured performance worries |
+| 50-item grading | Teaching in review instead of sending back to rewrite |
+
+## Quick Checklist
+
+```markdown
+- [ ] Scope: diff ≤ ~400 lines (split if larger)
+- [ ] Correctness: edge cases handled, exceptions caught, no races
+- [ ] Security: input sanitized, no secrets, no sensitive logs
+- [ ] Readability: clear names, single responsibility, no magic numbers
+- [ ] Performance: no loop queries/N+1, no unverified perf speculation
+- [ ] Tests: new paths covered, edge cases tested
+- [ ] Fixes: every comment has file:line and a concrete fix (max 10)
+```
+@@@ END
+
+@@@ USER
+Give me a cheat sheet for EMMET.
+@@@ ASSISTANT
+*The essential toolkit for web-developers*
+
+## Introduction
+Emmet is a productivity toolkit for web developers that uses expressions to generate HTML snippets.
+
+## Installation
+Normally, installation for Emmet should be a straight-forward process from the package-manager, as most of the modern text editors support Emmet. If you have difficulty setting up emmet with your editor and wish to check Emmet is supported by your favourite editor or not, you can check it from here. Emmet Installation instructions
+
+## Usage
+You can use Emmet in two ways:
+* Tab Expand Way: Type your emmet code and press `Tab` key
+* Interactive Method: Press `alt + ctrl + Enter` and start typing your expressions. This should automatically generate HTML snippets on the fly.
+
+__This cheatsheet will assume that you press `Tab` after each expressions.__
+
+## HTML
+
+### Generating  HTML 5 DOCTYPE
+`html:5`
+Will generate
+
+```HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Document</title>
+</head>
+<body>
+
+</body>
+</html>
+```
+
+### Child items
+Child items are created using `>`
+
+`ul>li>p`
+
+```html
+<ul>
+  <li>
+    
+  </li>
+</ul>
+```
+
+### Sibling Items
+Sibling items are created using `+`
+
+`html>head+body`
+
+```html
+<html>
+<head></head>
+<body>
+
+</body>
+</html>
+```
+
+### Multiplication
+Items can be multiplied by `*`
+
+`ul>li*5`
+
+```html
+<ul>
+  <li></li>
+  <li></li>
+  <li></li>
+  <li></li>
+  <li></li>
+</ul>
+```
+
+### Grouping
+Items can be grouped together using `()`
+
+`table>(tr>th*5)+tr>t*5`
+
+```html
+<table>
+  <tr>
+    <th></th>
+    <th></th>
+    <th></th>
+    <th></th>
+    <th></th>
+  </tr>
+  <tr>
+    <t></t>
+    <t></t>
+    <t></t>
+    <t></t>
+    <t></t>
+  </tr>
+</table>
+```
+
+### Class and ID
+Class and Id in Emmet can be done using `.` and `#`
+
+`div.heading`
+
+```html
+
+```
+
+`div#heading`
+
+```html
+
+```
+
+ID and Class can also be combined together
+
+`div#heading.center`
+
+```html
+
+```
+
+### Adding Content inside tags
+Contents inside tags can be added using `{}`
+
+`h1{Emmet is awesome}+h2{Every front end developers should use this}+p{This is paragraph}*2`
+
+```HTML
+<h1>Emmet is awesome</h1>
+<h2>Every front end developers should use this</h2>
+This is paragraph
+This is paragraph
+```
+
+### Attributes inside HTML tags
+Attributes can be added using `[]`
+
+`a[href=https://google.com data-toggle=something target=_blank]`
+
+```HTML
+<a href="https://google.com" data-toggle="something" target="_blank"></a>
+```
+
+### Numbering
+Numbering can be done using `$`
+You can use this inside tag or contents.
+
+`h${This is so awesome $}*6`
+
+```HTML
+<h1>This is so awesome 1</h1>
+<h2>This is so awesome 2</h2>
+<h3>This is so awesome 3</h3>
+<h4>This is so awesome 4</h4>
+<h5>This is so awesome 5</h5>
+<h6>This is so awesome 6</h6>
+```
+
+Use `@-` to reverse the Numbering
+
+`img[src=image$$@-.jpg]*5`
+
+```HTML
+<img src="image05.jpg" alt="">
+<img src="image04.jpg" alt="">
+<img src="image03.jpg" alt="">
+<img src="image02.jpg" alt="">
+<img src="image01.jpg" alt="">
+```
+
+To start the numbering from specific number, use this way
+
+`img[src=emmet$@100.jpg]*5`
+
+```HTML
+<img src="emmet100.jpg" alt="">
+<img src="emmet101.jpg" alt="">
+<img src="emmet102.jpg" alt="">
+<img src="emmet103.jpg" alt="">
+<img src="emmet104.jpg" alt="">
+```
+
+## Tips
+* Use `:` to expand known abbreviations
+
+`input:date`
+```HTML
+<input type="date" name="" id="">
+```
+
+`form:post`
+```HTML
+<form action="" method="post"></form>
+```
+
+`link:css`
+```html
+<link rel="stylesheet" href="style.css">
+```
+
+* Building Navbar
+
+`.navbar>ul>li*3>a[href=#]{Item $@-}`
+
+```HTML
+
+  <ul>
+    <li><a href="#">Item 3</a></li>
+    <li><a href="#">Item 2</a></li>
+    <li><a href="#">Item 1</a></li>
+  </ul>
+
+```
+
+## CSS
+
+Emmet works surprisingly well with css as well.
+
+* `f:l`
+
+```css
+float: left;
+```
+
+You can also use any options n/r/l
+
+* `pos:a­`
+
+```css
+position: absolute;
+```
+
+Also use any options, pos:a/r/f
+
+* `d:n/b­/f/­i/ib`
+
+`d:ib`
+
+```css
+display: inline-block;
+```
+
+* You can use `m` for margin and `p` for padding followed by direction
+
+`mr` -> `margin-right`
+
+`pr` -> `padding-right`
+
+* `@f` will result in
+
+```css
+@font-face {
+  font-family:;
+  src:url();
+}
+```
+
+You can also use these shorthands
+
+| Shorthand      | Description |
+| ----------- | ----------- |
+| z      | z-index       |
+| w      | width       |
+| h      | height       |
+| fz   | font-size        |
+| ff   | font-family        |
+| fw   | font-weight        |
+| @lh   | line-height        |
+| maw   | max-width        |
+| mah   | max-height        |
+| miw   | min-width        |
+| mih   | min-width        |
+| !   | !important        |
+| @f   | font-face        |
+| @op   | opacity        |
+| @lh   | line-height        |
+| @op   | opacity        |
+@@@ END
+
+@@@ USER
+What are the most useful things to know about Firebase CLI Guide? Short reference please.
+@@@ ASSISTANT
+Firebase CLI (Command Line Interface) is a powerful tool that allows developers to interact with Firebase services and manage their Firebase projects directly from the command line. It provides a convenient and efficient way to deploy projects, manage databases, configure authentication, and more, streamlining the development and deployment processes.
+
+## Installation
+
+To use the Firebase CLI, you need to have Node.js and npm (Node Package Manager) installed on your system. Follow the steps below to install the Firebase CLI:
+
+1. Install Node.js and npm by downloading the installer from the official Node.js website and following the installation instructions for your operating system.
+
+2. Once Node.js and npm are installed, open your terminal or command prompt and run the following command to install the Firebase CLI globally:
+
+   ```
+   npm install -g firebase-tools
+   ```
+
+   This command will download and install the Firebase CLI package from the npm registry.
+
+3. After the installation is complete, you can verify that the Firebase CLI is installed correctly by running the following command:
+
+   ```
+   firebase --version
+   ```
+
+   If the installation was successful, you will see the version number of the Firebase CLI printed in the terminal.
+
+Congratulations! You have successfully installed the Firebase CLI.
+
+## Usage
+
+The Firebase CLI allows you to interact with Firebase services and manage your Firebase projects from the command line. Here are some common tasks you can perform using the Firebase CLI:
+
+- Initialize a new Firebase project in your current directory.
+- Deploy your Firebase project to Firebase hosting.
+- Manage Firebase Authentication, Realtime Database, Cloud Firestore, Cloud Functions, and other Firebase services.
+- Configure Firebase project settings.
+- Interact with Firebase emulators for local development and testing.
+
+To use the Firebase CLI, open your terminal or command prompt and run the `firebase` command followed by the desired command and options.
+
+Here's an example of the basic usage:
+
+```
+firebase <command> [options]
+```
+
+Replace `<command>` with the specific Firebase command you want to execute, and `[options]` with any additional options or flags required for that command.
+
+For more detailed usage information, you can run the following command:
+
+```
+firebase help
+```
+
+This command will display the available Firebase commands and provide detailed information about each command.
+
+## Commands
+
+Here are the commonly used Firebase CLI commands along with a brief explanation, syntax, and an example for each command:
+
+- `firebase init`: Initializes a new Firebase project in the current directory.
+
+  - Syntax: `firebase init [options]`
+  - Example: `firebase init hosting` initializes Firebase Hosting for the current project.
+
+- `firebase deploy`: Deploys your Firebase project to Firebase hosting or other Firebase services.
+
+  - Syntax: `firebase deploy [options]`
+  - Example: `firebase deploy --only hosting` deploys only the Firebase Hosting content.
+
+- `firebase serve`: Starts local development servers and Firebase emulators.
+
+  - Syntax: `firebase serve [options]`
+  - Example: `firebase serve --only functions,hosting` starts the Firebase emulators for functions and hosting.
+
+- `firebase login`: Authenticates the Firebase CLI with your Firebase account.
+
+  - Syntax: `firebase login [options]`
+  - Example: `firebase login --no-localhost` initiates an interactive login session without connecting to localhost.
+
+- `firebase logout`: Logs out from the Firebase CLI.
+
+  - Syntax: `firebase logout [options]`
+  - Example: `firebase logout` logs out the currently authenticated user.
+
+- `firebase use`: Sets the active Firebase project for the current directory.
+
+  - Syntax: `firebase use <project_id> [options]`
+  - Example: `firebase use my-project` sets "my-project" as the active Firebase project.
+
+- `firebase functions`: Interacts with Firebase Cloud Functions.
+
+  - Syntax: `firebase functions:command [options]`
+  - Example: `firebase functions:delete [function_name]` deletes all functions that match the specified name in all regions.
+
+- `firebase database`: Interacts with Firebase Realtime Database.
+
+  - Syntax: `firebase database:command [options]`
+  - Example: `firebase database:get /users` retrieves data from the Firebase Realtime Database.
+
+- `firebase firestore`: Interacts with Firebase Cloud Firestore.
+
+  - Syntax: `firebase firestore:command [options]`
+  - Example: `firebase firestore:delete collection/document` deletes a document from the Firestore database.
+
+- `firebase auth`: Interacts with Firebase Authentication.
+
+  - Syntax: `firebase auth:command [options]`
+  - Example: `firebase auth:export users.csv` exports user data to a CSV file.
+
+- `firebase hosting`: Interacts with Firebase Hosting.
+
+  - Syntax: `firebase hosting:command [options]`
+  - Example: `firebase hosting:disable` disables Firebase Hosting for the current project.
+
+- `firebase remoteconfig`: Interacts with Firebase Remote Config.
+
+  - Syntax: `firebase remoteconfig:command [options]`
+  - Example: `firebase remoteconfig:get template` retrieves the Remote Config template.
+
+- `firebase ext`: Interacts with Firebase Extensions.
+
+  - Syntax: `firebase ext:command [options]`
+  - Example: `firebase ext:install firebase/delete-user-data` installs the Firebase Extension named "firebase/delete-user-data".
+
+- `firebase appdistribution`: Interacts with Firebase App Distribution.
+
+  - Syntax: `firebase appdistribution:command [options]`
+  - Example: `firebase appdistribution:testers:add` Adds testers to the project.
+
+- `firebase use --add`: Adds an existing Firebase project to the current directory
+
+  - Syntax: `firebase use --add`
+  - Example: `firebase use --add` interactively adds an existing Firebase project.
+
+- `firebase projects:create`: Creates a new Firebase project.
+  - Syntax: `firebase projects:create [options]`
+  - Example: `firebase projects:create --display-name "My Project"` creates a new Firebase project with the given display name.
+
+These are just a few examples of the available commands. You can explore more commands and their options by running `firebase help` or visiting the official Firebase CLI documentation.
+@@@ END
+
+@@@ USER
+Give me a cheat sheet for GCLOUD SDK AND TOOLBELT CHEATSHEET.
+@@@ ASSISTANT
+## GCP BASICS
+
+- `Check Version and Settings`: gcloud version, gcloud info, gcloud components list
+
+- `Init Profile`: gcloud init This will ask you to open an OpenID URL
+
+- `List all zones`: gcloud compute zones list
+
+- `Upgrade local SDK`: gcloud components update, gcloud components update --version 219.0.1
+
+## BUCKET BASICS
+
+- `List all buckets and files`: gsutil ls, gsutil ls -lh gs://<bucket-name>
+
+- `Download file`: gsutil cp gs://<bucket-name>/<dir-path>/package-1.1.tgz .
+
+- `Upload file`: gsutil cp <filename> gs://<bucket-name>/<directory>/
+
+- `Cat file`: gsutil cat gs://<bucket-name>/<filepath>/
+
+- `Delete file`: gsutil rm gs://<bucket-name>/<filepath>
+
+- `Move file`: gsutil mv <src-filepath> gs://<bucket-name>/<directory>/<dest-filepath>
+
+- `Copy folder`: gsutil cp -r ./conf gs://<bucket-name>/
+
+- `Show disk usage`: gsutil du -h gs://<bucket-name>/<directory>/
+ 
+- `Create bucket`: gsutil mb gs://<bucket-name>
+
+- `Caculate file sha1sum`: gsha1sum syslog-migration-10.0.2.tgz, shasum syslog-migration-10.0.2.tgz
+
+- `Gsutil help`: gsutil help, gsutil help cp, gsutil help options
+
+## GCP PROJECT
+
+- `List projects `: gcloud config list, gcloud config list project
+
+- `Show project info `: gcloud compute project-info describe
+
+- `Switch project `: gcloud config set project <project-id>
+
+## GKE
+
+- `Display a list of credentialed accounts `: gcloud auth list
+
+- `Set the active account `: gcloud config set account <ACCOUNT>
+
+- `Set kubectl context `: gcloud container clusters get-credentials <cluster-name>
+
+- `Change region `: gcloud config set compute/region us-west
+
+- `Change zone `: gcloud config set compute/zone us-west1-b
+
+- `List all container clusters `: gcloud container clusters list
+
+## IAM
+
+- `Authenticate client `: gcloud auth activate-service-account --key-file <key-file>
+
+- `Display a list of credentialed accounts `: gcloud auth list
+
+- `Set the active account `: gcloud config set account <ACCOUNT>
+
+- `Auth to GCP Container Registry `: gcloud auth configure-docker
+
+- `Print token for active account `: gcloud auth print-access-token, gcloud auth print-refresh-token
+
+- `Revoke previous generated credential `: gcloud auth <application-default> revoke
+
+## BUCKET SECURITY
+
+- `Make all files readable `: gsutil -m acl set -R -a public-read gs://<bucket-name>/
+
+- `Config auth `: gsutil config -a
+
+- `Grant bucket access `: gsutil iam ch user:denny@gmail.com:objectCreator,objectViewer gs://<bucket-name>
+
+- `Remove bucket access `: gsutil iam ch -d user:denny@gmail.com:objectCreator,objectViewer gs://<bucket-name>
+
+## VM
+
+- `List all instances `: gcloud compute instances list, gcloud compute instance-templates list
+
+- `Show instance info `: gcloud compute instances describe "<instance-name>" --project "<project-name>" --zone "us-west2-a"
+
+- `Stop an instance `: gcloud compute instances stop instance-2
+
+- `Start an instance `: gcloud compute instances start instance-2
+
+- `Create an instance `: gcloud compute instances create vm1 --image image-1 --tags test --zone "<zone>" --machine-type f1-micro
+
+- `SSH to instance `: gcloud compute ssh --project "<project-name>" --zone "<zone-name>" "<instance-name>"
+
+- `Download files `: gcloud compute copy-files example-instance:~/REMOTE-DIR ~/LOCAL-DIR --zone us-central1-a
+
+- `Upload files `: gcloud compute copy-files ~/LOCAL-FILE-1 example-instance:~/REMOTE-DIR --zone us-central1-a
+
+## DISKS & VOLUMES
+
+- `List all disks `: gcloud compute disks list
+
+- `List all disk types `: gcloud compute disk-types list
+
+- `List all snapshots `: gcloud compute snapshots list
+
+- `Create snapshot `: gcloud compute disks snapshot <diskname> --snapshotname <name1> --zone $zone
+
+## NETWORK
+
+- `List all networks `: gcloud compute networks list
+
+- `Detail of one network `: gcloud compute networks describe <network-name> --format json
+
+- `Create network `: gcloud compute networks create <network-name>
+
+- `Create subnet `: gcloud compute networks subnets create subnet1 --network net1 --range 10.5.4.0/24
+
+- `Get a static ip `: gcloud compute addresses create --region us-west2-a vpn-1-static-ip 
+
+- `List all ip addresses `: gcloud compute addresses list
+
+- `Describe ip address `: gcloud compute addresses describe <ip-name> --region us-central1
+
+- `List all routes `: gcloud compute routes list
+
+## DNS
+
+- `List of all record-sets in my zone `: gcloud dns record-sets list --zone my_zone
+
+- `List first 10 DNS records `: gcloud dns record-sets list --zone my_zone --limit=10
+
+## FIREWALL
+
+- `List all firewall rules `: gcloud compute firewall-rules list
+
+- `List all forwarding rules `: gcloud compute forwarding-rules list
+
+- `Describe one firewall rule `: gcloud compute firewall-rules describe <rule-name>
+
+- `Create one firewall rule `: gcloud compute firewall-rules create my-rule --network default --allow tcp:9200 tcp:3306
+
+- `Update one firewall rule `: gcloud compute firewall-rules update default --network default --allow tcp:9200 tcp:9300
+
+## IMAGES & CONTAINERS
+
+- `List all images `: gcloud compute images list
+
+- `List all container clusters `: gcloud container clusters list
+
+- `Set kubectl context `: gcloud container clusters get-credentials <cluster-name>
+
+## RDS
+
+- `List all sql instances `: gcloud sql instances list
+
+## SERVICES
+
+- `List my backend services `: gcloud compute backend-services list
+
+- `List all my health check endpoints `: gcloud compute http-health-checks list
+
+- `List all URL maps `: gcloud compute url-maps list
+@@@ END
+
+@@@ USER
+What are the most useful things to know about Kubernetes? Short reference please.
+@@@ ASSISTANT
+* PDF: https://sematext.com/kubernetes-cheat-sheet/
+* WEBSITE: https://kubernetes.io/
+* DOCUMENTATION: https://kubernetes.io/docs/home
+
+## Client Configuration
+
+* Setup autocomplete in bash; bash-completion package should be installed first
+```
+source <(kubectl completion bash)
+```
+
+* View Kubernetes config
+```
+kubectl config view
+```
+
+* View specific config items by json path
+```
+kubectl config view -o jsonpath='{.users[?(@.name == "k8s")].user.password}'
+```
+
+* Set credentials for `foo.kuberntes.com`
+```
+kubectl config set-credentials kubeuser/foo.kubernetes.com --username=kubeuser --password=kubepassword
+```
+
+* Set active namespace
+```
+kubectl config set-context --current --namespace=namespace_name
+```
+
+## Viewing, Finding resources
+
+* List all services in the namespace
+```
+kubectl get services
+```
+
+* List all pods in all namespaces in wide format
+```
+kubectl get pods -o wide --all-namespaces
+```
+
+* List all pods in json (or yaml) format
+```
+kubectl get pods -o json
+```
+
+* Describe resource details (node, pod, svc)
+```
+kubectl describe nodes my-node
+```
+
+* List services sorted by name
+```
+kubectl get services --sort-by=.metadata.name
+```
+
+* List pods sorted by restart count
+```
+kubectl get pods --sort-by='.status.containerStatuses[0].restartCount'
+```
+
+* Rolling update pods for frontend-v1
+```
+kubectl rolling-update frontend-v1 -f frontend-v2.json
+```
+
+* Scale a replicaset named 'foo' to 3
+```
+kubectl scale --replicas=3 rs/foo
+```
+
+* Scale a resource specified in "foo.yaml" to 3
+```
+kubectl scale --replicas=3 -f foo.yaml
+```
+
+* Execute a command in every pod / replica
+```
+for i in 0 1; do kubectl exec foo-$i -- sh -c 'echo $(hostname) > /usr/share/nginx/html/index.html'; done
+```
+
+## Manage Resources
+
+* Get documentation for pod or service
+```
+kubectl explain pods,svc
+```
+
+* Create resource(s) like pods, services or daemonsets
+```
+kubectl create -f ./my-manifest.yaml
+```
+
+* Apply a configuration to a resource
+```
+kubectl apply -f ./my-manifest.yaml
+```
+
+* Start a single instance of Nginx
+```
+kubectl run nginx --image=nginx
+```
+
+* Create a secret with several keys
+```
+cat <<EOF | kubectl create -f -
+apiVersion: v1
+kind: Secret
+metadata:
+ name: mysecret
+type: Opaque
+data:
+ password: $(echo "s33msi4" | base64)
+ username: $(echo "jane"| base64)
+EOF
+```
+
+* Delete a resource
+```
+kubectl delete -f ./my-manifest.yaml
+```
+
+## Monitoring & Logging
+
+* Deploy Heapster from Github repository
+```
+kubectl create -f deploy/kube-config/standalone/
+```
+
+* Show metrics for nodes
+```
+kubectl top node
+```
+
+* Show metrics for pods
+```
+kubectl top pod
+```
+
+* Show metrics for a given pod and its containers
+```
+kubectl top pod pod_name --containers
+```
+
+* Dump pod logs (stdout)
+```
+kubectl logs pod_name
+```
+
+* Stream pod container logs (stdout, multi-container case)
+```
+kubectl logs -f pod_name -c my-container
+```
+
+## Interacting with running pods
+
+* Run command in pod
+```
+kubectl exec pod_name -- command_name
+```
+
+* Run command in pod with multiple containers
+```
+kubectl exec pod_name -c container_name -- command_name
+```
+
+* Get terminal of pod
+```
+kubectl exec -it pod_name /bin/sh
+```
+
+* Get terminal of a container running in pod with multiple containers
+```
+kubectl exec -it pod_name -c container_name /bin/sh
+```
+@@@ END
+
+@@@ USER
+What are the most useful things to know about SUBLIME TEXT 3 CHEATSHEET? Short reference please.
+@@@ ASSISTANT
+## Access every command with the command palette
+
+- `shift + cmd + P `: Command palette
+
+## Goto anything
+
+- `cmd + P `: Goto file
+
+- `ctrl + G `: Goto line
+
+- `cmd + P `: Fuzzy search
+
+- `cmd + R `: Goto symbol
+
+## Quick selections
+
+- `cmd + D `: Select word
+
+- `cmd + K, cmd + D `: Skip and add next
+
+- `cmd + U `: Undo quick select
+
+- `cmd + L `: Select line
+
+- `ctrl + cmd + G `: Select all in file
+
+- `shift + cmd + space `: Expand selection to scope
+
+- `shift + cmd + L `: Split into lines
+
+## Edit code
+
+- `cmd + J `: Join 2 lines
+
+- `cmd + shift + D `: Duplicate line
+
+- `cmd + shift + R `: Reindent
+
+- `cmd + shift + K `: Delete line
+
+- `ctrl + cmd + up/down `: Move line/selection up/down
+
+- `alt + cmd + V `: Paste from history
+
+- `shift + cmd + / `: Comment/uncomment line
+
+- `alt + backspace `: Delete word by word
+
+- `alt + fn + backspace `: Forward delete word by word
+
+- `cmd + shift + enter `: Insert line before
+
+- `cmd + enter `: Insert line after
+
+- `ctrl + k, ctrl + l ` : To Lowercase
+
+- `ctrl + k, ctrl + u ` : To Uppercase
+
+## Searching
+
+- `cmd + F `: Search in file
+
+- `shift + cmd + F `: Search in all files
+
+- `<open files> `: where filter
+
+## Miscelaneous
+
+- `alt + cmd + right/left `: Switch open tab
+
+- `ctrl + ]`: Indent selection
+
+- `ctrl + [ `: Unindent selection
+
+- `alt + - `: Go to previous cursor position
+
+- `alt + shift + - `: Go to next previous cursor position
+
+- `ctrl + b `: Build and execute file
+
+## Must have packages
+
+`A file icon, BracketHighlighter, Color Highlighter, Comment-Snippets, DevDocs, EditorConfig, Emmet, File Rename, Git, Git blame, GitGutter, HTML-CSS-JS Prettify, JavaScript Completions, JavaScript Patterns, JavaScript Snippets, LESS, Nodejs, Package Control, Pretty JSON, SideBarEnhancements, SublimeLinter, SublimeLinter-contrib-eslint, Terminal, Termius, auto save`
+
+## Preferences
+
+```javascript
+{
+"color_scheme": "Packages/User/Color Highlighter/themes/Boxy Ocean.tmTheme",
+"detect_indentation": false,
+"folder_exclude_patterns":
+[
+"node_modules",
+".svn",
+".git",
+".meteor/local"
+],
+"ignored_packages":
+[
+"Vintage"
+],
+"show_definitions": true,
+"theme": "Adaptive.sublime-theme"
+}
+```
+
+## Keymap
+
+```javascript
+[
+{ "keys": ["super+v"], "command": "paste_and_indent" },
+{ "keys": ["super+shift+v"], "command": "paste" },
+{ "keys": ["super+shift+r"], "command": "reindent" },
+{ "keys": ["super+h"], "command": "dev_docs_search_selection" }
+]
+
+```
+
+## Syncing settings with iCloud
+
+- `cd ~/Library/Application\ Support/Sublime\ Text\ 3/Packages`
+
+- `mkdir -p ~/Library/Mobile\ Documents/com\~apple\~CloudDocs/WebDev/ST3/Plugins`
+
+- `mv User ~/Library/Mobile\ Documents/com\~apple\~CloudDocs/WebDev/ST3/Plugins`
+
+- `ln -s ~/Library/Mobile\ Documents/com\~apple\~CloudDocs/WebDev/ST3/Plugins/User`
+
+## Restore settings from iCloud
+
+- `cd ~/Library/Application\ Support/Sublime\ Text\ 3/Packages`
+
+- `rm -rf User`
+
+- `ln -s ~/Library/Mobile\ Documents/com\~apple\~CloudDocs/WebDev/ST3/Plugins/User`
+@@@ END
+
+@@@ USER
+Give me a cheat sheet for Visual Studio CheatSheet.
+@@@ ASSISTANT
+## Shortcuts
+
+### Linux
+
+#### General
+
+- `Ctrl`+`Shift`+`P`, `F1`: Show Command Palette
+- `Ctrl`+`Shift`+`T`: Open last closed tab
+- `Ctrl`+`P`: Quick Open, Go to File
+- `Ctrl`+`Shift`+`N`: New window/instance
+- `Ctrl`+`W`: Close window/instance
+- `Ctrl`+`,`: User Settings
+- `Ctrl`+`K`, `Ctrl`+`S`: Keyboard Shortcuts
+
+#### Basic editing
+
+- `Ctrl`+`X`: Cut line (empty selection)
+- `Ctrl`+`C`: Copy line (empty selection)
+- `Ctrl`+`↓/↑`: Move line down / up
+- `Ctrl`+`Shift`+`K`: Delete line
+- `Ctrl`+`Enter` / `Ctrl`+`Shift`+`Enter`: Insert line below / above
+- `Ctrl`+`Shift`+`\`: Jump to matching bracket
+- `Ctrl`+`]` / `Ctrl`+`[`: Indent / Outdent line
+- `Ctrl`+`Home` / `End`: Go to beginning / end of file
+- `Ctrl`+`↑ / ↓`: Scroll line up / down
+- `Alt`+`PgUp` / `PgDn`: Scroll page up / down
+- `Ctrl`+`Shift`+`[ / ]`: Fold / unfold region
+- `Ctrl`+`K`, `Ctrl`+`[ / ]`: Fold / unfold all subregions
+- `Ctrl`+`K`, `Ctrl`+`0` / `Ctrl`+`K`, `Ctrl`+`J`: Fold /Unfold all regions
+- `Ctrl`+`K`, `Ctrl`+`C`: Add line comment
+- `Ctrl`+`K`, `Ctrl`+`U`: Remove line comment
+- `Ctrl`+`/`: Toggle line comment
+- `Ctrl`+`Shift`+`A`: Toggle block comment
+- `Alt`+`Z`: Toggle word wrap
+
+## Useful Extensions
+
+### HTML & CSS
+
+- `CSScomb`: Coding style formatter for CSS, Less, SCSS and Saas.
+
+- `Puglint`: Linter and style checker for pug.
+
+- `Sass`: Indented Sass syntax highlighting, autocomplete & snippets.
+
+- `SCSS IntelliSense`: Advanced autocompletion and refactoring support for SCSS.
+
+- `XML Format`: Format XML documents.
+
+### JavaScript, Node & NPM
+
+- `Import Cost`: This extension will display inline in the editor the size of the imported package.
+
+- `ESLint`: Integrates ESLint into VS Code
+
+- `NPM`: NPM support for VS Code.
+
+- `NPM Intellisense`: Visual Studio Code plugin that autocompletes NPM modules in import statements.
+
+- `Version Lens`: Shows the latest version for each package using code lens.
+
+- `Vetur`: Vue tooling for VS Code.
+
+### PHP
+
+- `Better PHPUnit`: A better PHPUnit test runner.
+
+- `Laravel Artisan`: Laravel Artisan commands within Visual Studio Code.
+
+- `PHP CS Fixer`: PHP CS Fixer extension for VS Code, php formatter, php code beautify tool.
+
+- `PHP Doc Comment VSCode Plugin`: Add phpdoc @param and @return tag for selected function signatures.
+
+- `PHP IntelliSense`: Advanced Autocompletion and Refactoring support for PHP.
+
+### Perl
+
+- `Perl`: Code intelligence for the Perl language.
+
+- `Perl Toolbox`: Perl Toolbox for linting and syntax checking for Perl.
+
+- `Perl Moose`: Perl Moose syntax highlight support for Visual Studio Code.
+
+### Git
+
+- `Git History`: View git log, file history, compare branches or commits.
+
+- `Gitignore`: An extension for Visual Studio Code that assists you in working with .gitignore files.
+
+- `GitLens`: Visualize code authorship, code lens, seamlessly Git blame annotations and more.
+
+- `Gitmoji`: An emoji tool for your git commit messages.
+
+### Themes
+
+- `Material Icon Theme`: Material Design Icons for Visual Studio Code.
+
+- `Palenight Theme`: An elegant and juicy material-like theme for Visual Studio Code.
+
+- `Office Theme` A Microsoft Office theme for Visual Studio Code.
+
+### Handy
+
+- `Better comments`: Improve your code commenting by annotating with alert, informational, TODOs, and more!
+
+- `Debugger for Chrome`: Debug your JavaScript code in the Chrome browser.
+
+- `EditorConfig for VS Code`: EditorConfig Support for Visual Studio Code.
+
+- `File Utils`: A convenient way of creating, duplicating, moving, renaming and deleting files and directories.
+
+- `Final-Newline`: Inserts a final newline when saving the document.
+
+- `Formatting Toggle`: A VS Code extension that allows you to toggle the formatter (Prettier, Beautify, …) ON and OFF with a simple click.
+
+- `Open in Github/Bitbucket...`: Jump to a source code line in Github / Bitbucket, Gitlab, VisualStudio.com
+
+- `OpenChrome`: Open file with Chrome.
+
+- `Output Colorizer`: Syntax Highlighting for log files.
+
+- `Prettier - Code formatter`: VS Code plugin for prettier/prettier.
+
+- `Project Manager`: Easily switch between projects.
+
+- `REST Client`: REST Client for Visual Studio Code.
+
+- `SVG Viewer`: SVG Viewer for Visual Studio Code.
+
+- `Terminal`: Terminal for Visual Studio Code.
+
+- `Vue Peek`: Allows peek and goto definition for Vue single-file components.
+
+- `VS Live Share`: Real-time collaborative development from the comfort of your favorite tools.
+
+- `Wrap Console Log`: Wrap to console.log by word or selection.
+
+- `Bracket Pair Colorizer`: Allows matching brackets to be identified with colours.
+@@@ END
+
+@@@ USER
+Give me a cheat sheet for Visual Studio CheatSheet: My Settings.
+@@@ ASSISTANT
+```javascript
+{
+    // Controls the font size in pixels
+    "editor.fontSize": 14,
+
+    // Render vertical rulers after a certain number of
+    // monospace characters. Use multiple values for multiple
+    // rulers. No rulers are drawn if array is empty
+    "editor.rulers": [100],
+
+    // The number of spaces a tab is equal to
+    "editor.tabSize": 2,
+
+    "[python]": {
+        "editor.tabSize": 4
+    },
+
+    // Controls the line height
+    "editor.lineHeight": 22,
+
+    // Controls the font family
+    "editor.fontFamily": "Fira Code",
+
+    // Enables font ligatures
+    "editor.fontLigatures": true,
+
+    // Controls whether snippets are shown with other suggestions and how they are sorted.
+    "editor.snippetSuggestions": "top",
+
+    // Ignore extension recommendations
+    "extensions.ignoreRecommendations": false,
+
+    // Controls auto save of dirty files
+    "files.autoSave": "afterDelay",
+
+    // Controls the delay in ms after which a dirty file is saved automatically
+    "files.autoSaveDelay": 1000,
+
+    // Configure glob patterns for excluding files and folders
+    "files.exclude": {
+        ".yarn": true,
+        "**/*.pyc": true
+    },
+
+    // Insert a final new line at the end of the file when saving it
+    "files.insertFinalNewline": true,
+
+    // Confirm before synchronizing git repositories
+    "git.confirmSync": false,
+
+    // Commit all changes when there are no staged changes
+    "git.enableSmartCommit": true,
+
+    // Whether to lint Python files using pylint
+    "python.linting.pylintEnabled": false,
+
+    // Whether to lint Python files using flake8
+    "python.linting.flake8Enabled": true,
+
+    // Configure glob patterns for excluding files and folders in
+    // searches. Inherits all glob patterns from the files.exclude setting.
+    "search.exclude": {
+        "**/.git": true,
+        "**/.nuxt": true,
+        "**/build": true,
+        "**/data": true,
+        "**/dist": true,
+        "**/env": true
+    },
+
+    // Adjust the zoom level of the window. The original size is 0
+    // and each increment above (e.g. 1) or below (e.g. -1) represents
+    // zooming 20% larger or smaller. You can also enter decimals to
+    // adjust the zoom level with a finer granularity.
+    "window.zoomLevel": 0,
+
+    // Overrides colors from the currently selected color theme.
+    "workbench.colorCustomizations": {
+        "statusBar.background": "#8252be",
+        "statusBar.foreground": "#eeffff",
+        "titleBar.activeBackground": "#282b3c",
+        "titleBar.activeForeground": "#eeefff"
+    },
+
+    // Specifies the color theme used in the workbench
+    "workbench.colorTheme": "Material Palenight",
+
+    // Specifies the icon theme used in the workbench
+    "workbench.iconTheme": "material-icon-theme",
+
+    // Controls font aliasing method in the workbench
+    "workbench.fontAliasing": "antialiased",
+    "explorer.confirmDragAndDrop": false
+}
+```
+@@@ END
+

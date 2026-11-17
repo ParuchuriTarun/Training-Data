@@ -48,6 +48,18 @@ and `data/oss_clean_webdev.py`.
 | oss_axum_docs.txt | https://github.com/tokio-rs/axum (examples and docs) | 2449f1600c66 | MIT | axum Contributors |
 | oss_rocket_guide.txt | https://github.com/rwf2/Rocket (docs/guide) | 3a54d079aef0 | MIT OR Apache-2.0 | Rocket contributors (see LICENSE-MIT) |
 | oss_diesel_guide.txt | https://github.com/diesel-rs/diesel (guide drafts) | 62ea31380676 | MIT OR Apache-2.0 | Diesel contributors (see LICENSE-MIT) |
+| oss_vitest_docs.txt | https://github.com/vitest-dev/vitest (docs) | efba8cbfe94b | MIT | VoidZero Inc. and Vitest contributors |
+| oss_jest_docs.txt | https://github.com/jestjs/jest (docs) | aa88f7cf0bfc | MIT | Meta Platforms, Inc. and affiliates |
+| oss_react_router_docs.txt | https://github.com/remix-run/react-router (docs) | a983c51daecc | MIT | React Training LLC and Remix Software Inc. |
+| oss_tanstack_query.txt | https://github.com/TanStack/query (docs, React and shared pages) | d63a027c26b2 | MIT | Tanner Linsley |
+| oss_sveltekit_docs.txt | https://github.com/sveltejs/kit (documentation) | 407ef8cb1257 | MIT | SvelteKit contributors |
+| oss_angular_docs.txt | https://github.com/angular/angular (adev/src/content, without the API reference) | f41e1d82695d | MIT | Google LLC |
+| oss_leptos_book.txt | https://github.com/leptos-rs/book | 2ec56454c7d3 | MIT | Leptos |
+| oss_yew_docs.txt | https://github.com/yewstack/yew (website/docs) | bfa6c19af971 | MIT OR Apache-2.0 | Yew contributors (see LICENSE-MIT) |
+| oss_cheatsheets.txt | https://github.com/LeCoupa/awesome-cheatsheets | 774445f64658 | MIT | Julien Le Coupanec |
+| oss_clean_code_ts.txt | https://github.com/labs42io/clean-code-typescript | 05a25e8fb8f4 | MIT | Labs42 |
+| oss_airbnb_css.txt | https://github.com/airbnb/css | c92f95c09909 | MIT | Airbnb |
+| oss_pure_sh_bible.txt | https://github.com/dylanaraps/pure-sh-bible | 26bc7e8d6cfb | MIT | Dylan Araps |
 
 The Rust Book, Rust By Example and the API Guidelines are dual-licensed; this project takes
 them under the MIT option.
@@ -62,6 +74,9 @@ them under the MIT option.
 | google/comprehensive-rust | Apache-2.0 (code) and CC BY 4.0 (all .md text) | The course text is CC BY 4.0, outside the MIT / Apache / CC0 rule |
 | clap-rs/clap | MIT OR Apache-2.0 | Its guides are rustdoc comments, nothing to convert |
 | ratatui/ratatui-website | MIT | Too little text |
+| oven-sh/bun | MIT, but the repository bundles LGPL code | Mixed licence in one repository, left out to be safe |
+| prisma/docs | not verified | No licence file found in the docs repository |
+| denysdovhan/bash-handbook | CC BY 4.0 | Attribution licence, outside the MIT / Apache / CC0 rule |
 
 Anything under CC BY-SA, CC BY-NC, GPL or an unknown licence was left out on purpose.
 

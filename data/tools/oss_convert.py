@@ -381,6 +381,61 @@ QUESTIONS = {
         "Explain {t} in Diesel, the Rust database library.",
         "How do I do this with Diesel: {t}?",
     ],
+    "vitest_docs": [
+        "How do I do this in Vitest: {t}?",
+        "Explain {t} in Vitest.",
+        "Vitest: {t}. Show me with code.",
+    ],
+    "jest_docs": [
+        "How do I do this in Jest: {t}?",
+        "Explain {t} in Jest testing.",
+        "Jest: {t}. Show me with code.",
+    ],
+    "react_router_docs": [
+        "Explain {t} in React Router.",
+        "How do I do this in React Router: {t}?",
+        "React Router: {t}. Show me with code.",
+    ],
+    "tanstack_query": [
+        "Explain {t} in TanStack Query (React Query).",
+        "How do I do this with TanStack Query: {t}?",
+        "TanStack Query: {t}. Show me with code.",
+    ],
+    "sveltekit_docs": [
+        "Explain {t} in SvelteKit.",
+        "How do I do this in SvelteKit: {t}?",
+        "SvelteKit: {t}. Show me with code.",
+    ],
+    "angular_docs": [
+        "Explain {t} in Angular.",
+        "How do I do this in Angular: {t}?",
+        "Angular: {t}. Show me with code.",
+    ],
+    "leptos_book": [
+        "Explain {t} in Leptos, the Rust web framework.",
+        "How do I do this in Leptos: {t}?",
+        "Leptos: {t}. Show me with code.",
+    ],
+    "yew_docs": [
+        "Explain {t} in Yew, the Rust web framework.",
+        "How do I do this in Yew: {t}?",
+        "Yew: {t}. Show me with code.",
+    ],
+    "cheatsheets": [
+        "Give me a cheat sheet for {t}.",
+        "What are the most useful things to know about {t}? Short reference please.",
+    ],
+    "clean_code_ts": [
+        "What does clean code mean for TypeScript: {t}?",
+        "Explain this TypeScript clean-code rule: {t}.",
+    ],
+    "airbnb_css": [
+        "What is a good style rule for CSS and Sass: {t}?",
+    ],
+    "pure_sh_bible": [
+        "How do I do this in a POSIX shell script without extra programs: {t}?",
+        "POSIX sh: {t}. Show me with code.",
+    ],
     "rust_cookbook": [
         "Show me a Rust recipe: {t}.",
         "How do I do this in Rust: {t}?",
@@ -417,6 +472,18 @@ SOURCES = {
     "axum_docs": ("tokio-rs__axum", {"README.md", "CHANGELOG.md", "CONTRIBUTING.md", "ECOSYSTEM.md"}),
     "rocket_guide": ("rwf2__Rocket/docs/guide", {"README.md"}),
     "diesel_guide": ("diesel-rs__diesel", {"README.md", "CHANGELOG.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"}),
+    "vitest_docs": ("vitest-dev__vitest/docs", {"index.md", "team.md", "blog.md", "blog/", "advanced/", "api/advanced/", "public/"}),
+    "jest_docs": ("jestjs__jest/docs", {"Blog.md", "Ecosystem.md"}),
+    "react_router_docs": ("remix-run__react-router/docs", {"index.md", "community/", "upgrading/"}),
+    "tanstack_query": ("TanStack__query/docs", {"index.md", "angular/", "lit/", "preact/", "solid/", "svelte/", "vue/", "eslint/", "community/", "sponsors.md", "comparison.md"}),
+    "sveltekit_docs": ("sveltejs__kit/documentation", {"index.md"}),
+    "angular_docs": ("angular__angular/adev/src/content", {"api/", "events/", "ai/", "aria/", "cdk/", "examples/", "reference/", "cli/", "index.md"}),
+    "leptos_book": ("leptos-rs__book/src", {"SUMMARY.md", "README.md"}),
+    "yew_docs": ("yewstack__yew/website/docs", {"index.md"}),
+    "cheatsheets": ("LeCoupa__awesome-cheatsheets", {"CONTRIBUTING.md", "CODE_OF_CONDUCT.md"}),
+    "clean_code_ts": ("labs42io__clean-code-typescript", {"LICENSE.md"}),
+    "airbnb_css": ("airbnb__css", {"LICENSE.md"}),
+    "pure_sh_bible": ("dylanaraps__pure-sh-bible", {"LICENSE.md"}),
     "rust_cookbook": ("rust-lang-nursery__rust-cookbook/src", {"SUMMARY.md", "README.md", "about.md", "index.md"}),
 }
 
@@ -435,6 +502,8 @@ def write_examples(path, examples):
 
 EXTRA_KEYS = {"fastapi", "typer", "pydantic", "uv_docs", "vite_docs", "svelte_docs", "nextjs_docs", "docker_docs",
               "playwright_docs", "clippy_book", "clap_docs", "axum_docs", "rocket_guide", "diesel_guide"}
+EXTRA_KEYS |= {"vitest_docs", "jest_docs", "react_router_docs", "tanstack_query", "sveltekit_docs", "angular_docs",
+               "leptos_book", "yew_docs", "cheatsheets", "clean_code_ts", "airbnb_css", "pure_sh_bible"}
 LANG_BY_EXT = {"py": "python", "js": "javascript", "ts": "typescript", "sh": "bash", "toml": "toml", "json": "json", "html": "html",
                "txt": "text", "rs": "rust", "yaml": "yaml", "yml": "yaml"}
 
@@ -465,6 +534,26 @@ def extra_clean(text, base, key):
     text = re.sub(r"[ \t]*#\s*\(\d+\)!?[ \t]*$", "", text, flags=re.M)           # code annotation markers
     text = re.sub(r"^\s*</?[A-Z][A-Za-z0-9.]*\b[^>\n]*/?>\s*$", "", text, flags=re.M)   # MDX components on their own line
     text = re.sub(r"\A(\s*(?:import|export) [^\n]*\n)+", "", text)                    # MDX imports at the top
+    def container(m):                               # ::: tip Title   (VitePress, Docusaurus)  and the closing :::
+        kind = m.group(1)
+        if not kind:
+            return ""
+        title = (m.group(2) or m.group(3) or "").strip()
+        return (kind.capitalize() + ": " + title).rstrip()
+
+    text = re.sub(r"^[ \t]*:{3,}[ \t]*(\w+)?[ \t]*(?:\[([^\]]*)\])?[ \t]*(.*)$", container, text, flags=re.M)
+    text = re.sub(r"<script\b[^>]*>.*?</script>", "", text, flags=re.S)
+    text = re.sub(r"<style\b[^>]*>.*?</style>", "", text, flags=re.S)
+
+    def docs_code(m):                               # Angular: <docs-code language="ts"> ... </docs-code>
+        attrs, body = m.group(1), m.group(2).strip("\n")
+        if "```" in body:
+            return body
+        lang = re.search(r'language="(\w+)"', attrs)
+        return "```" + (lang.group(1) if lang else "") + "\n" + body + "\n```"
+
+    text = re.sub(r"<docs-code\b([^>]*)>(.*?)</docs-code>", docs_code, text, flags=re.S)
+    text = re.sub(r"</?docs-[a-z-]+\b[^>]*?/?>", "", text)
     text = re.sub(r"</?(?:div|p|details|summary|center|kbd|sup|sub|br)\b[^>\n]*>", "", text)
     text = re.sub(r"^(#{1,6} .*?)\s*\{\s*#[\w\-.:]+\s*\}\s*$", r"\1", text, flags=re.M)   # heading anchors
     if key in ("fastapi", "typer"):                 # //// tab | Linux ... ////  (tabbed blocks)
